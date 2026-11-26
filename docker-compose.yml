@@ -9,8 +9,9 @@
 #
 # ComposeFileTests in the API tests fails if the image, the default port, the
 # user, the password or the database here stop matching
-# appsettings.Development.json and the tests' PostgresFixture. README.md and
-# THIRD-PARTY-NOTICES.md also name the image version.
+# appsettings.Development.json and the tests' PostgresFixture. By hand,
+# README.md and THIRD-PARTY-NOTICES.md also name the image version, and
+# README.md and CLAUDE.md the default port.
 services:
   postgres:
     # The Npgsql EF Core provider 11 documents PostgreSQL 18 features and

@@ -1,5 +1,5 @@
-using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Configuration;
 using Npgsql;
 
 namespace ChessAscent.Api.Tests;
@@ -38,11 +38,15 @@ public sealed partial class ComposeFileTests
         return match.Groups["value"].Value;
     }
 
+    // Read through the same JSON configuration provider the API uses, so
+    // anything the API accepts (comments, trailing commas, any key case) is
+    // read the same way here.
     private static string DevelopmentConnectionString()
     {
         var path = Path.Combine(RepositoryRoot, "backend", "src", "ChessAscent.Api", "appsettings.Development.json");
-        using var json = JsonDocument.Parse(File.ReadAllText(path));
-        return json.RootElement.GetProperty("Database").GetProperty("ConnectionString").GetString()!;
+        var connectionString = new ConfigurationBuilder().AddJsonFile(path).Build()[ApiFactory.ConnectionStringKey];
+        connectionString.Should().NotBeNullOrEmpty($"{path} should set {ApiFactory.ConnectionStringKey}");
+        return connectionString!;
     }
 
     private static Regex EnvironmentLine(string name) =>
