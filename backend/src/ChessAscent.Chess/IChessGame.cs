@@ -11,13 +11,18 @@ namespace ChessAscent.Chess;
 /// without changing the game.
 /// </para>
 /// <para>
-/// Draws: threefold repetition, the fifty-move rule and dead positions end the
-/// game automatically, with no claim needed from either player. A repetition
+/// Draws: threefold repetition, the fifty-move rule and dead positions (as far
+/// as <see cref="DrawReason.DeadPosition"/> describes them) end the game
+/// automatically, with no claim needed from either player. A repetition
 /// or fifty-move draw takes effect immediately after the move that completes
 /// it, so that move is played and recorded and the game is then over.
 /// </para>
 /// <para>
-/// No member throws for bad input. Each failure is a case of the returned union.
+/// No member throws for bad input: each failure is a case of the returned
+/// union. A null argument, which the nullable annotations already rule out,
+/// throws <see cref="ArgumentNullException"/>, and an undefined enum value
+/// throws <see cref="ArgumentOutOfRangeException"/>. Those are bugs in the
+/// caller, not input to report back.
 /// </para>
 /// </remarks>
 public interface IChessGame
@@ -33,7 +38,10 @@ public interface IChessGame
     /// <summary>Where the game stands.</summary>
     GameStatus Status { get; }
 
-    /// <summary>The moves played since the starting position, oldest first.</summary>
+    /// <summary>
+    /// The moves played since the starting position, oldest first. Each read
+    /// returns a new list, which later moves do not change.
+    /// </summary>
     IReadOnlyList<PlayedMove> History { get; }
 
     /// <summary>Every legal move for the side to move, ordered by UCI text. Empty once the game is over.</summary>

@@ -70,6 +70,18 @@ public sealed class GameStatusTests
     }
 
     [Fact]
+    public void RepetitionIsTheReasonWhenItCoincidesWithTheFiftyMoveRule()
+    {
+        // The eighth knight move is both the hundredth half-move and the third
+        // occurrence of the starting position.
+        var game = Games.Load(
+            "4k3/8/8/8/8/8/8/R3K1N1 w - - 92 60",
+            "g1f3", "e8d8", "f3g1", "d8e8", "g1f3", "e8d8", "f3g1", "d8e8");
+
+        game.Status.Value.Should().Be(new Draw(DrawReason.ThreefoldRepetition));
+    }
+
+    [Fact]
     public void HundredthHalfMoveWithoutCaptureOrPawnMoveDrawsByTheFiftyMoveRule()
     {
         var game = Games.Load("4k3/8/8/8/8/8/8/R3K3 w - - 99 60");
@@ -127,6 +139,16 @@ public sealed class GameStatusTests
     public void KingAndTwoKnightsAgainstALoneKingPlaysOn()
     {
         Games.Load("4k3/8/8/8/8/8/8/1N2K1N1 w - - 0 1").Status.Value.Should().Be(new Ongoing());
+    }
+
+    // Dead-position detection covers missing material only. Here every pawn is
+    // blocked and neither king can reach an enemy pawn, so mate is impossible,
+    // but play continues until repetition or the fifty-move rule. Whether to
+    // detect such positions is an open question for the project owner.
+    [Fact]
+    public void LockedPawnsAreNotDetectedAsADeadPosition()
+    {
+        Games.Load("8/4k3/8/p1p1p1p1/P1P1P1P1/8/4K3/8 w - - 0 1").Status.Value.Should().Be(new Ongoing());
     }
 
     // The compiler checks this switch for exhaustiveness: adding a case to

@@ -23,6 +23,9 @@ internal sealed class ChessRealmsGame : IChessGame
     // Seven characters fit any SAN move (such as "Qa1xb2#"); the rest is margin.
     private const int SanBufferLength = 16;
 
+    /// <summary>The longest value a PGN tag may hold, in UTF-16 code units.</summary>
+    internal const int MaxPgnTagValueLength = 255;
+
     private readonly Realms.ChessGame game;
 
     // The library records moves but not their SAN, which must be formatted
@@ -60,6 +63,7 @@ internal sealed class ChessRealmsGame : IChessGame
 
     public PlayResult TryPlay(string uciMove)
     {
+        ArgumentNullException.ThrowIfNull(uciMove);
         if (!Realms.CoordinateMove.TryParse(uciMove, out var move))
         {
             return new MalformedMove(uciMove);
@@ -94,6 +98,8 @@ internal sealed class ChessRealmsGame : IChessGame
 
     public PgnExportResult ToPgn(PgnTags tags, DeclaredResult? declaredResult)
     {
+        ArgumentNullException.ThrowIfNull(tags);
+
         // LEARN: `is { } declared` is a property pattern with no properties: it
         // matches any non-null value and binds it, unwrapping the nullable in
         // one step. Java would write `if (opt.isPresent()) { var d = opt.get(); }`.
@@ -101,6 +107,10 @@ internal sealed class ChessRealmsGame : IChessGame
         if (declaredResult is { } declared)
         {
             declaredPgnResult = ToPgnResult(declared);
+
+            // The library throws ArgumentException for a declared result that
+            // contradicts a finished game, so the contradiction is caught here
+            // and returned as a value.
             if (game.IsFinished && declaredPgnResult != ToPgnResult(game.Outcome.Result))
             {
                 return new DeclaredResultContradictsBoard(declared, Status);
@@ -133,14 +143,10 @@ internal sealed class ChessRealmsGame : IChessGame
             tagValues.Add(new(name, value));
         }
 
-        // A non-standard starting position is written as a FEN tag, and the
-        // library refuses one beyond the tag-value limit. FEN counters have no
-        // upper bound, so such a position can be loaded.
-        if (!IsValidPgnTagValue(game.GetFenAtPly(0)))
-        {
-            return new InvalidPgnTagValue("FEN");
-        }
-
+        // A non-standard starting position is also written as a tag (FEN). It
+        // always fits, because ChessRules.Load refuses a FEN longer than a tag
+        // value may be, and the library's canonical form is never longer than
+        // the text it parsed.
         var document = Realms.PgnGame.FromGame(game, tagValues, declaredPgnResult);
         return new PgnExported(document.ToPgn());
     }
@@ -240,7 +246,8 @@ internal sealed class ChessRealmsGame : IChessGame
         Realms.GameResult.WhiteWin => Realms.PgnResult.WhiteWin,
         Realms.GameResult.BlackWin => Realms.PgnResult.BlackWin,
         Realms.GameResult.Draw => Realms.PgnResult.Draw,
-        _ => Realms.PgnResult.Unknown,
+        Realms.GameResult.Ongoing => Realms.PgnResult.Unknown,
+        _ => throw new InvalidOperationException($"Unknown game result from the rules library: {result}."),
     };
 
     // The PGN tag-value rule as the library applies it: at most 255 UTF-16
@@ -249,8 +256,7 @@ internal sealed class ChessRealmsGame : IChessGame
     // a result instead of the library's ArgumentException.
     private static bool IsValidPgnTagValue(string value)
     {
-        const int MaxLength = 255;
-        return value.Length <= MaxLength
+        return value.Length <= MaxPgnTagValueLength
             && Utf16.IsValid(value)
             && !value.Any(c => char.IsControl(c) || c is '\u2028' or '\u2029');
     }

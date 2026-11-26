@@ -38,6 +38,44 @@ public sealed class LoadTests
     }
 
     [Fact]
+    public void FenLongerThanAPgnTagValueIsRefused()
+    {
+        // Valid FEN apart from its length: move counters have no upper bound.
+        var fen = "4k3/8/8/8/8/8/8/R3K3 w - - 0 " + new string('9', 10_000);
+
+        Games.Rules.Load(fen, []).Value.Should().Be(new InvalidStartingPosition(fen));
+    }
+
+    [Fact]
+    public void FenOfExactlyTheLimitLoads()
+    {
+        const string prefix = "4k3/8/8/8/8/8/8/R3K3 w - - 0 ";
+        var fen = prefix + new string('9', 255 - prefix.Length);
+
+        Games.Load(fen).Fen.Should().Be(fen);
+    }
+
+    [Fact]
+    public void NullArgumentsAreCallerBugsAndThrow()
+    {
+        var nullFen = () => Games.Rules.Load(null!, []);
+        var nullList = () => Games.Rules.Load(Games.StartingFen, null!);
+        var nullMove = () => Games.Rules.Load(Games.StartingFen, ["e2e4", null!]);
+
+        nullFen.Should().Throw<ArgumentNullException>();
+        nullList.Should().Throw<ArgumentNullException>();
+        nullMove.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void ResultTextNamesTheCase()
+    {
+        var result = Games.Rules.Load(Games.StartingFen, ["e2e5"]);
+
+        result.ToString().Should().Be("InvalidMoveInHistory { Index = 0, Rejection = IllegalMove { Uci = e2e5 } }");
+    }
+
+    [Fact]
     public void IllegalMoveInTheListIsReportedWithItsIndex()
     {
         var result = Games.Rules.Load(Games.StartingFen, ["e2e4", "e7e5", "e4e5"]);

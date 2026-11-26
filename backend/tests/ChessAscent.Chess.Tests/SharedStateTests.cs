@@ -4,8 +4,9 @@ using System.Runtime.CompilerServices;
 namespace ChessAscent.Chess.Tests;
 
 // Games are not thread-safe, so each request makes its own. These tests check
-// the other half of that rule: nothing in the library keeps a game, or any
-// other mutable state, where two requests could reach it.
+// the other half of that rule: nothing in ChessAscent.Chess keeps a game, or
+// any other mutable state, where two requests could reach it. The rules
+// library behind it keeps only read-only attack tables in static state.
 public sealed class SharedStateTests
 {
     private const BindingFlags AllFields =
@@ -18,7 +19,7 @@ public sealed class SharedStateTests
     }
 
     [Fact]
-    public void NoTypeInTheChessLibraryHasAStaticField()
+    public void NoTypeInChessAscentChessHasAStaticField()
     {
         var staticFields = typeof(IChessGame).Assembly.GetTypes()
             .Where(type => !IsCompilerGenerated(type))

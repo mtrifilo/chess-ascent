@@ -10,7 +10,15 @@ public sealed class ChessRules : IChessRules
 
     public LoadResult Load(string initialFen, IReadOnlyList<string> uciMoves)
     {
-        if (!Realms.ChessGame.TryCreateFromFen(initialFen, out var start))
+        ArgumentNullException.ThrowIfNull(initialFen);
+        ArgumentNullException.ThrowIfNull(uciMoves);
+
+        // FEN move counters have no upper bound in the library, and a counter
+        // millions of digits long makes every replayed move slow and memory
+        // hungry. Capping the text at the PGN tag-value limit bounds that cost
+        // and keeps every loaded game exportable.
+        if (initialFen.Length > ChessRealmsGame.MaxPgnTagValueLength
+            || !Realms.ChessGame.TryCreateFromFen(initialFen, out var start))
         {
             return new InvalidStartingPosition(initialFen);
         }

@@ -19,8 +19,10 @@
     <!--
       Referenced only by ChessAscent.Chess, behind its own interface.
       ChessAscent.Chess.Tests checks that no other project references it.
+      The brackets pin exactly 1.2.0; a bare version in NuGet means "1.2.0 or
+      later".
     -->
-    <PackageVersion Include="ChessRealms.Engine" Version="1.2.0" />
+    <PackageVersion Include="ChessRealms.Engine" Version="[1.2.0]" />
   </ItemGroup>
 
   <ItemGroup Label="Tests">

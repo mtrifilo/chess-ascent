@@ -129,13 +129,30 @@ public sealed class PgnTests
     }
 
     [Fact]
-    public void StartingPositionTooLongForAPgnTagComesBackAsAValue()
+    public void LongestLoadableStartingPositionStillExports()
     {
-        // FEN move counters have no upper bound, so this position is valid but
-        // its FEN does not fit in a PGN tag.
-        var game = Games.Load("4k3/8/8/8/8/8/8/R3K3 w - - 0 " + new string('9', 300));
+        const string prefix = "4k3/8/8/8/8/8/8/R3K3 w - - 0 ";
+        var fen = prefix + new string('9', 255 - prefix.Length);
 
-        game.ToPgn(Tags, declaredResult: null).Value.Should().Be(new InvalidPgnTagValue("FEN"));
+        Export(Games.Load(fen), Tags, declaredResult: null).Should().Contain($"[FEN \"{fen}\"]");
+    }
+
+    [Fact]
+    public void UndefinedDeclaredResultIsACallerBugAndThrows()
+    {
+        var ongoing = () => Games.Rules.NewGame().ToPgn(Tags, (DeclaredResult)42);
+        var finished = () => Games.Play(Games.FoolsMate).ToPgn(Tags, (DeclaredResult)(-1));
+
+        ongoing.Should().Throw<ArgumentOutOfRangeException>();
+        finished.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void NullTagsAreACallerBugAndThrow()
+    {
+        var act = () => Games.Rules.NewGame().ToPgn(null!, declaredResult: null);
+
+        act.Should().Throw<ArgumentNullException>();
     }
 
     private static string Export(IChessGame game, PgnTags tags, DeclaredResult? declaredResult) =>

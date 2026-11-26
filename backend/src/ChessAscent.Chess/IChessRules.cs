@@ -15,8 +15,10 @@ namespace ChessAscent.Chess;
 /// shared: see <see cref="IChessGame"/>.
 /// </para>
 /// <para>
-/// No method throws for bad input. Each failure is a case of the returned
-/// union.
+/// No method throws for bad input: each failure is a case of the returned
+/// union. A null argument, or a null in the move list, throws
+/// <see cref="ArgumentNullException"/>; the nullable annotations already rule
+/// it out, so it is a bug in the caller.
 /// </para>
 /// </remarks>
 public interface IChessRules

@@ -42,7 +42,11 @@ public sealed class LibraryHidingTests
     {
         var found = TypesMentionedBy(typeof(LeakyExample)).ToList();
 
-        found.Should().Contain([typeof(Uri), typeof(Version), typeof(TimeZoneInfo), typeof(DayOfWeek), typeof(Guid)]);
+        found.Should().Contain(
+        [
+            typeof(Uri), typeof(Version), typeof(TimeZoneInfo), typeof(DayOfWeek), typeof(Guid),
+            typeof(IFormattable), typeof(System.ComponentModel.DescriptionAttribute), typeof(SerializableAttribute),
+        ]);
         found.Should().NotContain(typeof(System.Text.StringBuilder), "private members are not part of the surface");
     }
 
@@ -67,6 +71,21 @@ public sealed class LibraryHidingTests
         others.Should().BeEmpty();
     }
 
+    // Directory.Packages.props must name the library, to pin its version, but
+    // only as a version: a GlobalPackageReference there would add it to every
+    // project. The brackets pin exactly one version.
+    [Fact]
+    public void CentralVersionsOnlyPinTheLibrary()
+    {
+        var centralVersions = XDocument.Load(Path.Combine(BackendDirectory(), "Directory.Packages.props"));
+
+        var mentions = centralVersions.Descendants()
+            .Where(element => (string?)element.Attribute("Include") == LibraryPackage)
+            .Select(element => $"{element.Name.LocalName} {(string?)element.Attribute("Version")}");
+
+        mentions.Should().Equal("PackageVersion [1.2.0]");
+    }
+
     // PrivateAssets="compile" keeps the library off the compiler's reference
     // list in every project that references ChessAscent.Chess, while still
     // copying it to their output so the code runs.
@@ -82,9 +101,10 @@ public sealed class LibraryHidingTests
     }
 
     // Every type a caller outside the assembly can see in this type's
-    // declaration: base type, interfaces, and the signatures of its public and
+    // declaration: base type, interfaces, attributes, generic parameter
+    // constraints, and the signatures and attributes of its public and
     // protected members, with generic arguments, arrays and by-ref types unwrapped.
-    private static IEnumerable<Type> TypesMentionedBy(Type type)
+    private static HashSet<Type> TypesMentionedBy(Type type)
     {
         var direct = new List<Type>();
         if (type.BaseType is { } baseType)
@@ -93,9 +113,16 @@ public sealed class LibraryHidingTests
         }
 
         direct.AddRange(type.GetInterfaces());
+        direct.AddRange(type.GetGenericArguments());
+        direct.AddRange(AttributeTypes(type));
 
         foreach (var member in type.GetMembers(DeclaredMembers))
         {
+            if (IsVisibleMember(member))
+            {
+                direct.AddRange(AttributeTypes(member));
+            }
+
             switch (member)
             {
                 case FieldInfo field when field.IsPublic || field.IsFamily || field.IsFamilyOrAssembly:
@@ -109,6 +136,7 @@ public sealed class LibraryHidingTests
                     if (method is MethodInfo withReturn)
                     {
                         direct.Add(withReturn.ReturnType);
+                        direct.AddRange(withReturn.GetGenericArguments());
                     }
 
                     break;
@@ -118,22 +146,61 @@ public sealed class LibraryHidingTests
             }
         }
 
-        return direct.SelectMany(Unwrap).Distinct();
+        var found = new HashSet<Type>();
+        foreach (var mentioned in direct)
+        {
+            Unwrap(mentioned, found);
+        }
+
+        return found;
     }
 
     private static bool IsVisible(MethodBase? method) =>
         method is not null && (method.IsPublic || method.IsFamily || method.IsFamilyOrAssembly);
 
-    private static IEnumerable<Type> Unwrap(Type type)
+    private static bool IsVisibleMember(MemberInfo member) => member switch
+    {
+        FieldInfo field => field.IsPublic || field.IsFamily || field.IsFamilyOrAssembly,
+        PropertyInfo property => IsVisible(property.GetMethod) || IsVisible(property.SetMethod),
+        MethodBase method => IsVisible(method),
+        EventInfo @event => IsVisible(@event.AddMethod),
+        Type nested => nested.IsNestedPublic || nested.IsNestedFamily || nested.IsNestedFamORAssem,
+        _ => false,
+    };
+
+    private static IEnumerable<Type> AttributeTypes(MemberInfo member) =>
+        member.GetCustomAttributesData().Select(attribute => attribute.AttributeType);
+
+    // The set of types seen so far ends the recursion through self-referential
+    // constraints such as `where T : IComparable<T>`.
+    private static void Unwrap(Type type, HashSet<Type> found)
     {
         if (type.HasElementType)
         {
-            return Unwrap(type.GetElementType()!);
+            Unwrap(type.GetElementType()!, found);
         }
-
-        return type.IsGenericType
-            ? type.GetGenericArguments().SelectMany(Unwrap).Prepend(type.GetGenericTypeDefinition())
-            : [type];
+        else if (type.IsGenericParameter)
+        {
+            if (found.Add(type))
+            {
+                foreach (var constraint in type.GetGenericParameterConstraints())
+                {
+                    Unwrap(constraint, found);
+                }
+            }
+        }
+        else if (type.IsGenericType)
+        {
+            found.Add(type.GetGenericTypeDefinition());
+            foreach (var argument in type.GetGenericArguments())
+            {
+                Unwrap(argument, found);
+            }
+        }
+        else
+        {
+            found.Add(type);
+        }
     }
 
     private static string BackendDirectory()
@@ -158,6 +225,7 @@ public sealed class LibraryHidingTests
             .Any(segment => segment is "bin" or "obj");
 
     // A surface with one member of each kind, for checking the walk itself.
+    [Serializable]
     public abstract class LeakyExample
     {
         private readonly System.Text.StringBuilder hidden = new();
@@ -166,7 +234,11 @@ public sealed class LibraryHidingTests
         public List<Uri[]> Field = [];
 #pragma warning restore CA1051
 
+        [System.ComponentModel.Description("An attribute on a visible member.")]
         public Dictionary<int, Version>? Property { get; set; }
+
+        public abstract T Pick<T>()
+            where T : IFormattable, IComparable<T>;
 
         protected abstract void Method(ref TimeZoneInfo zone, DayOfWeek? day);
 

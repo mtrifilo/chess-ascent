@@ -89,6 +89,14 @@ public sealed class TryPlayTests
     }
 
     [Fact]
+    public void NullMoveIsACallerBugAndThrows()
+    {
+        var act = () => Games.Rules.NewGame().TryPlay(null!);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
     public void MoveAfterCheckmateComesBackAsGameAlreadyOver()
     {
         var game = Games.Play(Games.FoolsMate);

@@ -1,9 +1,10 @@
 namespace ChessAscent.Chess;
 
-// LEARN: `init` accessors make these properties settable only in an object
-// initializer (`new PgnTags { White = "Ana" }`) or a `with` expression, and
-// read-only afterwards. That replaces both a Java builder and a constructor
-// with six optional arguments.
+// LEARN: An `init` accessor makes a property settable only while the object
+// is being created: in a constructor, an object initializer
+// (`new PgnTags { White = "Ana" }`) or a `with` expression. Afterwards it is
+// read-only, like a final field. Setting just the properties you need in an
+// initializer replaces the builder or telescoping constructors Java would use.
 /// <summary>
 /// The six descriptive tags of PGN's Seven Tag Roster. The seventh, Result,
 /// comes from the declared result or the board. A tag left <c>null</c> is
@@ -42,7 +43,10 @@ public enum DeclaredResult
 }
 
 /// <summary>The outcome of <see cref="IChessGame.ToPgn"/>.</summary>
-public union PgnExportResult(PgnExported, DeclaredResultContradictsBoard, InvalidPgnTagValue);
+public union PgnExportResult(PgnExported, DeclaredResultContradictsBoard, InvalidPgnTagValue)
+{
+    public override string ToString() => Value?.ToString() ?? "(no case)";
+}
 
 /// <summary>The game as PGN text.</summary>
 /// <param name="Pgn">The tags, a blank line, the moves and the result, with LF line endings.</param>
@@ -60,8 +64,5 @@ public readonly record struct DeclaredResultContradictsBoard(DeclaredResult Decl
 /// containing a control character, a line or paragraph separator, or an
 /// unpaired surrogate.
 /// </summary>
-/// <param name="TagName">
-/// The tag, such as <c>White</c>. <c>FEN</c> means the game's starting
-/// position, which PGN records as a tag when it is not the standard one.
-/// </param>
+/// <param name="TagName">The tag, such as <c>White</c>.</param>
 public readonly record struct InvalidPgnTagValue(string TagName);
