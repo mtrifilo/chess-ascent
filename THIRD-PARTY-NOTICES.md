@@ -18,7 +18,9 @@ Run as separate programs, or loaded as data. Not linked into Chess Ascent's own 
 
 | Component | Source | Licence | How it is used |
 |---|---|---|---|
-| | | | |
+| AwesomeAssertions | https://github.com/AwesomeAssertions/AwesomeAssertions | Apache-2.0 | Assertions in the test projects only |
+| Microsoft.AspNetCore.Mvc.Testing | https://github.com/dotnet/aspnetcore | MIT | Runs the API in memory for the API tests (`WebApplicationFactory`); test projects only |
+| xunit.v3 | https://github.com/xunit/xunit | Apache-2.0 | Test framework, on Microsoft.Testing.Platform (MIT), which it brings in; test projects only |
 
 ## Front-end libraries
 

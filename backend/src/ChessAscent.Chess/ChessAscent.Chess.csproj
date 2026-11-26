@@ -1,0 +1,8 @@
+﻿<!--
+  The chess domain. It must not reference ASP.NET Core, EF Core or any other
+  web or database package, so the rules can be tested and replaced on their
+  own. ChessAscent.Chess.Tests checks this.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+</Project>

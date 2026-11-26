@@ -1,0 +1,17 @@
+<!--
+  LEARN: A project file is the C# counterpart of a pom.xml, but much shorter,
+  for three reasons. Source files are picked up by folder: every .cs file
+  under this directory is compiled, so nothing lists them. The Sdk attribute
+  imports a whole build definition: Microsoft.NET.Sdk.Web is the plain SDK
+  plus ASP.NET Core, roughly what the Spring Boot parent and its web starter
+  give a Maven build. And shared settings (target framework, nullable,
+  analyzers) come from Directory.Build.props one folder up.
+
+  MSBuild has no fixed lifecycle like Maven's validate, compile, test,
+  package. It has targets (Restore, Build, Publish) that declare what they
+  depend on, and the dotnet commands run them. Output lands in bin/ and obj/
+  next to this file rather than in a single target/ folder.
+-->
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+</Project>

@@ -1,0 +1,19 @@
+<!--
+  LEARN: Central Package Management. Every NuGet package version used by any
+  project in this folder is declared here once, and project files reference
+  packages by name only. This is Maven's dependencyManagement section, except
+  that it is enforced: a version written in a project file fails the build.
+-->
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup Label="Tests">
+    <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="11.0.0" />
+    <PackageVersion Include="xunit.v3" Version="4.0.3" />
+  </ItemGroup>
+
+</Project>
