@@ -19,7 +19,7 @@ export function AppShell({ email, children }: AppShellProps) {
   return (
     <>
       <header className="flex h-14 items-center gap-1 border-b bg-background pt-px pr-2 pl-4 md:gap-6 md:px-6">
-        <span className="text-product-name font-semibold whitespace-nowrap">
+        <span className="shrink-0 text-product-name font-semibold whitespace-nowrap">
           Chess Ascent
         </span>
         {email && (

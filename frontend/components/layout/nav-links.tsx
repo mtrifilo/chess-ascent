@@ -9,9 +9,10 @@ export const NAV_ITEMS = [
 
 export type NavHref = (typeof NAV_ITEMS)[number]['href']
 
-// The item whose page is showing. Only an exact path matches: a game at
-// /games/[id] is drawn with Play highlighted while it is played and My games
-// while it is replayed, which the path alone cannot tell apart.
+// The item whose page is showing. Only an exact path matches, so nothing is
+// highlighted on a path below an item, such as one game's page. The designs
+// highlight Play on a game being played and My games on one being replayed,
+// which the path does not tell apart.
 export function activeNavHref(pathname: string): NavHref | undefined {
   return NAV_ITEMS.find(item => item.href === pathname)?.href
 }
@@ -28,7 +29,7 @@ export function NavLinks({ activeHref }: { activeHref?: NavHref }) {
                 href={item.href}
                 aria-current={isActive ? 'page' : undefined}
                 className={cn(
-                  'flex h-11 items-center rounded-md px-3 text-sm whitespace-nowrap md:h-8',
+                  'flex h-11 items-center rounded-md px-3 text-sm whitespace-nowrap outline-none focus-visible:ring-[3px] focus-visible:ring-ring md:h-8',
                   isActive
                     ? 'bg-accent text-accent-foreground'
                     : 'text-muted-foreground'

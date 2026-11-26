@@ -1,14 +1,23 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
+/* Tests are not scanned for class names: lib/hard-coded-styles.test.ts lists
+ * forbidden utilities as samples, which would otherwise be generated. */
+@source not '../**/*.test.{ts,tsx}';
+
 /* The token file. Every colour, font family, text size, radius and shadow the
  * app uses is defined here, and components reach them only through the
- * utilities below (`bg-card`, `text-body-s`, `rounded-md`). Nothing outside
- * this file writes a colour or a font size as a literal.
+ * utilities below (`bg-card`, `text-body-s`, `rounded-md`).
+ * lib/hard-coded-styles.test.ts fails on a literal colour or font size
+ * anywhere else, and on the stock Tailwind utilities removed below.
  *
  * The colour, radius and font tokens are Psychic Homily's design system
  * (paper background, burnt-orange primary, sharp corners): light mode is
- * "newsprint", dark mode is "vinyl record shop". */
+ * "newsprint", dark mode is "vinyl record shop". Left behind as specific to
+ * that product: its sidebar colours and layout sizes, its graph edge colours,
+ * its map and music-embed styles, its page-specific custom variants and
+ * scroll padding for its fixed bars, the typography plugin, and the `--radius`
+ * alias, which nothing here reads. */
 
 /* `dark:` utilities apply only under an element with the `dark` class, never
  * from the operating system's colour scheme. Nothing sets that class, so the
@@ -16,10 +25,15 @@
  * for when a theme is designed. */
 @custom-variant dark (&:is(.dark *));
 
-/* Tailwind's stock palette (`text-white`, `bg-zinc-500` and the rest) is
- * removed, so a colour that bypasses these tokens does not compile. */
+/* Tailwind's stock palette, radii, shadows and text sizes are removed, so the
+ * scales below are the only ones. A removed utility (`text-white`,
+ * `rounded-full`, `shadow-md`, `text-lg`) generates no CSS and no error, which
+ * is why lib/hard-coded-styles.test.ts looks for them. */
 @theme {
   --color-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --text-*: initial;
 }
 
 /* Fonts: Hanken Grotesk for display, Schibsted Grotesk for body and UI, Golos
@@ -64,6 +78,14 @@
   --color-separator: var(--separator);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
 
   --color-board-square-light: var(--board-square-light);
   --color-board-square-dark: var(--board-square-dark);
@@ -89,11 +111,18 @@
    * would become 24px instead of 32rem. */
 }
 
-/* Text sizes from the design's text styles that Tailwind's scale lacks. Body/M
- * (14px on 20px) is Tailwind's `text-sm` and needs no token. The product name
- * in the top bar is 15px on 20px; the design sets it directly rather than
- * through a text style. */
+/* Text sizes. `xs`, `sm` and `base` keep Tailwind's values, because the ported
+ * components use them: `xs` is the 12px floor, and `sm` (14px on 20px) is the
+ * design's Body/M. The others are the design's text styles: Body/S, Display/M,
+ * and the product name in the top bar (15px on 20px), which the design sets
+ * directly rather than through a text style. Nothing below 12px. */
 @theme {
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
   --text-body-s: 0.8125rem;
   --text-body-s--line-height: 1.125rem;
   --text-display-m: 1.75rem;
@@ -146,6 +175,16 @@
   --separator: #8a8782;
   --input: #ddd6c8;
   --ring: #d2541b;
+  /* A categorical palette for charts and multi-series marks: five warm hues,
+   * then three cool ones. */
+  --chart-1: #d2541b;
+  --chart-2: #4a7c59;
+  --chart-3: #c89438;
+  --chart-4: #9c2a1a;
+  --chart-5: #8b7355;
+  --chart-6: #3f607f;
+  --chart-7: #6e4f73;
+  --chart-8: #357d74;
 
   /* The board and pieces. Defined once, outside the dark block, because they
    * keep these colours in dark mode. */
@@ -189,6 +228,14 @@
   --separator: #6d665d;
   --input: #221b15;
   --ring: #dc9064;
+  --chart-1: #e89960;
+  --chart-2: #7a9d77;
+  --chart-3: #e0b66e;
+  --chart-4: #d74745;
+  --chart-5: #b59880;
+  --chart-6: #80a0c0;
+  --chart-7: #ad8fb0;
+  --chart-8: #6db3a6;
 }
 
 @layer base {

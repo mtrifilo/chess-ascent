@@ -69,8 +69,8 @@ Runtime libraries, or code generated from them, ship to the browser or run in th
 
 | Component | Source | Licence | How it is used |
 |---|---|---|---|
-| Psychic Homily's design tokens and UI components | https://github.com/mtrifilo/psychic-homily-web (`frontend/app/globals.css`, `frontend/app/layout.tsx`, `frontend/components/ui/`, `frontend/lib/utils.ts`) | Not stated in its repository. It has the same owner as Chess Ascent, who publishes these files here under AGPL-3.0-or-later | The colour, radius and font tokens and base styles in `frontend/app/globals.css`, the font set-up in `frontend/app/layout.tsx`, and the components and tests in `frontend/components/ui/`, ported with small changes; `frontend/lib/utils.ts` is adapted from it |
-| shadcn/ui | https://github.com/shadcn-ui/ui | MIT | Psychic Homily's components in `frontend/components/ui/` are derived from shadcn/ui's |
+| Psychic Homily's design tokens and UI components | https://github.com/mtrifilo/psychic-homily-web (`frontend/app/globals.css`, `frontend/app/layout.tsx`, `frontend/components/ui/`, `frontend/lib/utils.ts`) | MIT, Copyright (c) 2025-2026 Psychic Homily, as stated in the "License" section of its README. Notice below | The colour, radius and font tokens and base styles in `frontend/app/globals.css`, the font set-up in `frontend/app/layout.tsx`, and the components and tests in `frontend/components/ui/`, ported with small changes; `frontend/lib/utils.ts` is adapted from it |
+| shadcn/ui | https://github.com/shadcn-ui/ui | MIT, Copyright (c) 2023 shadcn. Notice below | Psychic Homily's components in `frontend/components/ui/` are derived from shadcn/ui's |
 
 ## Fonts, pieces and other assets
 
@@ -79,3 +79,59 @@ Runtime libraries, or code generated from them, ship to the browser or run in th
 | Hanken Grotesk | Whatever Google Fonts serves at build time; `next/font/google` does not pin a version | https://github.com/marcologous/hanken-grotesk, through Google Fonts | OFL-1.1 | Display type. Downloaded at build time and served by the app |
 | Schibsted Grotesk | As above | https://github.com/schibsted/schibsted-grotesk, through Google Fonts | OFL-1.1 | Body and interface type. Downloaded at build time and served by the app |
 | Golos Text | As above | https://github.com/googlefonts/golos-text, through Google Fonts | OFL-1.1 | Data type (counts, times, dates). Downloaded at build time and served by the app |
+
+## Licence notices for adapted code
+
+The MIT licence asks that its copyright and permission notice travel with copies of the code, so the notices for the code adapted above are reproduced here.
+
+### Psychic Homily
+
+```text
+MIT License
+
+Copyright (c) 2025-2026 Psychic Homily
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### shadcn/ui
+
+```text
+MIT License
+
+Copyright (c) 2023 shadcn
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
