@@ -12,9 +12,10 @@ namespace ChessAscent.Chess;
 // (`status switch { Ongoing => ..., ... }`) over a union that misses a case
 // gets compiler warning CS8509, which this solution's warnings-as-errors turns
 // into a build failure. So when a case is added, every switch expression that
-// does not handle it stops compiling. Unlike Java, a switch *statement* and a
-// chain of `is` tests are not checked at all, so code that must handle every
-// case uses the expression form.
+// does not handle it stops compiling. Unlike a Java pattern switch statement,
+// a C# switch *statement* is not checked, and neither language checks a chain
+// of type tests (`is` here, `instanceof` in Java), so code that must handle
+// every case uses the expression form.
 //
 // One trap Java does not have: like every struct, a union has a `default`
 // value, and that value holds no case at all. A switch over it matches no

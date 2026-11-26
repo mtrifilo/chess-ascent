@@ -60,7 +60,7 @@ public sealed class LoadTests
     {
         var nullFen = () => Games.Rules.Load(null!, []);
         var nullList = () => Games.Rules.Load(Games.StartingFen, null!);
-        var nullMove = () => Games.Rules.Load(Games.StartingFen, ["e2e4", null!]);
+        var nullMove = () => Games.Rules.Load(Games.StartingFen, ["e2e5", null!]);
 
         nullFen.Should().Throw<ArgumentNullException>();
         nullList.Should().Throw<ArgumentNullException>();

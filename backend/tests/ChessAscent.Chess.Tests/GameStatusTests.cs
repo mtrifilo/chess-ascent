@@ -61,7 +61,7 @@ public sealed class GameStatusTests
     [Fact]
     public void RepetitionsNeedNotBeConsecutive()
     {
-        // The king position after the first pair of moves recurs at plies 4 and 10.
+        // The starting position recurs at plies 4 and 10, with other positions in between.
         var game = Games.Load(
             "4k3/8/8/8/8/8/8/R3K3 w - - 0 1",
             "e1d1", "e8d8", "d1e1", "d8e8", "e1d1", "e8d8", "d1d2", "d8d7", "d2e1", "d7e8");

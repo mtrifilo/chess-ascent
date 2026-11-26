@@ -41,12 +41,25 @@ public sealed class TryPlayTests
         game.Fen.Should().Be("r3k2r/8/8/8/8/8/8/R4RK1 b kq - 1 1");
     }
 
+    // Some programs write castling as the king moving onto its own rook. UCI
+    // does not, so with castling available both ways that form is still illegal.
+    [Theory]
+    [InlineData("e1h1")]
+    [InlineData("e1a1")]
+    public void KingOntoItsOwnRookIsNotCastling(string uci)
+    {
+        const string fen = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1";
+        var game = Games.Load(fen);
+
+        game.TryPlay(uci).Value.Should().Be(new IllegalMove(uci));
+        game.Fen.Should().Be(fen);
+    }
+
     [Theory]
     [InlineData("e2e5")] // Too far for a pawn.
     [InlineData("e3e4")] // No piece on e3.
     [InlineData("e7e5")] // Black's pawn, with White to move.
     [InlineData("e2e4q")] // A promotion letter on a move that is not a promotion.
-    [InlineData("e1h1")] // King onto its own rook, a castling form UCI does not use.
     public void IllegalMoveComesBackAsAValueAndLeavesTheGameUnchanged(string uci)
     {
         var game = Games.Rules.NewGame();

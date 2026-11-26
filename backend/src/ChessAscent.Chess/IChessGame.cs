@@ -27,7 +27,11 @@ namespace ChessAscent.Chess;
 /// </remarks>
 public interface IChessGame
 {
-    /// <summary>The current position as six-field FEN.</summary>
+    /// <summary>
+    /// The current position as six-field FEN. Its move number grows during
+    /// play, so a game started from a FEN at the 255-character limit of
+    /// <see cref="IChessRules.Load"/> can reach a FEN that Load refuses.
+    /// </summary>
     string Fen { get; }
 
     /// <summary>

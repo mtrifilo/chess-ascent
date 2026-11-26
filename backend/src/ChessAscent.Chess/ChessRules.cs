@@ -12,6 +12,10 @@ public sealed class ChessRules : IChessRules
     {
         ArgumentNullException.ThrowIfNull(initialFen);
         ArgumentNullException.ThrowIfNull(uciMoves);
+        if (uciMoves.Contains(null!))
+        {
+            throw new ArgumentNullException(nameof(uciMoves), "The move list contains a null.");
+        }
 
         // FEN move counters have no upper bound in the library, and a counter
         // millions of digits long makes every replayed move slow and memory
