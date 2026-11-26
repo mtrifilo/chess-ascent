@@ -45,7 +45,22 @@ From `backend/`, with the .NET 11 SDK (`backend/global.json` pins 11.0.100 and a
 
 ### Front end
 
-Nothing yet.
+From `frontend/`:
+
+| Command | Does |
+|---|---|
+| `bun install` | Installs the pinned dependencies from `bun.lock` |
+| `bun run dev` | Serves the app at http://localhost:3000; add `--port <n>` for another port |
+| `bun run typecheck` | Generates Next.js route types, then runs `tsc` |
+| `bun run lint` | ESLint with the Next.js and jsx-a11y rules; any warning fails it |
+| `bun run test` | Vitest, once (component tests in jsdom) |
+| `bun run build` | Production build |
+| `bun run format` / `bun run format:check` | Prettier: rewrite, or check only |
+
+- Bun installs packages and runs scripts; Next.js and Vitest themselves run on Node. Never add `bun --bun`.
+- Run Next.js through these scripts, not `bunx next`: the scripts set `NEXT_TELEMETRY_DISABLED=1`. `frontend/bunfig.toml` turns off Bun's crash reports, and `experimental.agentFeedback` is off in `next.config.ts`. Outside CI, `next dev` (and `next build`, when run in a terminal or by an agent) still sends the installed Next.js version to the npm registry's security-advisory endpoint (`experimental.agentUpgrade`, default `'security'`).
+- `bun add` pins exact versions (`bunfig.toml`). Record a new direct dependency in `THIRD-PARTY-NOTICES.md`.
+- The docs for the installed Next.js version are in `frontend/node_modules/next/dist/docs/` (see `frontend/AGENTS.md`, which `next dev` maintains).
 
 ### Both together
 

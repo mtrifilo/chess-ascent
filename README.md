@@ -30,7 +30,17 @@ The `dotnet` CLI and the test runner send usage telemetry to Microsoft. Set `DOT
 
 ### Front end
 
-Nothing yet.
+Needs [Bun](https://bun.com) and Node.js 24. Bun installs the packages and runs the scripts; Next.js itself runs on Node.
+
+```sh
+cd frontend
+bun install
+bun run dev
+```
+
+The app is then at http://localhost:3000. The checks are `bun run typecheck`, `bun run lint`, `bun run test` and `bun run build`.
+
+The scripts turn off Next.js telemetry (`NEXT_TELEMETRY_DISABLED=1`), and `frontend/bunfig.toml` turns off Bun's crash reports. One outside request remains: outside CI, `next dev` (and `next build`, when run in a terminal) asks the npm registry whether the installed Next.js version has a published security advisory, sending only that version number.
 
 ### Chess engines
 

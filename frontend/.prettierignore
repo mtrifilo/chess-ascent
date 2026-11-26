@@ -1,0 +1,10 @@
+# Prettier reads ignore files only from the directory it runs in, so the
+# repository's .gitignore does not apply here. Build output and generated
+# files are listed again.
+.next/
+out/
+coverage/
+next-env.d.ts
+
+# Written and rewritten by `next dev`; formatting it would only cause churn.
+AGENTS.md
