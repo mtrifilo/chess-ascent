@@ -29,7 +29,7 @@ export function NavLinks({ activeHref }: { activeHref?: NavHref }) {
                 href={item.href}
                 aria-current={isActive ? 'page' : undefined}
                 className={cn(
-                  'flex h-11 items-center rounded-md px-3 text-sm whitespace-nowrap outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring md:h-8',
+                  'flex h-11 items-center rounded-md px-3 text-sm whitespace-nowrap focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring md:h-8',
                   isActive
                     ? 'bg-accent text-accent-foreground'
                     : 'text-muted-foreground'
