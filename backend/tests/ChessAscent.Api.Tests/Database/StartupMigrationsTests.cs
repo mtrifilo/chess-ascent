@@ -1,7 +1,6 @@
 using ChessAscent.Api.Database;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Npgsql;
 
 namespace ChessAscent.Api.Tests.Database;
@@ -60,7 +59,7 @@ public sealed class StartupMigrationsTests(ApiFactory factory, PostgresFixture p
 
         var start = () => unconfigured.CreateClient();
 
-        start.Should().Throw<OptionsValidationException>()
-            .Which.Message.Should().Contain(nameof(DatabaseOptions.ConnectionString));
+        start.Should().Throw<InvalidOperationException>()
+            .Which.Message.Should().Contain($"ConnectionStrings__{DatabaseServices.ConnectionStringName}");
     }
 }

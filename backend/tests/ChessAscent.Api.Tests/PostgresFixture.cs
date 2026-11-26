@@ -42,5 +42,14 @@ public sealed class PostgresFixture : IAsyncLifetime
     /// <summary>Stops the server, leaving the container in place, so the database is unreachable.</summary>
     public Task StopAsync() => _container.StopAsync();
 
+    /// <summary>
+    /// Freezes the server: connections stay open and Docker still accepts new
+    /// ones, but nothing answers, as with a host that drops packets.
+    /// </summary>
+    public Task PauseAsync() => _container.PauseAsync();
+
+    /// <summary>Lets a paused server run again.</summary>
+    public Task UnpauseAsync() => _container.UnpauseAsync();
+
     public ValueTask DisposeAsync() => _container.DisposeAsync();
 }

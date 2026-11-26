@@ -26,7 +26,7 @@ public sealed class ApiFactory(PostgresFixture postgres) : WebApplicationFactory
 {
     /// <summary>The configuration key the API reads its connection string from.</summary>
     public static readonly string ConnectionStringKey =
-        ConfigurationPath.Combine(DatabaseOptions.SectionName, nameof(DatabaseOptions.ConnectionString));
+        ConfigurationPath.Combine("ConnectionStrings", DatabaseServices.ConnectionStringName);
 
     protected override void ConfigureWebHost(IWebHostBuilder builder) =>
         // A setting given here outranks every configuration file the

@@ -24,7 +24,7 @@ The API stores its data in PostgreSQL 18 (the `postgres:18.7` image). From the r
 docker compose up -d --wait                  # PostgreSQL on 127.0.0.1:5540, once it is ready
 ```
 
-The user, password and database in `docker-compose.yml` only work against that local container. To use another host port, set `CHESS_ASCENT_DB_PORT` before `docker compose up` and give the API a matching connection string in `Database__ConnectionString`. `docker compose down` stops the database; add `--volumes` to delete its data.
+The user, password and database in `docker-compose.yml` only work against that local container. To use another host port, set `CHESS_ASCENT_DB_PORT` before `docker compose up` and give the API a matching connection string in the environment variable `ConnectionStrings__ChessAscent`. `docker compose down` stops the database; add `--volumes` to delete its data.
 
 Then, from `backend/`:
 
@@ -36,7 +36,7 @@ dotnet run --project src/ChessAscent.Api     # apply migrations, then serve the 
 
 The API applies any pending database migrations before it starts serving, so it needs the database at start-up: if it cannot reach it, it exits with the connection error instead of starting. Once it is running, losing the database fails `/health/ready` but not `/health`.
 
-With the API running, `curl http://localhost:5100/health` answers `Healthy`, `curl http://localhost:5100/health/ready` answers `Healthy` while the database is reachable and `Unhealthy` with status 503 when it is not, and `curl http://localhost:5100/version` returns the version and the git commit it was built from.
+With the API running, `curl http://localhost:5100/health` answers `Healthy`, `curl http://localhost:5100/health/ready` answers `Healthy` while the database is reachable and `Unhealthy` with status 503 when it does not accept a connection within 3 seconds, and `curl http://localhost:5100/version` returns the version and the git commit it was built from.
 
 Migrations use the `dotnet-ef` tool, pinned in `backend/dotnet-tools.json`. Run `dotnet tool restore` once, then `dotnet ef migrations add <Name> --project src/ChessAscent.Api --output-dir Database/Migrations` to add one.
 

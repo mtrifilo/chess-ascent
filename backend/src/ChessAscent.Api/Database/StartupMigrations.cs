@@ -26,7 +26,10 @@ public static class StartupMigrations
     /// <remarks>
     /// This is the only code that migrates the database. Moving migrations
     /// to a migration bundle run as its own deployment step means deleting
-    /// this method and its call in Program.cs.
+    /// this method and its call in Program.cs. It is also the first code to
+    /// create an AppDbContext, which is what stops start-up when the
+    /// connection string is missing; whatever replaces it should still create
+    /// one before the API serves, or that failure moves to the first request.
     /// </remarks>
     public static async Task ApplyPendingMigrationsAsync(this WebApplication app)
     {
