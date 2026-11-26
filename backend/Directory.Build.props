@@ -1,0 +1,78 @@
+<!--
+  LEARN: This file plays the part of a Maven parent POM for every project
+  file (.csproj) in this folder and below. The differences: nothing declares
+  it, because MSBuild finds it by walking up from each project's folder and
+  imports it before the project's own settings; a project overrides any
+  property simply by setting it again in its own file; and there is no
+  chain of parents. MSBuild imports only the nearest Directory.Build.props
+  it finds, so a nested one (tests/Directory.Build.props) must import this
+  one explicitly or its projects lose every setting below.
+-->
+<Project>
+
+  <PropertyGroup>
+    <!--
+      LEARN: A target framework moniker is like Maven's
+      maven.compiler.release, but it also picks the runtime and base class
+      library the project is built against. net11.0 means .NET 11, which
+      defaults to C# 15.
+    -->
+    <TargetFramework>net11.0</TargetFramework>
+
+    <!--
+      LEARN: With nullable reference types on, `string` means "never null"
+      and `string?` means "may be null", and the compiler checks every
+      dereference. Like @Nullable annotations with a checker built into
+      javac, except it only produces warnings, so warnings as errors (below)
+      is what makes it a hard rule. Nothing is checked at run time.
+    -->
+    <Nullable>enable</Nullable>
+
+    <!--
+      LEARN: Implicit usings import a fixed set of namespaces (System,
+      System.Linq, System.Threading.Tasks and so on, plus ASP.NET Core's in a
+      web project) into every file, so files do not repeat them. Java's
+      automatic java.lang import, widened.
+    -->
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- The application version that /version reports. -->
+    <Version>0.1.0</Version>
+
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!--
+      NuGet raises NU1900 when it cannot download vulnerability data, for
+      example offline. That says nothing about the code, so it stays a
+      warning. A known vulnerability in a package (NU1901 to NU1904) is still
+      an error.
+    -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1900</WarningsNotAsErrors>
+
+    <!--
+      LEARN: The .NET code analyzers ship inside the SDK and run as part of
+      the compiler, so there is no separate SpotBugs or Error Prone step.
+      AnalysisLevel picks the rule set: "latest" tracks the SDK in use, and
+      "Recommended" turns on more rules as warnings than the default does.
+    -->
+    <AnalysisLevel>latest-Recommended</AnalysisLevel>
+
+    <!--
+      Code-style rules (the IDE rules configured in .editorconfig) run only
+      in the editor unless this is set. With it, `dotnet build` fails on them
+      the same way it fails on a compiler warning.
+    -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!--
+      The compiler reports unused using directives (IDE0005) during a build
+      only when it also writes the XML documentation file, so it is turned
+      on. Writing it also checks that /// comments are well formed. CS1591,
+      "missing XML comment on a public member", is switched off: a doc
+      comment is written where it says something the name does not.
+    -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

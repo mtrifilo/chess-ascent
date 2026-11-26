@@ -1,0 +1,30 @@
+<!--
+  The chess domain. It must not depend on ASP.NET Core, EF Core, Npgsql or
+  the API project, so the rules can be tested and replaced on their own. The
+  target below fails the build when any of them reaches the compiler, and
+  ChessAscent.Chess.Tests checks that the compiled code uses none of them.
+  The two lists of forbidden names must be kept in step.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    LEARN: A target is a named build step, the counterpart of a Maven plugin
+    execution bound to a phase. AfterTargets hooks it into the SDK's own
+    steps. This one runs once the SDK has resolved every assembly the
+    compiler will see (ReferencePath), including those that arrive
+    indirectly through another project or package, so a forbidden
+    dependency fails the build however it got in.
+  -->
+  <Target Name="ForbidWebAndDatabaseReferences" AfterTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <_ForbiddenReference Include="@(ReferencePath->'%(Filename)')"
+                           Condition="$([System.String]::new('%(Filename)').StartsWith('Microsoft.AspNetCore', System.StringComparison.OrdinalIgnoreCase))
+                                      or $([System.String]::new('%(Filename)').StartsWith('Microsoft.EntityFrameworkCore', System.StringComparison.OrdinalIgnoreCase))
+                                      or $([System.String]::new('%(Filename)').StartsWith('Npgsql', System.StringComparison.OrdinalIgnoreCase))
+                                      or $([System.String]::new('%(Filename)').StartsWith('ChessAscent.Api', System.StringComparison.OrdinalIgnoreCase))" />
+    </ItemGroup>
+    <Error Condition="'@(_ForbiddenReference)' != ''"
+           Text="ChessAscent.Chess must not depend on web or database code, but the compiler would see: @(_ForbiddenReference)" />
+  </Target>
+
+</Project>

@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ChessAscent.Api/ChessAscent.Api.csproj" />
+    <Project Path="src/ChessAscent.Chess/ChessAscent.Chess.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ChessAscent.Api.Tests/ChessAscent.Api.Tests.csproj" />
+    <Project Path="tests/ChessAscent.Chess.Tests/ChessAscent.Chess.Tests.csproj" />
+  </Folder>
+</Solution>

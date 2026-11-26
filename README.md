@@ -16,7 +16,17 @@ Not playable yet. Each part gains its instructions as the first release is built
 
 ### Back end
 
-Nothing yet.
+Needs the [.NET 11 SDK](https://dotnet.microsoft.com/download/dotnet/11.0), version 11.0.100 or a later 11.0 release. From `backend/`:
+
+```sh
+dotnet build                                 # build; any warning fails it
+dotnet test                                  # run the tests
+dotnet run --project src/ChessAscent.Api     # serve the API on http://localhost:5100
+```
+
+With the API running, `curl http://localhost:5100/health` answers `Healthy` and `curl http://localhost:5100/version` returns the version and the git commit it was built from.
+
+The `dotnet` CLI and the test runner send usage telemetry to Microsoft. Set `DOTNET_CLI_TELEMETRY_OPTOUT=1` to turn it off.
 
 ### Front end
 
