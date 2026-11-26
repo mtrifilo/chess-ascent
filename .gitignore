@@ -9,32 +9,68 @@ Thumbs.db
 *.suo
 *.user
 
-# Environment files. Nothing with a real credential belongs in this repo.
+# Secrets and private data. This repo is public and history is permanent,
+# so anything that could hold a credential, a key or real user data is
+# ignored by pattern, wherever it lands.
 .env
 .env.*
 !.env.example
+.envrc
+secrets.json
+*.secrets.json
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+DataProtection-Keys/
+
+# Database dumps and local database files. A dump of the accounts tables
+# holds emails and password hashes. To commit a seed script on purpose, add
+# a narrow exception for that one file.
+*.sql
+*.dump
+*.backup
+*.sqlite*
+*.db
+pgdata/
+postgres-data/
+
+*.log
 
 # .NET build output
 bin/
 obj/
-artifacts/
+/backend/artifacts/
 TestResults/
 *.trx
-coverage/
+*.cobertura.xml
 
 # Node and Bun
 node_modules/
 .next/
-out/
+/frontend/out/
+/frontend/coverage/
 *.tsbuildinfo
 playwright-report/
 test-results/
 
 # Chess engines, the Python environment for Maia, and model weights.
-# scripts/ recreates all of this, so none of it is committed.
-engines/
+# scripts/ recreates all of this, so none of it is committed. Anchored to the
+# repo root so a source folder named Engines elsewhere is still tracked.
+/engines/
 
-# Local agent and tracker state
+# Model weights and engine networks are never committed, wherever they are
+# downloaded to: they are large, and not all of them state a licence.
+*.onnx
+*.pt
+*.pth
+*.safetensors
+*.pb.gz
+*.nnue
+__pycache__/
+
+# Local agent state and per-machine instructions
 .claude/worktrees/
 .claude/settings.local.json
-.linear.toml
+CLAUDE.local.md

@@ -14,10 +14,10 @@ Linear team `CHA` tracks the work. Read a ticket with its comments before starti
 - **Decisions belong to the owner.** If a ticket leaves open what to build (a name, a threshold, wording, a UX pattern), stop and ask. Do not pick.
 - **The code teaches.** A comment that teaches a C# or .NET concept starts with `// LEARN:` and is written for an experienced Java developer: say how the construct differs from its Java counterpart, the first time it appears in an area of the code. Every PR lists the concepts it introduces.
 - **Ordinary comments explain why, not what,** in the present tense. No history and no ticket narrative in comments.
-- **Record every dependency.** A new engine, library, font, model or asset is added to `THIRD-PARTY-NOTICES.md` with its source and licence in the same PR. It must be compatible with AGPL-3.0-or-later. Nothing that forbids commercial use.
-- **No secrets in the repo.** It is public.
+- **Record every direct dependency.** A new engine, model, font or asset, or a library the project references directly, is added to `THIRD-PARTY-NOTICES.md` with its source and licence in the same PR. It must be compatible with AGPL-3.0-or-later. Nothing that forbids commercial use. If the rights holder does not state a licence, record it as "not stated", say what you infer and why, and stop for the owner's decision.
+- **No secrets in the repo.** It is public and its history is permanent. In development, secrets go in `dotnet user-secrets` or a git-ignored `.env`; in deployment, in the host's environment variables. Committed files such as `appsettings*.json` and `.env.example` hold placeholders, or defaults that only work against the local Docker Compose database. Never commit a database dump, a key or a certificate.
 - **Verify versions when you add them.** Pin exact versions. The research in the notes is a dated snapshot.
-- **Tests and a manual check before any push.** A failing gate blocks the push.
+- **Do not push unless the tests pass and you have run the change yourself.** For an API change that means calling it; for a UI change, using it in a browser.
 
 ## Layout
 
@@ -30,4 +30,16 @@ Linear team `CHA` tracks the work. Read a ticket with its comments before starti
 
 ## How to run things
 
-Filled in as tickets land. Each ticket that adds a command adds it here.
+Each ticket that adds a command adds it under the matching heading below.
+
+### Back end
+
+Nothing yet.
+
+### Front end
+
+Nothing yet.
+
+### Both together
+
+Nothing yet.

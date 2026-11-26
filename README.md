@@ -12,7 +12,19 @@ A web app that teaches casual chess players to play better: practise against a h
 
 ## Run locally
 
-Not available yet. This section is filled in as the first release is built.
+Not playable yet. Each part gains its instructions as the first release is built.
+
+### Back end
+
+Nothing yet.
+
+### Front end
+
+Nothing yet.
+
+### Chess engines
+
+Nothing yet.
 
 ## Repository layout
 

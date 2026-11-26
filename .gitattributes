@@ -1,0 +1,12 @@
+# Git decides line endings on disk; .editorconfig only guides editors.
+* text=auto eol=lf
+*.sh text eol=lf
+
+# Binary files: never convert, never diff as text.
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
+*.onnx binary
+*.pt binary
+*.nnue binary
