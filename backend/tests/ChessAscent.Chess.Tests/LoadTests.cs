@@ -72,12 +72,12 @@ public sealed class LoadTests
     [Fact]
     public void EachLoadReturnsAnIndependentGame()
     {
-        var first = Games.Rules.NewGame();
-        var second = Games.Rules.NewGame();
+        var first = Games.Play("e2e4");
+        var second = Games.Play("e2e4");
 
-        first.TryPlay("e2e4");
+        first.TryPlay("e7e5");
 
         second.Should().NotBeSameAs(first);
-        second.Fen.Should().Be(Games.StartingFen);
+        second.History.Should().HaveCount(1);
     }
 }

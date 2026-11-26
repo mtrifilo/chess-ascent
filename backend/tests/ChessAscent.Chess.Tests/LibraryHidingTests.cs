@@ -50,7 +50,7 @@ public sealed class LibraryHidingTests
     public void OnlyTheChessProjectReferencesTheLibrary()
     {
         var backend = BackendDirectory();
-        var chessProject = Path.Combine(backend, "src", "ChessAscent.Chess", "ChessAscent.Chess.csproj");
+        var chessProject = ChessProjectPath();
         var centralVersions = Path.Combine(backend, "Directory.Packages.props");
 
         var buildFiles = Directory.EnumerateFiles(backend, "*.*", SearchOption.AllDirectories)
@@ -73,7 +73,7 @@ public sealed class LibraryHidingTests
     [Fact]
     public void TheLibraryDoesNotFlowToProjectsThatReferenceTheChessProject()
     {
-        var chessProject = XDocument.Load(Path.Combine(BackendDirectory(), "src", "ChessAscent.Chess", "ChessAscent.Chess.csproj"));
+        var chessProject = XDocument.Load(ChessProjectPath());
 
         var reference = chessProject.Descendants("PackageReference")
             .Single(element => (string?)element.Attribute("Include") == LibraryPackage);
@@ -148,6 +148,9 @@ public sealed class LibraryHidingTests
 
         throw new InvalidOperationException($"No ChessAscent.slnx above {AppContext.BaseDirectory}.");
     }
+
+    private static string ChessProjectPath() =>
+        Path.Combine(BackendDirectory(), "src", "ChessAscent.Chess", "ChessAscent.Chess.csproj");
 
     private static bool IsBuildOutput(string backend, string path) =>
         Path.GetRelativePath(backend, path)

@@ -32,11 +32,8 @@ public sealed class SharedStateTests
     [Fact]
     public void EveryCallReturnsANewGame()
     {
-        var rules = new ChessRules();
-
-        rules.NewGame().Should().NotBeSameAs(rules.NewGame());
-        ((GameLoaded)rules.Load(Games.StartingFen, []).Value!).Game
-            .Should().NotBeSameAs(((GameLoaded)rules.Load(Games.StartingFen, []).Value!).Game);
+        Games.Rules.NewGame().Should().NotBeSameAs(Games.Rules.NewGame());
+        Games.Load(Games.StartingFen).Should().NotBeSameAs(Games.Load(Games.StartingFen));
     }
 
     // Lambda caches and similar helpers the compiler writes are static, but

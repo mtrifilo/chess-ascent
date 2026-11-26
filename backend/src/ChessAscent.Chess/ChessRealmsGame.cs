@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Unicode;
 // LEARN: A using alias names a namespace (or a type) locally, like a short
 // import name Java does not offer. Every library type in this file is written
 // `Realms.Something`, which shows at a glance where the library is touched and
@@ -54,8 +55,7 @@ internal sealed class ChessRealmsGame : IChessGame
 
     public IReadOnlyList<LegalMove> LegalMovesFrom(Square square)
     {
-        var name = square.ToString();
-        return Describe(game.GetLegalMoves().Where(move => move.Source.ToString() == name));
+        return Describe(game.GetLegalMoves().Where(move => ToSquare(move.Source) == square));
     }
 
     public PlayResult TryPlay(string uciMove)
@@ -81,7 +81,7 @@ internal sealed class ChessRealmsGame : IChessGame
         var san = new string(sanBuffer[..sanLength]);
         if (game.MakeMove(move) == Realms.MoveResult.None)
         {
-            return new IllegalMove(uciMove);
+            throw new InvalidOperationException($"The rules library formatted {move} as {san} and then refused to play it.");
         }
 
         var played = new PlayedMove(move.ToString(), san);
@@ -97,10 +97,14 @@ internal sealed class ChessRealmsGame : IChessGame
         // LEARN: `is { } declared` is a property pattern with no properties: it
         // matches any non-null value and binds it, unwrapping the nullable in
         // one step. Java would write `if (opt.isPresent()) { var d = opt.get(); }`.
-        if (declaredResult is { } declared && game.IsFinished
-            && ToPgnResult(declared) != ToPgnResult(game.Outcome.Result))
+        Realms.PgnResult? declaredPgnResult = null;
+        if (declaredResult is { } declared)
         {
-            return new DeclaredResultContradictsBoard(declared, Status);
+            declaredPgnResult = ToPgnResult(declared);
+            if (game.IsFinished && declaredPgnResult != ToPgnResult(game.Outcome.Result))
+            {
+                return new DeclaredResultContradictsBoard(declared, Status);
+            }
         }
 
         KeyValuePair<string, string?>[] supplied =
@@ -137,8 +141,7 @@ internal sealed class ChessRealmsGame : IChessGame
             return new InvalidPgnTagValue("FEN");
         }
 
-        var document = Realms.PgnGame.FromGame(
-            game, tagValues, declaredResult is { } result ? ToPgnResult(result) : null);
+        var document = Realms.PgnGame.FromGame(game, tagValues, declaredPgnResult);
         return new PgnExported(document.ToPgn());
     }
 
@@ -247,30 +250,8 @@ internal sealed class ChessRealmsGame : IChessGame
     private static bool IsValidPgnTagValue(string value)
     {
         const int MaxLength = 255;
-        if (value.Length > MaxLength)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < value.Length; i++)
-        {
-            var c = value[i];
-            if (char.IsControl(c) || c is '\u2028' or '\u2029' || char.IsLowSurrogate(c))
-            {
-                return false;
-            }
-
-            if (char.IsHighSurrogate(c))
-            {
-                if (i + 1 == value.Length || !char.IsLowSurrogate(value[i + 1]))
-                {
-                    return false;
-                }
-
-                i++;
-            }
-        }
-
-        return true;
+        return value.Length <= MaxLength
+            && Utf16.IsValid(value)
+            && !value.Any(c => char.IsControl(c) || c is '\u2028' or '\u2029');
     }
 }
