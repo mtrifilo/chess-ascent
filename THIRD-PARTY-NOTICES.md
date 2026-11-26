@@ -32,9 +32,7 @@ Runtime libraries, or code generated from them, ship to the browser or run in th
 | React (`react`) | https://github.com/react/react | MIT | Runtime: UI library |
 | React DOM (`react-dom`) | https://github.com/react/react | MIT | Runtime: renders React to the browser DOM and to HTML on the server |
 | Tailwind CSS (`tailwindcss`) | https://github.com/tailwindlabs/tailwindcss | MIT | Runtime: generates the served stylesheet at build time, including its base (preflight) and theme CSS |
-| sharp (`sharp`) | https://github.com/lovell/sharp | Apache-2.0; its prebuilt libvips binaries (`@img/sharp-libvips-*`) are LGPL-3.0-or-later | Runtime, through Next.js: image optimisation in the server. Named in `package.json` under `trustedDependencies` |
 | `@tailwindcss/turbopack` | https://github.com/tailwindlabs/tailwindcss | MIT | Development: runs Tailwind inside the Turbopack bundler |
-| unrs-resolver (`unrs-resolver`) | https://github.com/unrs/unrs-resolver | MIT | Development, through `eslint-config-next`: module resolution for the import lint rules. Named in `package.json` under `trustedDependencies` |
 | TypeScript (`typescript`) | https://github.com/microsoft/TypeScript | Apache-2.0 | Development: type checking |
 | `@types/node`, `@types/react`, `@types/react-dom` | https://github.com/DefinitelyTyped/DefinitelyTyped | MIT | Development: type definitions |
 | ESLint (`eslint`) | https://github.com/eslint/eslint | MIT | Development: linting |

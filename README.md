@@ -38,7 +38,7 @@ bun install
 bun run dev
 ```
 
-The app is then at http://localhost:3000, reachable from this machine only. To open it from another device on your network, run `bun run dev --hostname 0.0.0.0`. The checks are `bun run typecheck`, `bun run lint`, `bun run test`, `bun run build` and `bun run format:check`.
+The app is then at http://127.0.0.1:3000, reachable from this machine only. To open it from another device on your network, pass this machine's network address, for example `bun run dev --hostname 192.168.1.20`, and browse to that address; the dev server accepts live-reload connections for the address it is bound to. The checks are `bun run typecheck`, `bun run lint`, `bun run test`, `bun run build` and `bun run format:check`.
 
 Nothing about the project is sent to outside services by default:
 

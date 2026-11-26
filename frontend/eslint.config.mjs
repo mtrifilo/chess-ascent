@@ -10,7 +10,12 @@ const eslintConfig = defineConfig([
   // its rules. The recommended set adds the keyboard and interaction rules
   // (click-events-have-key-events, interactive-supports-focus and others)
   // that a clickable board needs.
-  { rules: jsxA11y.flatConfigs.recommended.rules },
+  // The files list matches the one eslint-config-next registers the plugin
+  // for; without it, linting a .cjs file fails with "could not find plugin".
+  {
+    files: ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
+    rules: jsxA11y.flatConfigs.recommended.rules,
+  },
 ]);
 
 export default eslintConfig;

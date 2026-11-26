@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
   // reads request data (cookies, uncached fetches) goes inside <Suspense>.
   // See node_modules/next/dist/docs/01-app/01-getting-started/08-caching.md.
   cacheComponents: true,
+  // Goes with Cache Components: links prefetch a route's static shell. The
+  // same guide says to set it explicitly; leaving it unset logs a warning.
   partialPrefetching: true,
   // Agent instructions for this repository live in the root CLAUDE.md, so
   // `next dev` does not write a frontend/AGENTS.md.
