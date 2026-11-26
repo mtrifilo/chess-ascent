@@ -55,9 +55,11 @@ public sealed class DatabaseReadinessTests
             stopwatch.Stop();
 
             readiness.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
-            // A paused server never answers or refuses, so only the check's
-            // timeout can end the wait: not before it, and well before the
-            // 15 seconds an unbounded check would take.
+            // A paused server accepts the TCP connection but never answers or
+            // refuses, so only the check's timeout can end the wait: not before
+            // it, and well before the 15 seconds an unbounded check would take.
+            // A host that drops packets (the TCP connect never completes) is
+            // not covered here.
             stopwatch.Elapsed.Should().BeGreaterThanOrEqualTo(DatabaseServices.ReadinessCheckTimeout)
                 .And.BeLessThan(TimeSpan.FromSeconds(10));
         }

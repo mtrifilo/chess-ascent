@@ -43,8 +43,9 @@ public sealed class PostgresFixture : IAsyncLifetime
     public Task StopAsync() => _container.StopAsync();
 
     /// <summary>
-    /// Freezes the server: connections stay open and Docker still accepts new
-    /// ones, but nothing answers, as with a host that drops packets.
+    /// Freezes the server: TCP connections are still accepted, but nothing
+    /// answers the PostgreSQL handshake or any query. This is not the same as
+    /// a host that drops packets, where the TCP connect itself never completes.
     /// </summary>
     public Task PauseAsync() => _container.PauseAsync();
 

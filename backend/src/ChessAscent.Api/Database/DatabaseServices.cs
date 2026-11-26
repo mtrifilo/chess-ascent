@@ -28,15 +28,17 @@ public static class DatabaseServices
     /// </summary>
     public static IServiceCollection AddDatabase(this IServiceCollection services)
     {
+        services.AddSingleton<DatabaseConnection>();
+
         // LEARN: The lambda builds the DbContextOptions, and receives the
-        // container so it can read configuration. UseNpgsql picks the
+        // container so it can read the connection string. UseNpgsql picks the
         // provider, as a JPA persistence unit names its dialect and data
         // source. The context itself stays Scoped (one per request); the
         // options it is built from never change, so they are a Singleton and
         // the lambda runs once, the first time a context is created.
         services.AddDbContext<AppDbContext>(
             (provider, options) =>
-                options.UseNpgsql(ReadConnectionString(provider.GetRequiredService<IConfiguration>())),
+                options.UseNpgsql(provider.GetRequiredService<DatabaseConnection>().ConnectionString),
             contextLifetime: ServiceLifetime.Scoped,
             optionsLifetime: ServiceLifetime.Singleton);
 
@@ -47,6 +49,9 @@ public static class DatabaseServices
         // (see DatabaseReadinessCheck), because the token alone does not stop
         // Npgsql in every case. It does not check that migrations are up to
         // date.
+        // AddCheck<T> takes T from the container when it is registered there,
+        // so registering it as a Singleton makes every check share one instance.
+        services.AddSingleton<DatabaseReadinessCheck>();
         services.AddHealthChecks()
             .AddCheck<DatabaseReadinessCheck>(
                 HealthCheckName,
@@ -56,9 +61,10 @@ public static class DatabaseServices
         return services;
     }
 
-    // LEARN: ConnectionStrings is a configuration section that ASP.NET Core
-    // gives a helper of its own: GetConnectionString("ChessAscent") reads the
-    // key ConnectionStrings:ChessAscent, the counterpart of Spring Boot's
+    // LEARN: ConnectionStrings is a configuration section that
+    // Microsoft.Extensions.Configuration (used by every .NET host, not only
+    // ASP.NET Core) gives a helper of its own: GetConnectionString("ChessAscent")
+    // reads the key ConnectionStrings:ChessAscent, the counterpart of Spring Boot's
     // spring.datasource.url. Like every other key, it comes from the
     // configuration providers that Program.cs describes, and a later provider
     // wins. Locally, appsettings.Development.json holds the string for the
@@ -67,8 +73,9 @@ public static class DatabaseServices
     // between section and key, the way Spring's relaxed binding reads
     // SPRING_DATASOURCE_URL.
     //
-    // The start-up migration creates the first AppDbContext, so a missing
-    // connection string stops the process there, before the API serves.
+    // It is read once, by DatabaseConnection. The start-up migration creates
+    // the first AppDbContext, which needs it, so a missing connection string
+    // stops the process there, before the API serves.
     internal static string ReadConnectionString(IConfiguration configuration)
     {
         var connectionString = configuration.GetConnectionString(ConnectionStringName);
