@@ -34,9 +34,8 @@ namespace ChessAscent.Api.Engine;
 /// <para>
 /// How calls fail, apart from argument checks:
 /// <list type="bullet">
-/// <item><see cref="UciEngineExitedException"/>: the process ended. This takes
-/// precedence over every other failure, so a dead engine is never reported as
-/// a timeout.</item>
+/// <item><see cref="UciEngineExitedException"/>: the process ended. A wait
+/// that a dead engine ends is reported this way, never as a timeout.</item>
 /// <item><see cref="UciEngineTimeoutException"/>: a reply did not come in time.</item>
 /// <item><see cref="OperationCanceledException"/>: the caller's token was cancelled.</item>
 /// <item><see cref="UciProtocolException"/>: a reply could not be read.</item>
@@ -119,6 +118,10 @@ public sealed partial class UciEngine : IAsyncDisposable
         _options = options;
         _logger = logger;
         ProcessId = process.Id;
+
+        // UCI accepts LF or CR LF. A StreamWriter would otherwise end lines
+        // the platform's way, which differs on Windows.
+        process.StandardInput.NewLine = "\n";
 
         // LEARN: Calling an async method without awaiting it starts it and
         // hands back its Task, the way CompletableFuture.supplyAsync() hands
@@ -215,15 +218,15 @@ public sealed partial class UciEngine : IAsyncDisposable
 
         try
         {
-            await engine.ConverseAsync(
+            await engine.ExchangeAsync(
                 "uciok and readyok",
                 options.HandshakeTimeout,
-                async (reply, write) =>
+                async exchange =>
                 {
-                    await engine.SendAsync("uci", write);
-                    await engine.ReadReplyAsync(static tokens => tokens is ["uciok"], reply);
-                    await engine.SendAsync("isready", write);
-                    await engine.ReadReplyAsync(static tokens => tokens is ["readyok"], reply);
+                    await exchange.SendAsync("uci");
+                    await exchange.ReadReplyAsync(static tokens => tokens is ["uciok"]);
+                    await exchange.SendAsync("isready");
+                    await exchange.ReadReplyAsync(static tokens => tokens is ["readyok"]);
                 },
                 cancellationToken);
             return engine;
@@ -265,14 +268,14 @@ public sealed partial class UciEngine : IAsyncDisposable
             ? $"setoption name {name.Trim()}"
             : $"setoption name {name.Trim()} value {value}";
 
-        return ConverseAsync(
+        return ExchangeAsync(
             "readyok",
             _options.ReadyTimeout,
-            async (reply, write) =>
+            async exchange =>
             {
-                await SendAsync(command, write);
-                await SendAsync("isready", write);
-                await ReadReplyAsync(static tokens => tokens is ["readyok"], reply);
+                await exchange.SendAsync(command);
+                await exchange.SendAsync("isready");
+                await exchange.ReadReplyAsync(static tokens => tokens is ["readyok"]);
             },
             cancellationToken);
     }
@@ -284,45 +287,25 @@ public sealed partial class UciEngine : IAsyncDisposable
     /// search if another caller may have changed them.
     /// </remarks>
     /// <exception cref="UciProtocolException">The engine answered <c>bestmove</c> with no move.</exception>
-    public async Task<SearchResult> SearchAsync(UciPosition position, SearchLimit limit, CancellationToken cancellationToken)
+    public Task<SearchResult> SearchAsync(UciPosition position, SearchLimit limit, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(position);
         ArgumentNullException.ThrowIfNull(limit);
 
-        await EnterAsync(cancellationToken);
-        try
-        {
-            ThrowIfUnusable();
-            DiscardUnreadLines();
-            using var deadline = new CancellationTokenSource(_options.SearchTimeout);
-            using var reply = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token, _lifetime.Token);
-            if (reply.IsCancellationRequested)
+        var searching = false;
+        return ExchangeAsync(
+            "bestmove",
+            _options.SearchTimeout,
+            async exchange =>
             {
-                throw Interrupted("bestmove", _options.SearchTimeout, cancellationToken);
-            }
-
-            var searching = false;
-            try
-            {
-                await SendAsync(position.Command, deadline.Token);
-                await SendAsync(limit.Command, deadline.Token);
+                await exchange.SendAsync(position.Command);
+                await exchange.SendAsync(limit.Command);
                 searching = true;
-                return ToSearchResult(await ReadReplyAsync(IsBestMove, reply.Token));
-            }
-            catch (OperationCanceledException) when (reply.IsCancellationRequested)
-            {
-                if (searching)
-                {
-                    await StopSearchAsync();
-                }
-
-                throw Interrupted("bestmove", _options.SearchTimeout, cancellationToken);
-            }
-        }
-        finally
-        {
-            _gate.Release();
-        }
+                return ToSearchResult(await exchange.ReadReplyAsync(IsBestMove));
+            },
+            // A position on its own is owed no reply; a search is owed its bestmove.
+            recover: () => searching ? StopSearchAsync() : Task.CompletedTask,
+            cancellationToken);
     }
 
     /// <summary>
@@ -415,12 +398,7 @@ public sealed partial class UciEngine : IAsyncDisposable
             LogKillFailed(_logger, e, ProcessId);
         }
 
-        using var deadline = new CancellationTokenSource(_options.ExitTimeout);
-        try
-        {
-            await _process.WaitForExitAsync(deadline.Token);
-        }
-        catch (OperationCanceledException)
+        if (!await WaitForExitAsync())
         {
             LogStillRunning(_logger, ProcessId);
         }
@@ -428,15 +406,7 @@ public sealed partial class UciEngine : IAsyncDisposable
 
     private async Task WaitForReadersAsync()
     {
-        try
-        {
-            // LEARN: WaitAsync(timeout) gives up waiting for a task after the
-            // timeout, with a TimeoutException; the task itself carries on.
-            // It is CompletableFuture.orTimeout() without cancelling the
-            // future.
-            await Task.WhenAll(_outputReader, _errorReader).WaitAsync(_options.ExitTimeout);
-        }
-        catch (TimeoutException)
+        if (!await WaitBrieflyAsync(Task.WhenAll(_outputReader, _errorReader)))
         {
             // Another process holds the engine's output open. Disposing the
             // Process closes this side of the pipes, which ends the readers.
@@ -444,14 +414,65 @@ public sealed partial class UciEngine : IAsyncDisposable
         }
     }
 
-    // Runs one exchange that is not a search. `conversation` gets two tokens:
-    // one for reading replies, cancelled by the caller, the timeout or
-    // disposal; and one for writing, cancelled only by the timeout, so that a
-    // command is never cut off half-written because the caller gave up.
-    private async Task ConverseAsync(
+    // Waits up to the exit timeout for the process to exit; false if it has not.
+    private async Task<bool> WaitForExitAsync()
+    {
+        using var deadline = new CancellationTokenSource(_options.ExitTimeout);
+        try
+        {
+            await _process.WaitForExitAsync(deadline.Token);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
+    // Waits up to the exit timeout for a task that never fails; false if it
+    // has not finished.
+    private async Task<bool> WaitBrieflyAsync(Task task)
+    {
+        try
+        {
+            // LEARN: WaitAsync(timeout) gives up waiting for a task after the
+            // timeout, with a TimeoutException; the task itself carries on.
+            // It is CompletableFuture.orTimeout() without cancelling the
+            // future.
+            await task.WaitAsync(_options.ExitTimeout);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+    }
+
+    private async Task ExchangeAsync(
         string awaited,
         TimeSpan timeout,
-        Func<CancellationToken, CancellationToken, Task> conversation,
+        Func<Exchange, Task> conversation,
+        CancellationToken cancellationToken) =>
+        await ExchangeAsync(
+            awaited,
+            timeout,
+            async exchange =>
+            {
+                await conversation(exchange);
+                return true;
+            },
+            recover: null,
+            cancellationToken);
+
+    // Runs one exchange with the engine, holding the gate. If the wait ends
+    // early after a command has gone out, a reply is still owed, and would
+    // later be mistaken for the reply to another command. `recover` collects
+    // it; without one, the conversation is marked out of step.
+    private async Task<T> ExchangeAsync<T>(
+        string awaited,
+        TimeSpan timeout,
+        Func<Exchange, Task<T>> conversation,
+        Func<Task>? recover,
         CancellationToken cancellationToken)
     {
         await EnterAsync(cancellationToken);
@@ -461,19 +482,26 @@ public sealed partial class UciEngine : IAsyncDisposable
             DiscardUnreadLines();
             using var deadline = new CancellationTokenSource(timeout);
             using var reply = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token, _lifetime.Token);
-            if (reply.IsCancellationRequested)
-            {
-                throw Interrupted(awaited, timeout, cancellationToken);
-            }
-
+            var exchange = new Exchange(this, reply.Token, deadline.Token);
             try
             {
-                await conversation(reply.Token, deadline.Token);
+                reply.Token.ThrowIfCancellationRequested();
+                return await conversation(exchange);
             }
             catch (OperationCanceledException) when (reply.IsCancellationRequested)
             {
-                // A command has gone out and its reply is still owed.
-                _fault ??= $"it stopped waiting for {awaited}";
+                if (exchange.HasSent)
+                {
+                    if (recover is null)
+                    {
+                        _fault ??= $"it stopped waiting for {awaited}";
+                    }
+                    else
+                    {
+                        await recover();
+                    }
+                }
+
                 throw Interrupted(awaited, timeout, cancellationToken);
             }
         }
@@ -503,11 +531,6 @@ public sealed partial class UciEngine : IAsyncDisposable
     // a search the caller no longer wants and is dropped.
     private async Task StopSearchAsync()
     {
-        if (_fault is not null)
-        {
-            return;
-        }
-
         using var deadline = new CancellationTokenSource(_options.StopTimeout);
         try
         {
@@ -516,7 +539,7 @@ public sealed partial class UciEngine : IAsyncDisposable
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
-            _fault = "it did not answer stop with bestmove in time";
+            _fault ??= "it did not answer stop with bestmove in time";
         }
     }
 
@@ -569,16 +592,14 @@ public sealed partial class UciEngine : IAsyncDisposable
         LogSent(_logger, ProcessId, command);
         try
         {
-            // UCI accepts LF or CR LF; StreamWriter.WriteLine would use the
-            // platform's line ending, so the LF is written explicitly.
-            await _process.StandardInput.WriteAsync((command + "\n").AsMemory(), cancellationToken);
+            await _process.StandardInput.WriteLineAsync(command.AsMemory(), cancellationToken);
             await _process.StandardInput.FlushAsync(cancellationToken);
         }
         catch (IOException)
         {
             // The pipe is closed because the process has gone. Its exit code
             // arrives with the end of its output.
-            await WaitForOutputToEndAsync();
+            await WaitBrieflyAsync(_outputReader);
             throw new UciEngineExitedException(_end?.ExitCode);
         }
         catch (OperationCanceledException)
@@ -587,18 +608,6 @@ public sealed partial class UciEngine : IAsyncDisposable
             // command would be read as its continuation.
             _fault ??= "a command was cut off while it was being written";
             throw;
-        }
-    }
-
-    private async Task WaitForOutputToEndAsync()
-    {
-        try
-        {
-            await _outputReader.WaitAsync(_options.ExitTimeout);
-        }
-        catch (TimeoutException)
-        {
-            // The exception then reports no exit code.
         }
     }
 
@@ -667,7 +676,7 @@ public sealed partial class UciEngine : IAsyncDisposable
                 await _lines.Writer.WriteAsync(line.Text);
             }
 
-            exitCode = await ExitCodeAsync();
+            exitCode = await WaitForExitAsync() ? _process.ExitCode : null;
         }
         catch (Exception e) when (e is IOException or ObjectDisposedException or ChannelClosedException)
         {
@@ -678,20 +687,6 @@ public sealed partial class UciEngine : IAsyncDisposable
             _end = new ProcessEnd(exitCode);
             _lines.Writer.TryComplete();
             LogOutputEnded(_logger, ProcessId, exitCode);
-        }
-    }
-
-    private async Task<int?> ExitCodeAsync()
-    {
-        using var deadline = new CancellationTokenSource(_options.ExitTimeout);
-        try
-        {
-            await _process.WaitForExitAsync(deadline.Token);
-            return _process.ExitCode;
-        }
-        catch (OperationCanceledException)
-        {
-            return null;
         }
     }
 
@@ -717,6 +712,25 @@ public sealed partial class UciEngine : IAsyncDisposable
     }
 
     private sealed record ProcessEnd(int? ExitCode);
+
+    // One exchange's view of the conversation. It binds each operation to
+    // its token: replies are read with a token that the caller, the timeout
+    // or disposal cancels; commands are written with one that only the
+    // timeout cancels, so that a command is never cut off half-written
+    // because the caller gave up.
+    private sealed class Exchange(UciEngine engine, CancellationToken reply, CancellationToken write)
+    {
+        // Set before the first write, since even a partial write is owed a reply.
+        public bool HasSent { get; private set; }
+
+        public Task SendAsync(string command)
+        {
+            HasSent = true;
+            return engine.SendAsync(command, write);
+        }
+
+        public Task<string[]> ReadReplyAsync(Func<string[], bool> isReply) => engine.ReadReplyAsync(isReply, reply);
+    }
 
     // LEARN: [LoggerMessage] asks a source generator, a compiler plug-in, to
     // write the body of each partial method below at build time. The

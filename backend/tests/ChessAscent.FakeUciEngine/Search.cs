@@ -6,19 +6,14 @@ namespace ChessAscent.FakeUciEngine;
 /// </summary>
 internal sealed class Search
 {
+    // What a search ended early by "stop" answers: a legal move, but not a
+    // searched one, as real engines do.
+    private const string StoppedBestMove = "a7a6";
+
     private readonly TaskCompletionSource _stop = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private Task _running = Task.CompletedTask;
+    private readonly Task _running;
 
-    private Search()
-    {
-    }
-
-    public static Search Start(Output output, Settings settings, int milliseconds)
-    {
-        var search = new Search();
-        search._running = search.RunAsync(output, settings, milliseconds);
-        return search;
-    }
+    public Search(Settings settings, int milliseconds) => _running = RunAsync(settings, milliseconds);
 
     public async Task StopAsync()
     {
@@ -26,16 +21,16 @@ internal sealed class Search
         await _running;
     }
 
-    private async Task RunAsync(Output output, Settings settings, int milliseconds)
+    private async Task RunAsync(Settings settings, int milliseconds)
     {
         // Let the command loop return to reading before the search writes.
         await Task.Yield();
 
-        output.Send("info string fake search started");
-        output.Send("info string bestmove a1a1");
+        Console.Out.WriteLine("info string fake search started");
+        Console.Out.WriteLine("info string bestmove a1a1");
         foreach (var length in settings.LongLines)
         {
-            output.Send("info " + new string('x', length));
+            Console.Out.WriteLine("info " + new string('x', length));
         }
 
         var stopped = true;
@@ -48,11 +43,11 @@ internal sealed class Search
             stopped = false;
         }
 
-        output.Send("info depth 1 score cp 13 pv e2e4");
-        output.Send("bestmove " + (stopped ? settings.StoppedBestMove : settings.BestMove));
+        Console.Out.WriteLine("info depth 1 score cp 13 pv e2e4");
+        Console.Out.WriteLine("bestmove " + (stopped ? StoppedBestMove : settings.BestMove));
         if (settings.ExtraBestMove is { } extra)
         {
-            output.Send("bestmove " + extra);
+            Console.Out.WriteLine("bestmove " + extra);
         }
     }
 }

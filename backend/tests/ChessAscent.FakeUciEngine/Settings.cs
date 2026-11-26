@@ -7,8 +7,6 @@ internal sealed class Settings
 {
     public string BestMove { get; private set; } = "e2e4 ponder e7e5";
 
-    public string StoppedBestMove { get; private set; } = "a7a6";
-
     public string? ExtraBestMove { get; private set; }
 
     public List<int> SearchMilliseconds { get; } = [];
@@ -53,7 +51,6 @@ internal sealed class Settings
             switch (name)
             {
                 case "--bestmove": settings.BestMove = Next(); break;
-                case "--stopped-bestmove": settings.StoppedBestMove = Next(); break;
                 case "--extra-bestmove": settings.ExtraBestMove = Next(); break;
                 case "--search-ms": settings.SearchMilliseconds.AddRange(Next().Split(',').Select(ParseInt)); break;
                 case "--silent-on": settings.SilentOn = Next(); break;

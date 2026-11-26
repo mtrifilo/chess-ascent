@@ -5,8 +5,8 @@ using ChessAscent.FakeUciEngine;
 // A fake UCI engine. It speaks just enough of the protocol for the client's
 // tests, and its misbehaviour is chosen on the command line:
 //
-//   --bestmove <text>          what follows "bestmove " after a search (default "e2e4 ponder e7e5")
-//   --stopped-bestmove <text>  the same, when the search was ended by "stop" (default "a7a6")
+//   --bestmove <text>          what follows "bestmove " after a search (default "e2e4 ponder e7e5");
+//                              a search ended by "stop" answers "a7a6" instead
 //   --extra-bestmove <text>    print a second, unasked-for bestmove line after each search
 //   --search-ms <n,n,...>      how long each search takes; the last value repeats (default 0)
 //   --silent-on <command>      never answer this command; for "go", ignore "stop" as well
@@ -48,8 +48,11 @@ foreach (var text in settings.StandardError)
     await Console.Error.WriteLineAsync(text);
 }
 
-var output = new Output(settings.CrLf);
-output.Send("Fake UCI engine, for tests");
+// Console.Out is already synchronised, so a line written by a running
+// search never interleaves with one written by the command loop, and it
+// flushes after every write.
+Console.Out.NewLine = settings.CrLf ? "\r\n" : "\n";
+Console.Out.WriteLine("Fake UCI engine, for tests");
 
 var searchCount = 0;
 var silentCount = 0;
@@ -65,7 +68,7 @@ while (await Console.In.ReadLineAsync() is { } command)
     var word = command.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
     if (word == settings.ExitOn)
     {
-        output.Send("info depth 1 score cp 0");
+        Console.Out.WriteLine("info depth 1 score cp 0");
         return settings.ExitCode;
     }
 
@@ -77,25 +80,25 @@ while (await Console.In.ReadLineAsync() is { } command)
     switch (word)
     {
         case "uci":
-            output.Send("id name Fake Engine");
-            output.Send("id author Chess Ascent tests");
-            output.Send("option name Skill Level type spin default 20 min 0 max 20");
+            Console.Out.WriteLine("id name Fake Engine");
+            Console.Out.WriteLine("id author Chess Ascent tests");
+            Console.Out.WriteLine("option name Skill Level type spin default 20 min 0 max 20");
             if (settings.Noise)
             {
-                SendNoise(output);
+                SendNoise();
             }
 
-            output.Send("uciok");
+            Console.Out.WriteLine("uciok");
             break;
 
         case "isready":
-            output.Send("readyok");
+            Console.Out.WriteLine("readyok");
             break;
 
         case "go":
             var delay = settings.SearchMilliseconds[Math.Min(searchCount, settings.SearchMilliseconds.Count - 1)];
             searchCount++;
-            search = Search.Start(output, settings, delay);
+            search = new Search(settings, delay);
             break;
 
         case "stop":
@@ -151,16 +154,16 @@ static Process StartSleepingChild()
     return Process.Start(start) ?? throw new InvalidOperationException("The child process did not start.");
 }
 
-static void SendNoise(Output output)
+static void SendNoise()
 {
-    output.Send("");
-    output.Send("   ");
-    output.Send("\t \t");
-    output.Send("uciokay");
-    output.Send("info string uciok");
-    output.Send("  id   name   spaced out  ");
-    output.Send("option name Junk type string default <empty>");
-    output.Send("\u0007bell \u001b[31mred\u001b[0m");
-    output.Send("café ♞");
-    output.Send(new string('n', 100_000));
+    Console.Out.WriteLine("");
+    Console.Out.WriteLine("   ");
+    Console.Out.WriteLine("\t \t");
+    Console.Out.WriteLine("uciokay");
+    Console.Out.WriteLine("info string uciok");
+    Console.Out.WriteLine("  id   name   spaced out  ");
+    Console.Out.WriteLine("option name Junk type string default <empty>");
+    Console.Out.WriteLine("\u0007bell \u001b[31mred\u001b[0m");
+    Console.Out.WriteLine("café ♞");
+    Console.Out.WriteLine(new string('n', 100_000));
 }
