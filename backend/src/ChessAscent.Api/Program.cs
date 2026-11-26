@@ -39,9 +39,12 @@ builder.Services.AddDatabase();
 // line. What comes next configures how requests are handled.
 var app = builder.Build();
 
-// LEARN: `await` at the top level makes the generated Main method async
-// (`static async Task Main`), so start-up can wait on I/O without blocking a
-// thread. The schema is brought up to date before the API accepts a request.
+// LEARN: `await` at the top level makes the generated Main method return a
+// Task (`static async Task Main`), so start-up code can await async methods.
+// It does not free the main thread: the compiler's real entry point waits on
+// that Task until the application stops, as app.Run() would. The schema is
+// brought up to date before the API accepts a request, and if the database
+// cannot be reached the exception ends the process here.
 await app.ApplyPendingMigrationsAsync();
 
 // LEARN: The middleware pipeline. Each Use... call adds a step that a request

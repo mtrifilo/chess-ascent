@@ -34,6 +34,8 @@ dotnet test                                  # run the tests; starts its own Pos
 dotnet run --project src/ChessAscent.Api     # apply migrations, then serve the API on http://localhost:5100
 ```
 
+The API applies any pending database migrations before it starts serving, so it needs the database at start-up: if it cannot reach it, it exits with the connection error instead of starting. Once it is running, losing the database fails `/health/ready` but not `/health`.
+
 With the API running, `curl http://localhost:5100/health` answers `Healthy`, `curl http://localhost:5100/health/ready` answers `Healthy` while the database is reachable and `Unhealthy` with status 503 when it is not, and `curl http://localhost:5100/version` returns the version and the git commit it was built from.
 
 Migrations use the `dotnet-ef` tool, pinned in `backend/dotnet-tools.json`. Run `dotnet tool restore` once, then `dotnet ef migrations add <Name> --project src/ChessAscent.Api --output-dir Database/Migrations` to add one.

@@ -17,18 +17,16 @@ namespace ChessAscent.Api.Tests.Features.Health;
 // records.
 public sealed class HealthEndpointsTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
-    [Theory]
-    [InlineData("/health")]
-    [InlineData("/health/ready")]
-    public async Task HealthEndpointAnswers200WhenTheProcessServes(string path)
+    [Fact]
+    public async Task LivenessAnswers200WhenTheProcessServes()
     {
-        using var client = factory.CreateClient();
+        await ShouldAnswerHealthyAsync("/health");
+    }
 
-        using var response = await client.GetAsync(path, TestContext.Current.CancellationToken);
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        body.Should().Be("Healthy");
+    [Fact]
+    public async Task ReadinessAnswers200WhileTheDatabaseAnswers()
+    {
+        await ShouldAnswerHealthyAsync("/health/ready");
     }
 
     [Fact]
@@ -51,6 +49,17 @@ public sealed class HealthEndpointsTests(ApiFactory factory) : IClassFixture<Api
         using var readiness = await client.GetAsync("/health/ready", TestContext.Current.CancellationToken);
 
         readiness.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    private async Task ShouldAnswerHealthyAsync(string path)
+    {
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync(path, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        body.Should().Be("Healthy");
     }
 
     private HttpClient ClientWithFailingCheck(string[] tags) =>

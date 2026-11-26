@@ -16,11 +16,14 @@ public static class DatabaseServices
     public static IServiceCollection AddDatabase(this IServiceCollection services)
     {
         // LEARN: AddOptions<T>() starts an options registration. Bind reads the
-        // section, ValidateDataAnnotations checks the attributes on the class,
-        // and ValidateOnStart runs that check while the application starts, so
-        // a missing connection string stops the process at once with a message
-        // naming the setting, rather than failing on the first request. Without
-        // it, validation runs the first time something reads the options.
+        // section and ValidateDataAnnotations checks the attributes on the
+        // class. Validation runs when the options are first read
+        // (IOptions<T>.Value), and a failure throws an OptionsValidationException
+        // naming the setting. ValidateOnStart also runs it when the host starts,
+        // so nothing has to read the options first. Today the start-up
+        // migration in Program.cs reads them before the host starts, so that is
+        // where a missing connection string stops the process; ValidateOnStart
+        // keeps the same fail-fast once migrations leave start-up.
         services.AddOptions<DatabaseOptions>()
             .BindConfiguration(DatabaseOptions.SectionName)
             .ValidateDataAnnotations()

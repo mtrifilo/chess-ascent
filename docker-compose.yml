@@ -6,6 +6,11 @@
 # which only listens on this machine. backend/src/ChessAscent.Api/
 # appsettings.Development.json holds the matching connection string. They are
 # not credentials for anything else and must never be reused for one.
+#
+# ComposeFileTests in the API tests fails if the image, the default port, the
+# user, the password or the database here stop matching
+# appsettings.Development.json and the tests' PostgresFixture. README.md and
+# THIRD-PARTY-NOTICES.md also name the image version.
 services:
   postgres:
     # The Npgsql EF Core provider 11 documents PostgreSQL 18 features and
@@ -28,10 +33,13 @@ services:
       # /var/lib/postgresql/data as for 17 and earlier.
       - postgres-data:/var/lib/postgresql
     # `docker compose up -d --wait` returns once this passes, so the API can be
-    # started straight after it. $$ leaves the variables for the container's
-    # shell to expand rather than Compose.
+    # started straight after it. The check goes over TCP, as the API does:
+    # while the image initialises a new volume it runs a temporary server that
+    # only listens on a Unix socket, and a socket check would pass against
+    # that. $$ leaves the variables for the container's shell to expand rather
+    # than Compose.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready --username=$${POSTGRES_USER} --dbname=$${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready --host=127.0.0.1 --username=$${POSTGRES_USER} --dbname=$${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10

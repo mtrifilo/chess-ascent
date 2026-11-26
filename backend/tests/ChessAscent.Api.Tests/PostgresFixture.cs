@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Testcontainers.PostgreSql;
 
 namespace ChessAscent.Api.Tests;
@@ -20,11 +21,18 @@ namespace ChessAscent.Api.Tests;
 /// </summary>
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    // The same image as docker-compose.yml, so tests run against the server
-    // version used in development.
-    private const string Image = "postgres:18.7";
+    /// <summary>
+    /// The same image as docker-compose.yml, so tests run against the server
+    /// version used in development. ComposeFileTests checks that they match.
+    /// </summary>
+    public const string Image = "postgres:18.7";
 
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder(Image).Build();
+    // Docker publishes the container's port on every network interface, so
+    // the password is random for each container rather than the well-known
+    // default that anyone on the same network could try.
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder(Image)
+        .WithPassword(Convert.ToHexString(RandomNumberGenerator.GetBytes(16)))
+        .Build();
 
     /// <summary>The connection string for the container, valid once it has started.</summary>
     public string ConnectionString => _container.GetConnectionString();
