@@ -1,0 +1,40 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.suo
+*.user
+
+# Environment files. Nothing with a real credential belongs in this repo.
+.env
+.env.*
+!.env.example
+
+# .NET build output
+bin/
+obj/
+artifacts/
+TestResults/
+*.trx
+coverage/
+
+# Node and Bun
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+# Chess engines, the Python environment for Maia, and model weights.
+# scripts/ recreates all of this, so none of it is committed.
+engines/
+
+# Local agent and tracker state
+.claude/worktrees/
+.claude/settings.local.json
+.linear.toml
