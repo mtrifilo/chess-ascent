@@ -12,7 +12,9 @@ type AppShellProps = {
 
 // The top bar and the page area below it. Signed out, the bar shows only the
 // product name. The bar's 1px top padding balances its 1px bottom border, so
-// its items centre on the full 56px as drawn.
+// its items centre on the full 56px as drawn. The spacer sits before the
+// links on phones, pushing them right with the account menu, and after them
+// from `md` up, where the links stay beside the product name.
 export function AppShell({ email, children }: AppShellProps) {
   return (
     <>
@@ -22,6 +24,7 @@ export function AppShell({ email, children }: AppShellProps) {
         </span>
         {email && (
           <>
+            <div aria-hidden className="flex-1 md:hidden" />
             {/* The current path is unknown while a route with a dynamic
                 segment, such as one game's page, is prerendered, and Cache
                 Components fails the build if it is read outside Suspense.
@@ -29,6 +32,7 @@ export function AppShell({ email, children }: AppShellProps) {
             <Suspense fallback={<NavLinks />}>
               <ActiveNavLinks />
             </Suspense>
+            <div aria-hidden className="hidden flex-1 md:block" />
             <AccountMenu email={email} />
           </>
         )}

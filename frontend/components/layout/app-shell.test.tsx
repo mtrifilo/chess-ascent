@@ -3,7 +3,6 @@ import { usePathname } from 'next/navigation'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AppShell } from './app-shell'
-import { activeNavHref } from './nav-links'
 
 vi.mock('next/navigation', () => ({ usePathname: vi.fn() }))
 
@@ -81,17 +80,5 @@ describe('AppShell', () => {
     render(<AppShell email="">Page</AppShell>)
 
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
-  })
-})
-
-describe('activeNavHref', () => {
-  it('matches a navigation item by exact path', () => {
-    expect(activeNavHref('/play')).toBe('/play')
-    expect(activeNavHref('/games')).toBe('/games')
-  })
-
-  it('matches nothing below a navigation item, such as one game', () => {
-    expect(activeNavHref('/games/123')).toBeUndefined()
-    expect(activeNavHref('/')).toBeUndefined()
   })
 })

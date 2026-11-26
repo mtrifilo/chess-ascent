@@ -41,6 +41,7 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
       className={`${hankenGrotesk.variable} ${schibstedGrotesk.variable} ${golosText.variable}`}
     >
       <body className="antialiased">
+        {/* Signed out until the app has sessions: no email is passed. */}
         <AppShell>{children}</AppShell>
       </body>
     </html>

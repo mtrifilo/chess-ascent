@@ -18,7 +18,7 @@ export function activeNavHref(pathname: string): NavHref | undefined {
 
 export function NavLinks({ activeHref }: { activeHref?: NavHref }) {
   return (
-    <nav className="ml-auto md:ml-0">
+    <nav>
       <ul className="flex items-center gap-1">
         {NAV_ITEMS.map(item => {
           const isActive = item.href === activeHref

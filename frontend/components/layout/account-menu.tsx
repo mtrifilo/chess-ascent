@@ -19,7 +19,7 @@ import {
 export function AccountMenu({ email }: { email: string }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex size-11 shrink-0 items-center justify-center gap-1.5 rounded-md border text-sm md:ml-auto md:size-auto md:h-8 md:border-0 md:px-3">
+      <DropdownMenuTrigger className="flex size-11 shrink-0 items-center justify-center gap-1.5 rounded-md border text-sm md:size-auto md:h-8 md:border-0 md:px-3">
         <UserIcon aria-hidden className="size-4 shrink-0 md:hidden" />
         <span className="sr-only md:not-sr-only">{email}</span>
         <ChevronDownIcon
