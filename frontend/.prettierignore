@@ -1,5 +1,0 @@
-# Build output and generated files are skipped through the repository's
-# .gitignore, which the format scripts pass with --ignore-path.
-
-# Written and rewritten by `next dev`; formatting it would only cause churn.
-AGENTS.md

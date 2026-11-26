@@ -50,9 +50,9 @@ From `frontend/`:
 | Command | Does |
 |---|---|
 | `bun install` | Installs the pinned dependencies from `bun.lock` |
-| `bun run dev` | Serves the app at http://localhost:3000; add `--port <n>` for another port |
+| `bun run dev` | Serves the app at http://localhost:3000, on this machine only; add `--port <n>` for another port |
 | `bun run typecheck` | Generates Next.js route types, then runs `tsc` |
-| `bun run lint` | ESLint with the Next.js and jsx-a11y rules; any warning fails it |
+| `bun run lint` | ESLint with the Next.js rules and jsx-a11y's recommended rules; any warning fails it |
 | `bun run test` | Vitest, once (component tests in jsdom) |
 | `bun run build` | Production build |
 | `bun run format` / `bun run format:check` | Prettier: rewrite, or check only |
@@ -60,7 +60,8 @@ From `frontend/`:
 - Bun installs packages and runs scripts; Next.js and Vitest themselves run on Node. Never add `bun --bun`.
 - Run Next.js through these scripts, not `bunx next`: they set `NEXT_TELEMETRY_DISABLED=1`. `README.md` ("Run locally", "Front end") says what the front end does and does not send to outside services.
 - `bun add` pins exact versions (`bunfig.toml`). Record a new direct dependency in `THIRD-PARTY-NOTICES.md`.
-- The docs for the installed Next.js version are in `frontend/node_modules/next/dist/docs/` (see `frontend/AGENTS.md`, which `next dev` maintains).
+- `trustedDependencies` in `package.json` lists the only packages whose install scripts Bun may run. Defining it replaces Bun's built-in allowlist of popular packages, so keep it, and add a package only after reading the script it would run.
+- This Next.js version differs from older training data. Read the guide for the installed version in `frontend/node_modules/next/dist/docs/` before writing Next.js code, and heed its deprecation notices.
 
 ### Both together
 

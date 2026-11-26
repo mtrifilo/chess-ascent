@@ -1,7 +1,6 @@
 # Bun reads this file for commands run in frontend/.
 
-# Bun's anonymous crash reports stay off for everyone who clones the repo,
-# so nothing about this project leaves the machine by default.
+# Bun's anonymous crash reports stay off for everyone who clones the repo.
 telemetry = false
 
 [install]
