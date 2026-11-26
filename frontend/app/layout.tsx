@@ -1,14 +1,14 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import type { Metadata } from 'next'
+import './globals.css'
 
 export const metadata: Metadata = {
-  title: "Chess Ascent",
-};
+  title: 'Chess Ascent',
+}
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
     <html lang="en">
       <body>{children}</body>
     </html>
-  );
+  )
 }

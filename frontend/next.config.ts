@@ -1,4 +1,4 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   // Cache Components, create-next-app's recommended caching model: data is
@@ -24,12 +24,12 @@ const nextConfig: NextConfig = {
   },
   turbopack: {
     rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
+      '*.css': {
+        loaders: ['@tailwindcss/turbopack'],
+        as: '*.css',
       },
     },
   },
-};
+}
 
-export default nextConfig;
+export default nextConfig

@@ -1,7 +1,7 @@
-import { defineConfig } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
-import jsxA11y from "eslint-plugin-jsx-a11y";
+import { defineConfig } from 'eslint/config'
+import nextVitals from 'eslint-config-next/core-web-vitals'
+import nextTs from 'eslint-config-next/typescript'
+import jsxA11y from 'eslint-plugin-jsx-a11y'
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -13,9 +13,9 @@ const eslintConfig = defineConfig([
   // The files list matches the one eslint-config-next registers the plugin
   // for; without it, linting a .cjs file fails with "could not find plugin".
   {
-    files: ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
+    files: ['**/*.{js,jsx,mjs,ts,tsx,mts,cts}'],
     rules: jsxA11y.flatConfigs.recommended.rules,
   },
-]);
+])
 
-export default eslintConfig;
+export default eslintConfig

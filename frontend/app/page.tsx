@@ -3,5 +3,5 @@ export default function Home() {
     <main>
       <h1>Chess Ascent</h1>
     </main>
-  );
+  )
 }
