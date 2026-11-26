@@ -1,1 +1,236 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
+
+/* The token file. Every colour, font family, text size, radius and shadow the
+ * app uses is defined here, and components reach them only through the
+ * utilities below (`bg-card`, `text-body-s`, `rounded-md`). Nothing outside
+ * this file writes a colour or a font size as a literal.
+ *
+ * The colour, radius and font tokens are Psychic Homily's design system
+ * (paper background, burnt-orange primary, sharp corners): light mode is
+ * "newsprint", dark mode is "vinyl record shop". */
+
+/* `dark:` utilities apply only under an element with the `dark` class, never
+ * from the operating system's colour scheme. Nothing sets that class, so the
+ * app renders light whatever the system setting; the dark values below exist
+ * for when a theme is designed. */
+@custom-variant dark (&:is(.dark *));
+
+/* Tailwind's stock palette (`text-white`, `bg-zinc-500` and the rest) is
+ * removed, so a colour that bypasses these tokens does not compile. */
+@theme {
+  --color-*: initial;
+}
+
+/* Fonts: Hanken Grotesk for display, Schibsted Grotesk for body and UI, Golos
+ * Text for data (counts, times, dates). The `--font-hanken`, `--font-schibsted`
+ * and `--font-golos` variables are set on <html> by next/font in
+ * app/layout.tsx. Schibsted Grotesk's tabular figures also widen comma, period
+ * and colon, so `tabular-nums` goes on number spans only, never on text. Golos
+ * Text's tabular digits are only near-tabular; columns that must align exactly
+ * use `font-code`, the system monospace stack, which also serves bare
+ * code, kbd, samp and pre. */
+@theme inline {
+  --font-display: var(--font-hanken);
+  --font-sans: var(--font-schibsted);
+  --font-data: var(--font-golos);
+  --font-code:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+  --default-mono-font-family: var(--font-code);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-link: var(--link);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-pending: var(--pending);
+  --color-pending-foreground: var(--pending-foreground);
+  --color-border: var(--border);
+  --color-separator: var(--separator);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-board-square-light: var(--board-square-light);
+  --color-board-square-dark: var(--board-square-dark);
+  --color-board-last-move: var(--board-last-move);
+  --color-board-selected: var(--board-selected);
+  --color-board-hint: var(--board-hint);
+  --color-board-hint-arrow: var(--board-hint-arrow);
+  --color-board-check: var(--board-check);
+  --color-board-move-dot: var(--board-move-dot);
+  --color-piece-white: var(--piece-white);
+  --color-piece-black: var(--piece-black);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+
+  /* Spacing uses Tailwind's default scale, which already matches the design
+   * system's: spacing/xs 4px is `p-1`, sm 8px `p-2`, md 16px `p-4`, lg 24px
+   * `p-6`, xl 32px `p-8`, 2xl 48px `p-12`. Never define named
+   * `--spacing-{xs,sm,md,lg,xl,2xl}` keys: Tailwind routes `max-w-*`, `w-*`
+   * and `h-*` through `--spacing-*` when those keys exist, so `max-w-lg`
+   * would become 24px instead of 32rem. */
+}
+
+/* Text sizes from the design's text styles that Tailwind's scale lacks. Body/M
+ * (14px on 20px) is Tailwind's `text-sm` and needs no token. The product name
+ * in the top bar is 15px on 20px; the design sets it directly rather than
+ * through a text style. */
+@theme {
+  --text-body-s: 0.8125rem;
+  --text-body-s--line-height: 1.125rem;
+  --text-display-m: 1.75rem;
+  --text-display-m--line-height: 2.25rem;
+  --text-display-m--letter-spacing: -0.01em;
+  --text-product-name: 0.9375rem;
+  --text-product-name--line-height: 1.25rem;
+
+  /* The one shadow: overlays such as menus. Everything else uses borders. */
+  --shadow-popover: 0 2px 8px rgb(0 0 0 / 0.08);
+}
+
+:root {
+  /* Sharp editorial corners. */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius: var(--radius-md);
+
+  /* Light mode: newsprint, paper. */
+  --background: #f4f1ea;
+  --foreground: #1a1714;
+  --card: #faf7f0;
+  --card-foreground: #1a1714;
+  --popover: #faf7f0;
+  --popover-foreground: #1a1714;
+  --primary: #d2541b;
+  --primary-foreground: #f4f1ea;
+  /* Orange text below large size (24px regular, 18.66px bold) uses `link`,
+   * never `primary`: `link` clears WCAG AA 4.5:1 on background (5.46), card
+   * (5.76), muted (4.90) and secondary (4.81), where `primary` measures 3.1 to
+   * 3.9. `primary` stays for icons and other non-text marks (3:1), paper-on-
+   * orange buttons and large text. `link` is not AA on the accent fill (4.29),
+   * and is never opacity-modified: /80 fails everywhere. */
+  --link: #a84015;
+  --secondary: #e8e3d6;
+  --secondary-foreground: #1a1714;
+  --muted: #eae5d8;
+  --muted-foreground: #6b5e4f;
+  --accent: #ebd5a8;
+  --accent-foreground: #1a1714;
+  --destructive: #9c2a1a;
+  --destructive-foreground: #f4f1ea;
+  --success: #dde8d8;
+  --success-foreground: #2f5d3a;
+  --pending: #f0e6cf;
+  --pending-foreground: #7a5a1e;
+  --border: #cabe9f;
+  /* A divider rule: 3:1 against --card, the non-text contrast minimum. */
+  --separator: #8a8782;
+  --input: #ddd6c8;
+  --ring: #d2541b;
+
+  /* The board and pieces. Defined once, outside the dark block, because they
+   * keep these colours in dark mode. */
+  --board-square-light: #ebd5a8;
+  --board-square-dark: #8b7355;
+  --board-last-move: #c8943880;
+  --board-selected: #3f607f73;
+  --board-hint: #4a7c598c;
+  --board-hint-arrow: #4a7c59d9;
+  --board-check: #9c2a1a99;
+  --board-move-dot: #1a17144d;
+  --piece-white: #ffffff;
+  --piece-black: #000000;
+}
+
+.dark {
+  /* Dark mode: vinyl record shop. */
+  --background: #0d0805;
+  --foreground: #eee7d9;
+  --card: #17100b;
+  --card-foreground: #eee7d9;
+  --popover: #17100b;
+  --popover-foreground: #eee7d9;
+  --primary: #e89960;
+  --primary-foreground: #0d0805;
+  /* Dark mode's primary already clears AA as text on background and card. */
+  --link: var(--primary);
+  --secondary: #211813;
+  --secondary-foreground: #eee7d9;
+  --muted: #211813;
+  --muted-foreground: #9c8c7c;
+  --accent: #dc9064;
+  --accent-foreground: #0d0805;
+  --destructive: #f14d4c;
+  --destructive-foreground: #0d0805;
+  --success: #1c2a20;
+  --success-foreground: #8fc6a0;
+  --pending: #2a2316;
+  --pending-foreground: #d6b06a;
+  --border: #221b15;
+  --separator: #6d665d;
+  --input: #221b15;
+  --ring: #dc9064;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply bg-background text-foreground;
+  }
+  /* These controls show the pointer, as a link does: Tailwind's preflight
+   * leaves buttons, ARIA widgets and form controls at the platform arrow. A
+   * `:disabled` control is excluded, and so is an `aria-disabled` element
+   * matched only by its ARIA role. A `label[for]` shows the pointer whatever
+   * its control's state, since CSS cannot follow `for` to the control. A
+   * cursor utility on the element still wins, because this is in the base
+   * layer. */
+  button:not(:disabled),
+  select:not(:disabled),
+  input:where(
+      [type='checkbox'],
+      [type='radio'],
+      [type='file'],
+      [type='submit'],
+      [type='button'],
+      [type='range']
+    ):not(:disabled),
+  summary,
+  label[for],
+  :where(
+    [role='button'],
+    [role='link'],
+    [role='tab'],
+    [role='menuitem'],
+    [role='menuitemcheckbox'],
+    [role='menuitemradio'],
+    [role='option'],
+    [role='radio'],
+    [role='checkbox'],
+    [role='switch'],
+    [role='combobox']:not(input)
+  ):not(:disabled, [aria-disabled='true']) {
+    cursor: pointer;
+  }
+}

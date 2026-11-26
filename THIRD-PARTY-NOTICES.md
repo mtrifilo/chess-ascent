@@ -57,9 +57,25 @@ Runtime libraries, or code generated from them, ship to the browser or run in th
 | `@vitejs/plugin-react` | https://github.com/vitejs/vite-plugin-react | MIT | Development: compiles JSX for tests |
 | jsdom (`jsdom`) | https://github.com/jsdom/jsdom | MIT | Development: browser DOM for component tests |
 | Testing Library (`@testing-library/react`, `@testing-library/dom`) | https://github.com/testing-library/react-testing-library, https://github.com/testing-library/dom-testing-library | MIT | Development: renders components and queries them as a user would |
+| Radix UI Primitives (`@radix-ui/react-dropdown-menu`, `@radix-ui/react-label`, `@radix-ui/react-slot`) | https://github.com/radix-ui/primitives | MIT | Runtime: accessible behaviour for the dropdown menu, label and `asChild` button |
+| class-variance-authority | https://github.com/joe-bell/cva | Apache-2.0 | Runtime: the variant classes of the button, badge and alert |
+| clsx | https://github.com/lukeed/clsx | MIT | Runtime: joins class names (`cn` in `frontend/lib/utils.ts`) |
+| tailwind-merge | https://github.com/dcastil/tailwind-merge | MIT | Runtime: resolves conflicting Tailwind classes (`cn`) |
+| Lucide (`lucide-react`) | https://github.com/lucide-icons/lucide | ISC; the icons derived from Feather, which include `check`, `chevron-down`, `chevron-right` and `circle`, are MIT | Runtime: icons |
+| tw-animate-css | https://github.com/Wombosvideo/tw-animate-css | MIT | Runtime: the open and close animations of the dropdown menu, compiled into the served stylesheet |
+| `@testing-library/jest-dom` | https://github.com/testing-library/jest-dom | MIT | Development: DOM assertions in component tests (`toBeInTheDocument`, `toHaveClass`) |
+
+## Code adapted from other projects
+
+| Component | Source | Licence | How it is used |
+|---|---|---|---|
+| Psychic Homily's design tokens and UI components | https://github.com/mtrifilo/psychic-homily-web (`frontend/app/globals.css`, `frontend/app/layout.tsx`, `frontend/components/ui/`, `frontend/lib/utils.ts`) | Not stated in its repository. It has the same owner as Chess Ascent, who publishes these files here under AGPL-3.0-or-later | The colour, radius and font tokens and base styles in `frontend/app/globals.css`, the font set-up in `frontend/app/layout.tsx`, and the components and tests in `frontend/components/ui/`, ported with small changes; `frontend/lib/utils.ts` is adapted from it |
+| shadcn/ui | https://github.com/shadcn-ui/ui | MIT | Psychic Homily's components in `frontend/components/ui/` are derived from shadcn/ui's |
 
 ## Fonts, pieces and other assets
 
 | Component | Version | Source | Licence | How it is used |
 |---|---|---|---|---|
-| | | | | |
+| Hanken Grotesk | Whatever Google Fonts serves at build time; `next/font/google` does not pin a version | https://github.com/marcologous/hanken-grotesk, through Google Fonts | OFL-1.1 | Display type. Downloaded at build time and served by the app |
+| Schibsted Grotesk | As above | https://github.com/schibsted/schibsted-grotesk, through Google Fonts | OFL-1.1 | Body and interface type. Downloaded at build time and served by the app |
+| Golos Text | As above | https://github.com/googlefonts/golos-text, through Google Fonts | OFL-1.1 | Data type (counts, times, dates). Downloaded at build time and served by the app |

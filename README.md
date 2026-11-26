@@ -62,6 +62,8 @@ Nothing about the project is sent to outside services by default:
 
 One request cannot be turned off in Next.js 16.4: when a browser first connects to `bun run dev`, the dev server fetches the public list of Next.js release tags from the npm registry, to show whether the installed version is out of date. It sends no project data.
 
+`bun run build` and `bun run dev` also download the app's three fonts (Hanken Grotesk, Schibsted Grotesk and Golos Text) from Google Fonts. The app serves the font files itself, so browsers that open it never contact Google.
+
 ### Chess engines
 
 Nothing yet.
