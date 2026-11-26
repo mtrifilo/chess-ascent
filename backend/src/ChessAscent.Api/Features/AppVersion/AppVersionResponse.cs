@@ -20,11 +20,11 @@ public sealed record AppVersionResponse(string Version, string? Commit)
     /// </summary>
     public static AppVersionResponse FromAssembly(Assembly assembly)
     {
-        var informationalVersion = assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-            .InformationalVersion;
+        var attribute = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?? throw new InvalidOperationException(
+                $"{assembly.GetName().Name} has no informational version; the SDK writes one unless GenerateAssemblyInfo is turned off.");
 
-        return Parse(informationalVersion ?? assembly.GetName().Version?.ToString() ?? "unknown");
+        return Parse(attribute.InformationalVersion);
     }
 
     /// <summary>

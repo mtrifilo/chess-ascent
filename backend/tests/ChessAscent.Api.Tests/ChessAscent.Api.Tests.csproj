@@ -1,32 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <!--
-      LEARN: An xUnit v3 test project builds to an executable. It hosts
-      Microsoft.Testing.Platform, the test runner, inside itself, so
-      `dotnet test` runs this program rather than loading the tests into a
-      separate runner process the way Maven Surefire forks a JVM.
-    -->
-    <OutputType>Exe</OutputType>
-  </PropertyGroup>
-
   <ItemGroup>
-    <!--
-      LEARN: No Version attributes here: Directory.Packages.props holds every
-      version (Central Package Management).
-    -->
-    <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
-    <PackageReference Include="xunit.v3" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ChessAscent.Api\ChessAscent.Api.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Using Include="AwesomeAssertions" />
-    <Using Include="Xunit" />
   </ItemGroup>
 
 </Project>

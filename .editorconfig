@@ -19,7 +19,7 @@ indent_size = 4
 dotnet_diagnostic.IDE0055.severity = warning
 
 # One namespace per file, declared without braces.
-csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_namespace_declarations = file_scoped
 dotnet_diagnostic.IDE0161.severity = warning
 
 # Unused using directives.
@@ -27,11 +27,11 @@ dotnet_diagnostic.IDE0005.severity = warning
 dotnet_sort_system_directives_first = true
 
 # Braces on every if, else, for, foreach, while and using body.
-csharp_prefer_braces = true:warning
+csharp_prefer_braces = true
 dotnet_diagnostic.IDE0011.severity = warning
 
 # Accessibility is written out rather than left to the default.
-dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+dotnet_style_require_accessibility_modifiers = for_non_interface_members
 dotnet_diagnostic.IDE0040.severity = warning
 
 [*.md]
