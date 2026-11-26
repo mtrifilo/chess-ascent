@@ -5,20 +5,19 @@ using Npgsql;
 
 namespace ChessAscent.Api.Tests.Database;
 
+// Reading factory.Services starts the application if it is not running yet,
+// which runs Program.cs and so its start-up migrations.
 public sealed class StartupMigrationsTests(ApiFactory factory, PostgresFixture postgres) : IClassFixture<ApiFactory>
 {
     [Fact]
     public async Task StartingTheApiAppliesEveryMigration()
     {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        await using var scope = StartApiAndCreateScope();
+        await using var scope = factory.Services.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<AppDbContext>().Database;
 
-        var applied = await database.GetAppliedMigrationsAsync(cancellationToken);
-        var pending = await database.GetPendingMigrationsAsync(cancellationToken);
+        var applied = await database.GetAppliedMigrationsAsync(TestContext.Current.CancellationToken);
 
         applied.Should().NotBeEmpty().And.Equal(database.GetMigrations());
-        pending.Should().BeEmpty();
     }
 
     // Guards the override in ApiFactory: if a configuration file outranked it,
@@ -26,7 +25,7 @@ public sealed class StartupMigrationsTests(ApiFactory factory, PostgresFixture p
     [Fact]
     public async Task TheApiUsesTheTestContainerNotTheDevelopmentDatabase()
     {
-        await using var scope = StartApiAndCreateScope();
+        await using var scope = factory.Services.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<AppDbContext>().Database;
 
         var used = new NpgsqlConnectionStringBuilder(database.GetConnectionString());
@@ -36,8 +35,4 @@ public sealed class StartupMigrationsTests(ApiFactory factory, PostgresFixture p
         used.Port.Should().Be(expected.Port);
         used.Database.Should().Be(expected.Database);
     }
-
-    // Reading factory.Services starts the application if it is not running
-    // yet, which runs Program.cs and so its start-up migrations.
-    private AsyncServiceScope StartApiAndCreateScope() => factory.Services.CreateAsyncScope();
 }

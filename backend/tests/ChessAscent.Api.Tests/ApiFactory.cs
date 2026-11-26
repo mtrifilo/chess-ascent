@@ -1,6 +1,7 @@
 using ChessAscent.Api.Database;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 
 namespace ChessAscent.Api.Tests;
 
@@ -26,6 +27,6 @@ public sealed class ApiFactory(PostgresFixture postgres) : WebApplicationFactory
         // A setting given here outranks every configuration file the
         // application loads, so the API cannot reach the development database.
         builder.UseSetting(
-            $"{DatabaseOptions.SectionName}:{nameof(DatabaseOptions.ConnectionString)}",
+            ConfigurationPath.Combine(DatabaseOptions.SectionName, nameof(DatabaseOptions.ConnectionString)),
             postgres.ConnectionString);
 }

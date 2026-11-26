@@ -23,7 +23,7 @@ public sealed class DatabaseOptions
 
     /// <summary>
     /// An Npgsql connection string, such as
-    /// <c>Host=localhost;Port=5540;Database=...;Username=...;Password=...</c>.
+    /// <c>Host=...;Port=...;Database=...;Username=...;Password=...</c>.
     /// </summary>
     [Required]
     public string ConnectionString { get; set; } = "";

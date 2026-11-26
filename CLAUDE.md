@@ -37,7 +37,7 @@ Each ticket that adds a command adds it under the matching heading below.
 
 From the repo root, with Docker running:
 
-- `docker compose up -d`: starts PostgreSQL 18 for development on `127.0.0.1:5540`. Set `CHESS_ASCENT_DB_PORT` to use another host port, and then point the API at it with `Database__ConnectionString` (below). `docker compose down` stops it and keeps the data; `docker compose down --volumes` deletes the data too.
+- `docker compose up -d --wait`: starts PostgreSQL 18 for development on `127.0.0.1:5540`, and returns once it accepts connections. Set `CHESS_ASCENT_DB_PORT` to use another host port, and then point the API at it with `Database__ConnectionString` (below). `docker compose down` stops it and keeps the data; `docker compose down --volumes` deletes the data too.
 
 From `backend/`, with the .NET 11 SDK (`backend/global.json` pins 11.0.100 and accepts later 11.0 feature bands):
 

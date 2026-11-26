@@ -6,8 +6,8 @@ namespace ChessAscent.Api.Database;
 
 public static class DatabaseServices
 {
-    /// <summary>The name the database check reports under in health results.</summary>
-    public const string HealthCheckName = "database";
+    // The name the database check reports under in logs.
+    private const string HealthCheckName = "database";
 
     /// <summary>
     /// Registers <see cref="DatabaseOptions"/>, <see cref="AppDbContext"/> on
@@ -26,12 +26,17 @@ public static class DatabaseServices
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
-        // LEARN: The lambda runs each time a new AppDbContext is created, that
-        // is once per scope, and receives the container so it can read the
-        // validated options. UseNpgsql picks the provider, as a JPA
-        // persistence unit names its dialect and data source.
-        services.AddDbContext<AppDbContext>((provider, options) =>
-            options.UseNpgsql(provider.GetRequiredService<IOptions<DatabaseOptions>>().Value.ConnectionString));
+        // LEARN: The lambda builds the DbContextOptions, and receives the
+        // container so it can read the validated DatabaseOptions. UseNpgsql
+        // picks the provider, as a JPA persistence unit names its dialect and
+        // data source. The context itself stays Scoped (one per request); the
+        // options it is built from never change, so they are a Singleton and
+        // the lambda runs once, not once per request.
+        services.AddDbContext<AppDbContext>(
+            (provider, options) =>
+                options.UseNpgsql(provider.GetRequiredService<IOptions<DatabaseOptions>>().Value.ConnectionString),
+            contextLifetime: ServiceLifetime.Scoped,
+            optionsLifetime: ServiceLifetime.Singleton);
 
         // LEARN: AddDbContextCheck is the counterpart of Spring Boot Actuator's
         // DataSourceHealthIndicator. On each readiness request it creates an

@@ -21,7 +21,7 @@ Needs the [.NET 11 SDK](https://dotnet.microsoft.com/download/dotnet/11.0), vers
 The API stores its data in PostgreSQL 18 (the `postgres:18.7` image). From the repository root, start it with:
 
 ```sh
-docker compose up -d                         # PostgreSQL on 127.0.0.1:5540
+docker compose up -d --wait                  # PostgreSQL on 127.0.0.1:5540, once it is ready
 ```
 
 The user, password and database in `docker-compose.yml` only work against that local container. To use another host port, set `CHESS_ASCENT_DB_PORT` before `docker compose up` and give the API a matching connection string in `Database__ConnectionString`. `docker compose down` stops the database; add `--volumes` to delete its data.
