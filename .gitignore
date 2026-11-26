@@ -1,0 +1,90 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+.vs/
+*.swp
+*.suo
+*.user
+
+# Secrets and private data. This repo is public and history is permanent,
+# so anything that could hold a credential, a key or real user data is
+# ignored by pattern, wherever it lands.
+.env
+.env.*
+!.env.example
+.envrc
+secrets.json
+*.secrets.json
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+DataProtection-Keys/
+
+# Database dumps and local database files. A dump of the accounts tables
+# holds emails and password hashes. Dumps are matched by name and by where
+# they usually land, not by the .sql extension, because SQL the app needs
+# (a Compose init script, SQL read by a migration) must stay tracked.
+*dump*.sql
+*backup*.sql
+/*.sql
+/backend/*.sql
+dumps/
+backups/
+*.dump
+*.backup
+*.sqlite*
+*.db
+pgdata/
+postgres-data/
+
+*.log
+
+# .NET build output
+bin/
+obj/
+/backend/artifacts/
+efbundle
+efbundle.exe
+TestResults/
+*.trx
+*.cobertura.xml
+
+# Node and Bun
+node_modules/
+.next/
+next-env.d.ts
+/frontend/out/
+/frontend/coverage/
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+# Chess engines, the Python environment for Maia, and model weights.
+# scripts/ recreates all of this, so none of it is committed. Anchored to the
+# repo root so a source folder named Engines elsewhere is still tracked.
+/engines/
+
+# Model weights and engine networks are never committed, wherever they are
+# downloaded to: they are large, and not all of them state a licence.
+*.onnx
+*.pt
+*.pth
+*.safetensors
+*.pb.gz
+*.nnue
+
+# Python environments and caches, wherever they are created
+.venv/
+venv/
+__pycache__/
+
+# Local agent state and per-machine instructions
+.claude/worktrees/
+.claude/settings.local.json
+CLAUDE.local.md
