@@ -1,0 +1,9 @@
+# Bun reads this file for commands run in frontend/.
+
+# Bun's anonymous crash reports stay off for everyone who clones the repo.
+telemetry = false
+
+[install]
+# `bun add` writes exact versions, matching the repo's rule that every
+# dependency is pinned.
+exact = true

@@ -24,9 +24,26 @@ Run as separate programs, or loaded as data. Not linked into Chess Ascent's own 
 
 ## Front-end libraries
 
+Runtime libraries, or code generated from them, ship to the browser or run in the Next.js server. Development tools build, check or test the code and are not part of what is served.
+
 | Component | Source | Licence | How it is used |
 |---|---|---|---|
-| | | | |
+| Next.js (`next`) | https://github.com/vercel/next.js | MIT | Runtime: the web framework (App Router, server rendering, build) |
+| React (`react`) | https://github.com/react/react | MIT | Runtime: UI library |
+| React DOM (`react-dom`) | https://github.com/react/react | MIT | Runtime: renders React to the browser DOM and to HTML on the server |
+| Tailwind CSS (`tailwindcss`) | https://github.com/tailwindlabs/tailwindcss | MIT | Runtime: generates the served stylesheet at build time, including its base (preflight) and theme CSS |
+| `@tailwindcss/turbopack` | https://github.com/tailwindlabs/tailwindcss | MIT | Development: runs Tailwind inside the Turbopack bundler |
+| TypeScript (`typescript`) | https://github.com/microsoft/TypeScript | Apache-2.0 | Development: type checking |
+| `@types/node`, `@types/react`, `@types/react-dom` | https://github.com/DefinitelyTyped/DefinitelyTyped | MIT | Development: type definitions |
+| ESLint (`eslint`) | https://github.com/eslint/eslint | MIT | Development: linting |
+| `eslint-config-next` | https://github.com/vercel/next.js | MIT | Development: the Next.js lint rules |
+| `eslint-plugin-jsx-a11y` | https://github.com/jsx-eslint/eslint-plugin-jsx-a11y | MIT | Development: accessibility lint rules (its recommended set) |
+| Prettier (`prettier`) | https://github.com/prettier/prettier | MIT | Development: code formatting |
+| Vitest (`vitest`) | https://github.com/vitest-dev/vitest | MIT | Development: unit and component test runner |
+| Vite (`vite`) | https://github.com/vitejs/vite | MIT | Development: module transformer that Vitest runs on |
+| `@vitejs/plugin-react` | https://github.com/vitejs/vite-plugin-react | MIT | Development: compiles JSX for tests |
+| jsdom (`jsdom`) | https://github.com/jsdom/jsdom | MIT | Development: browser DOM for component tests |
+| Testing Library (`@testing-library/react`, `@testing-library/dom`) | https://github.com/testing-library/react-testing-library, https://github.com/testing-library/dom-testing-library | MIT | Development: renders components and queries them as a user would |
 
 ## Fonts, pieces and other assets
 

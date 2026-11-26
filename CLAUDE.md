@@ -45,7 +45,26 @@ From `backend/`, with the .NET 11 SDK (`backend/global.json` pins 11.0.100 and a
 
 ### Front end
 
-Nothing yet.
+From `frontend/`:
+
+| Command | Does |
+|---|---|
+| `bun install` | Installs the pinned dependencies from `bun.lock` |
+| `bun run dev` | Serves the app at http://127.0.0.1:3000, on this machine only; add `--port <n>` for another port |
+| `bun run typecheck` | Generates Next.js route types, then runs `tsc` |
+| `bun run lint` | ESLint with the Next.js rules and jsx-a11y's recommended rules; any warning fails it |
+| `bun run test` | Vitest, once (component tests in jsdom) |
+| `bun run build` | Production build |
+| `bun run start` | Serves the production build on all network interfaces, as a host needs |
+| `bun run format` / `bun run format:check` | Prettier: rewrite, or check only |
+
+- Bun installs packages and runs scripts; Next.js and Vitest themselves run on Node. Never add `bun --bun`.
+- `bun test` is Bun's own test runner, not this project's: it runs the tests without jsdom and they fail. Use `bun run test`.
+- `@types/node` stays on the same minor version as the Node.js in use (24.11), so the type check rejects Node APIs that the runtime lacks.
+- Run Next.js through these scripts, not `bunx next`: they set `NEXT_TELEMETRY_DISABLED=1`. `README.md` ("Run locally", "Front end") says what the front end does and does not send to outside services.
+- `bun add` pins exact versions (`bunfig.toml`). Record a new direct dependency in `THIRD-PARTY-NOTICES.md`.
+- `trustedDependencies` in `package.json` lists the packages whose install scripts Bun may run. It is empty: no dependency needs one, and defining the field, even empty, replaces Bun's built-in allowlist of popular packages. Add a package only after reading the script it would run.
+- This Next.js version differs from older training data. Read the guide for the installed version in `frontend/node_modules/next/dist/docs/` before writing Next.js code, and heed its deprecation notices.
 
 ### Both together
 

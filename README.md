@@ -30,7 +30,23 @@ The `dotnet` CLI and the test runner send usage telemetry to Microsoft. Set `DOT
 
 ### Front end
 
-Nothing yet.
+Needs [Bun](https://bun.com) and Node.js 24. Bun installs the packages and runs the scripts; Next.js itself runs on Node.
+
+```sh
+cd frontend
+bun install
+bun run dev
+```
+
+The app is then at http://127.0.0.1:3000, reachable from this machine only. To open it from another device on your network, pass this machine's network address, for example `bun run dev --hostname 192.168.1.20`, and browse to that address; the dev server accepts live-reload connections for the address it is bound to. The checks are `bun run typecheck`, `bun run lint`, `bun run test`, `bun run build` and `bun run format:check`.
+
+Nothing about the project is sent to outside services by default:
+
+- The scripts turn off Next.js telemetry (`NEXT_TELEMETRY_DISABLED=1`). Running `next` directly, without the scripts, leaves it on.
+- `frontend/bunfig.toml` turns off Bun's crash reports.
+- `frontend/next.config.ts` turns off Next.js's security-advisory check (`experimental.agentUpgrade`), which would otherwise send the installed Next.js version to the npm registry, and keeps agent feedback off.
+
+One request cannot be turned off in Next.js 16.4: when a browser first connects to `bun run dev`, the dev server fetches the public list of Next.js release tags from the npm registry, to show whether the installed version is out of date. It sends no project data.
 
 ### Chess engines
 
