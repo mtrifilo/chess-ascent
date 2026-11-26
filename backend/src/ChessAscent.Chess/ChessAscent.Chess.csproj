@@ -27,4 +27,13 @@
            Text="ChessAscent.Chess must not depend on web or database code, but the compiler would see: @(_ForbiddenReference)" />
   </Target>
 
+  <ItemGroup>
+    <!--
+      The rules library. Only this project references it, and no type from it
+      appears in this project's public signatures; ChessAscent.Chess.Tests
+      enforces both.
+    -->
+    <PackageReference Include="ChessRealms.Engine" PrivateAssets="compile" />
+  </ItemGroup>
+
 </Project>

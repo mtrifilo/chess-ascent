@@ -15,6 +15,14 @@
     <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
   </PropertyGroup>
 
+  <ItemGroup Label="Chess rules">
+    <!--
+      Referenced only by ChessAscent.Chess, behind its own interface.
+      ChessAscent.Chess.Tests checks that no other project references it.
+    -->
+    <PackageVersion Include="ChessRealms.Engine" Version="1.2.0" />
+  </ItemGroup>
+
   <ItemGroup Label="Tests">
     <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="11.0.0" />

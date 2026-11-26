@@ -1,0 +1,40 @@
+using Realms = ChessRealms.Engine;
+
+namespace ChessAscent.Chess;
+
+/// <summary>The standard rules of chess, as <see cref="IChessRules"/> describes them.</summary>
+/// <remarks>Holds no state; one instance can serve every request.</remarks>
+public sealed class ChessRules : IChessRules
+{
+    public IChessGame NewGame() => ChessRealmsGame.Start(new Realms.ChessGame());
+
+    public LoadResult Load(string initialFen, IReadOnlyList<string> uciMoves)
+    {
+        if (!Realms.ChessGame.TryCreateFromFen(initialFen, out var start))
+        {
+            return new InvalidStartingPosition(initialFen);
+        }
+
+        // Replaying through TryPlay applies the same checks and the same
+        // automatic draws as live play, so a saved game rebuilds to the state
+        // it was saved in.
+        var game = ChessRealmsGame.Start(start);
+        for (var index = 0; index < uciMoves.Count; index++)
+        {
+            MoveRejection? rejection = game.TryPlay(uciMoves[index]) switch
+            {
+                MovePlayed => null,
+                IllegalMove illegal => illegal,
+                MalformedMove malformed => malformed,
+                GameAlreadyOver over => over,
+            };
+
+            if (rejection is { } refused)
+            {
+                return new InvalidMoveInHistory(index, refused);
+            }
+        }
+
+        return new GameLoaded(game);
+    }
+}
