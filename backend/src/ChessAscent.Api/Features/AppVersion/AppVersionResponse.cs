@@ -8,41 +8,29 @@ namespace ChessAscent.Api.Features.AppVersion;
 /// <summary>The body of <c>GET /version</c>.</summary>
 /// <param name="Version">The application version, such as <c>0.1.0</c>.</param>
 /// <param name="Commit">
-/// The git commit the build was made from, or <c>null</c> when the build had no
-/// git metadata to read (for example, a source archive).
+/// The git commit checked out when the API was built, or <c>null</c> when the
+/// build had no git metadata to read (for example, a source archive). It does
+/// not show whether the working tree had uncommitted changes.
 /// </param>
 public sealed record AppVersionResponse(string Version, string? Commit)
 {
     /// <summary>
-    /// Reads the version from the assembly's informational version, which the
-    /// .NET SDK sets to <c>Version+commit</c> when it builds inside a git
-    /// repository and to plain <c>Version</c> otherwise.
+    /// Reads the <c>Version</c> and <c>SourceRevisionId</c> metadata that
+    /// ChessAscent.Api.csproj writes into the assembly at build time.
     /// </summary>
     public static AppVersionResponse FromAssembly(Assembly assembly)
     {
-        var attribute = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
-            ?? throw new InvalidOperationException(
-                $"{assembly.GetName().Name} has no informational version; the SDK writes one unless GenerateAssemblyInfo is turned off.");
+        var metadata = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .ToDictionary(attribute => attribute.Key, attribute => attribute.Value, StringComparer.Ordinal);
 
-        return Parse(attribute.InformationalVersion);
-    }
-
-    /// <summary>
-    /// Splits an informational version of the form <c>Version+commit</c>. Text
-    /// after the first <c>+</c> is SemVer build metadata, which the SDK uses for
-    /// the commit.
-    /// </summary>
-    public static AppVersionResponse Parse(string informationalVersion)
-    {
-        var separator = informationalVersion.IndexOf('+', StringComparison.Ordinal);
-        if (separator < 0)
+        var version = metadata.GetValueOrDefault("Version");
+        if (string.IsNullOrEmpty(version))
         {
-            return new AppVersionResponse(informationalVersion, null);
+            throw new InvalidOperationException(
+                $"{assembly.GetName().Name} has no Version metadata; ChessAscent.Api.csproj writes it at build time.");
         }
 
-        var commit = informationalVersion[(separator + 1)..];
-        return new AppVersionResponse(
-            informationalVersion[..separator],
-            commit.Length == 0 ? null : commit);
+        var commit = metadata.GetValueOrDefault("SourceRevisionId");
+        return new AppVersionResponse(version, string.IsNullOrEmpty(commit) ? null : commit);
     }
 }

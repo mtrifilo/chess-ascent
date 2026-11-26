@@ -8,13 +8,15 @@ public static class AppVersionEndpoints
         // they are read once here rather than on every request.
         var response = AppVersionResponse.FromAssembly(typeof(AppVersionEndpoints).Assembly);
 
+        var version = endpoints.MapGroup("/version");
+
         // LEARN: A Minimal API endpoint is a route plus a lambda; there is no
         // controller class and no @GetMapping. TypedResults.Ok(...) returns an
         // Ok<AppVersionResponse>, a value that knows its own status code and
         // body type, unlike a Spring ResponseEntity<?> whose type says nothing
         // about the status. The framework serializes the record to JSON with
         // camelCase property names.
-        endpoints.MapGet("/version", () => TypedResults.Ok(response));
+        version.MapGet("", () => TypedResults.Ok(response));
 
         return endpoints;
     }

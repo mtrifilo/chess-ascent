@@ -38,7 +38,7 @@ Each ticket that adds a command adds it under the matching heading below.
 From `backend/`, with the .NET 11 SDK (`backend/global.json` pins 11.0.100 and accepts later 11.0 feature bands):
 
 - `dotnet build`: builds the solution. Any warning, analyzer finding or code-style violation fails it.
-- `dotnet test`: runs every test project on Microsoft.Testing.Platform.
+- `dotnet test`: runs every test project on Microsoft.Testing.Platform. The `dotnet` CLI and the test platform send usage telemetry to Microsoft unless `DOTNET_CLI_TELEMETRY_OPTOUT=1` is set.
 - `dotnet format --verify-no-changes`: fails on formatting or code-style drift. `dotnet format` fixes it.
 - `dotnet run --project src/ChessAscent.Api`: serves the API on `http://localhost:5100` in the Development environment. Add `-- --urls http://localhost:<port>` for another port. Endpoints: `GET /health` (liveness), `GET /health/ready` (readiness), `GET /version`.
 - `grep -rn "LEARN:" .`: lists the teaching comments.

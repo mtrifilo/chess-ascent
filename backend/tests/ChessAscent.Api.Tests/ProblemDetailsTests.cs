@@ -21,10 +21,7 @@ public sealed class ProblemDetailsTests(WebApplicationFactory<Program> factory)
         using var response = await client.GetAsync("/no-such-path", TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        response.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
-        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>(
-            TestContext.Current.CancellationToken);
-        problem!.Status.Should().Be(404);
+        await ShouldBeProblemDetailsAsync(response, 404);
     }
 
     [Fact]
@@ -38,9 +35,19 @@ public sealed class ProblemDetailsTests(WebApplicationFactory<Program> factory)
         using var response = await client.GetAsync(ThrowingPath, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
-        response.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+        await ShouldBeProblemDetailsAsync(response, 500);
         var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().NotContain(ExceptionMessage);
+    }
+
+    private static async Task ShouldBeProblemDetailsAsync(HttpResponseMessage response, int status)
+    {
+        response.Content.Headers.ContentType.Should().NotBeNull();
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>(
+            TestContext.Current.CancellationToken);
+        problem.Should().NotBeNull();
+        problem!.Status.Should().Be(status);
     }
 
     // Adds a path that throws, behind the application's own middleware, so the

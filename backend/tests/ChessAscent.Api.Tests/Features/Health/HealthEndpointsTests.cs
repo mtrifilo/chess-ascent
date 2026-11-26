@@ -1,5 +1,8 @@
 using System.Net;
+using ChessAscent.Api.Features.Health;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace ChessAscent.Api.Tests.Features.Health;
 
@@ -36,4 +39,31 @@ public sealed class HealthEndpointsTests(WebApplicationFactory<Program> factory)
         var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().Be("Healthy");
     }
+
+    [Fact]
+    public async Task FailingReadinessCheckFailsReadinessButNotLiveness()
+    {
+        using var client = ClientWithFailingCheck(tags: [HealthEndpoints.ReadinessTag]);
+
+        using var liveness = await client.GetAsync("/health", TestContext.Current.CancellationToken);
+        using var readiness = await client.GetAsync("/health/ready", TestContext.Current.CancellationToken);
+
+        liveness.StatusCode.Should().Be(HttpStatusCode.OK);
+        readiness.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+    }
+
+    [Fact]
+    public async Task FailingCheckWithoutTheReadinessTagLeavesReadinessHealthy()
+    {
+        using var client = ClientWithFailingCheck(tags: []);
+
+        using var readiness = await client.GetAsync("/health/ready", TestContext.Current.CancellationToken);
+
+        readiness.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    private HttpClient ClientWithFailingCheck(string[] tags) =>
+        factory.WithWebHostBuilder(host => host.ConfigureServices(services =>
+                services.AddHealthChecks().AddCheck("always-unhealthy", () => HealthCheckResult.Unhealthy(), tags)))
+            .CreateClient();
 }

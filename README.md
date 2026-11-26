@@ -26,6 +26,8 @@ dotnet run --project src/ChessAscent.Api     # serve the API on http://localhost
 
 With the API running, `curl http://localhost:5100/health` answers `Healthy` and `curl http://localhost:5100/version` returns the version and the git commit it was built from.
 
+The `dotnet` CLI and the test runner send usage telemetry to Microsoft. Set `DOTNET_CLI_TELEMETRY_OPTOUT=1` to turn it off.
+
 ### Front end
 
 Nothing yet.

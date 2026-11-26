@@ -14,4 +14,21 @@
 -->
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <!--
+    Writes the version and the git commit into the assembly as two named
+    [AssemblyMetadata] attributes, which GET /version reads back. The SDK
+    fills SourceRevisionId from the git repository during
+    InitializeSourceControlInformation and leaves it empty when there is no
+    repository, so a build from a source archive still succeeds and reports
+    no commit. Pass -p:SourceRevisionId=<sha> to supply one by hand.
+  -->
+  <Target Name="EmbedVersionMetadata"
+          BeforeTargets="GetAssemblyAttributes"
+          DependsOnTargets="InitializeSourceControlInformation">
+    <ItemGroup>
+      <AssemblyMetadata Include="Version" Value="$(Version)" />
+      <AssemblyMetadata Include="SourceRevisionId" Value="$(SourceRevisionId)" />
+    </ItemGroup>
+  </Target>
+
 </Project>

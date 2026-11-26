@@ -1,9 +1,12 @@
 <!--
-  LEARN: MSBuild imports this file into every project file (.csproj) in this
-  folder and below, before the project's own settings. It plays the part of a
-  Maven parent POM, with two differences: nothing declares it (MSBuild finds
-  it by walking up from each project's folder), and a project can override
-  any property simply by setting it again later in its own file.
+  LEARN: This file plays the part of a Maven parent POM for every project
+  file (.csproj) in this folder and below. The differences: nothing declares
+  it, because MSBuild finds it by walking up from each project's folder and
+  imports it before the project's own settings; a project overrides any
+  property simply by setting it again in its own file; and there is no
+  chain of parents. MSBuild imports only the nearest Directory.Build.props
+  it finds, so a nested one (tests/Directory.Build.props) must import this
+  one explicitly or its projects lose every setting below.
 -->
 <Project>
 
@@ -37,6 +40,14 @@
     <Version>0.1.0</Version>
 
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!--
+      NuGet raises NU1900 when it cannot download vulnerability data, for
+      example offline. That says nothing about the code, so it stays a
+      warning. A known vulnerability in a package (NU1901 to NU1904) is still
+      an error.
+    -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1900</WarningsNotAsErrors>
 
     <!--
       LEARN: The .NET code analyzers ship inside the SDK and run as part of

@@ -4,6 +4,8 @@ namespace ChessAscent.Chess.Tests;
 
 public sealed class DependencyRulesTests
 {
+    // Kept in step with the ForbidWebAndDatabaseReferences target in
+    // ChessAscent.Chess.csproj.
     private static readonly string[] ForbiddenPrefixes =
     [
         "Microsoft.AspNetCore",
@@ -12,10 +14,9 @@ public sealed class DependencyRulesTests
         "ChessAscent.Api",
     ];
 
-    // The project file refuses web and database references at build time. This
-    // checks the compiled result: the compiler records an assembly reference
-    // for every assembly the library's code uses, including any that arrive
-    // through another package.
+    // The project file refuses web and database assemblies at build time. This
+    // checks the compiled result as a second line: the compiler records an
+    // assembly reference for every assembly the library's code uses.
     [Fact]
     public void ChessLibraryCodeUsesNoWebOrDatabaseAssembly()
     {
