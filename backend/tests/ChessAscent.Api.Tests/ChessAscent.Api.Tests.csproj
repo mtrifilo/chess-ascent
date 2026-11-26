@@ -7,6 +7,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ChessAscent.Api\ChessAscent.Api.csproj" />
+    <!--
+      The engine tests start the fake engine as a child process. Referencing
+      it builds it first and copies it, with its runtime configuration, next
+      to the tests, where FakeEngine finds it.
+    -->
+    <ProjectReference Include="..\ChessAscent.FakeUciEngine\ChessAscent.FakeUciEngine.csproj" />
   </ItemGroup>
 
 </Project>

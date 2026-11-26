@@ -1,0 +1,15 @@
+<!--
+  A scripted stand-in for a chess engine, which the UCI client's tests start
+  as a child process. It is a .NET console program so that the tests need
+  nothing beyond the .NET SDK, on macOS and on Linux alike, and so that its
+  behaviour (slow, silent, crashing, flooding) is written in C# that the test
+  author can read, rather than in shell scripts that differ between
+  platforms. Program.cs lists the behaviours.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+</Project>
