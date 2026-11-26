@@ -8,6 +8,11 @@
 
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!--
+      NuGet otherwise lets a project pin its own version with VersionOverride,
+      which would bring back per-project versions.
+    -->
+    <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
   </PropertyGroup>
 
   <ItemGroup Label="Tests">

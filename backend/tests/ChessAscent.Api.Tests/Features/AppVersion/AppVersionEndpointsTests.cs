@@ -23,7 +23,8 @@ public sealed class AppVersionEndpointsTests(WebApplicationFactory<Program> fact
 
         var body = await GetVersionAsync();
 
-        body.Commit.Should().MatchRegex("^[0-9a-f]{40}$");
+        // A SHA-1 repository has 40-character commit ids, a SHA-256 one 64.
+        body.Commit.Should().MatchRegex("^([0-9a-f]{40}|[0-9a-f]{64})$");
     }
 
     private async Task<AppVersionResponse> GetVersionAsync()
