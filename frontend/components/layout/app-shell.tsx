@@ -12,7 +12,9 @@ type AppShellProps = {
 
 // The top bar and the page area below it. Signed out, the bar shows only the
 // product name. The bar's 1px top padding balances its 1px bottom border, so
-// its items centre on the full 56px as drawn. The spacer sits before the
+// its items centre on the full 56px as drawn; account-menu.tsx derives the
+// menu's offset from this height, so change the two together. The spacer
+// sits before the
 // links on phones, pushing them right with the account menu, and after them
 // from `md` up, where the links stay beside the product name.
 export function AppShell({ email, children }: AppShellProps) {

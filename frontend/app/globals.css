@@ -8,16 +8,16 @@
 /* The token file. Every colour, font family, text size, radius and shadow the
  * app uses is defined here, and components reach them only through the
  * utilities below (`bg-card`, `text-body-s`, `rounded-md`).
- * lib/hard-coded-styles.test.ts fails on a literal colour or font size
- * anywhere else, and on the stock Tailwind utilities removed below.
+ * lib/hard-coded-styles.test.ts fails on the common forms of a literal colour
+ * or font size elsewhere, and on the stock Tailwind utilities removed below;
+ * its header says what it cannot see.
  *
  * The colour, radius and font tokens are Psychic Homily's design system
  * (paper background, burnt-orange primary, sharp corners): light mode is
- * "newsprint", dark mode is "vinyl record shop". Left behind as specific to
- * that product: its sidebar colours and layout sizes, its graph edge colours,
- * its map and music-embed styles, its page-specific custom variants and
- * scroll padding for its fixed bars, the typography plugin, and the `--radius`
- * alias, which nothing here reads. */
+ * "newsprint", dark mode is "vinyl record shop". Left behind: its sidebar
+ * colours and layout sizes, graph edge colours, map and music-embed styles,
+ * custom variants (none is used here), scroll padding for its fixed bars, the
+ * typography plugin, and the `--radius` alias, which nothing here reads. */
 
 /* `dark:` utilities apply only under an element with the `dark` class, never
  * from the operating system's colour scheme. Nothing sets that class, so the
@@ -25,14 +25,19 @@
  * for when a theme is designed. */
 @custom-variant dark (&:is(.dark *));
 
-/* Tailwind's stock palette, radii, shadows and text sizes are removed, so the
- * scales below are the only ones. A removed utility (`text-white`,
- * `rounded-full`, `shadow-md`, `text-lg`) generates no CSS and no error, which
- * is why lib/hard-coded-styles.test.ts looks for them. */
+/* Tailwind's stock palette, radii, shadows (box, drop, inset and text) and
+ * text sizes are removed, so the scales below are the only ones. A removed
+ * utility (`text-white`, `rounded-2xl`, `shadow-md`, `text-lg`) generates no
+ * CSS and no error, which is why lib/hard-coded-styles.test.ts looks for
+ * them. `rounded-full` is not a theme value and still compiles; the test bans
+ * it, as the design system has no pill shapes. */
 @theme {
   --color-*: initial;
   --radius-*: initial;
   --shadow-*: initial;
+  --drop-shadow-*: initial;
+  --inset-shadow-*: initial;
+  --text-shadow-*: initial;
   --text-*: initial;
 }
 
