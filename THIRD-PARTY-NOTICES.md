@@ -14,13 +14,26 @@ Run as separate programs, or loaded as data. Not linked into Chess Ascent's own 
 |---|---|---|---|---|
 | | | | | |
 
+## Services
+
+Run as separate programs in containers. Not linked into Chess Ascent's own code.
+
+| Component | Version | Source | Licence | How it is used |
+|---|---|---|---|---|
+| PostgreSQL (`postgres` Docker image) | 18.7 | https://www.postgresql.org, image built from https://github.com/docker-library/postgres | PostgreSQL licence; the image's build files are MIT, and it is based on Debian, whose packages carry their own free-software licences | The database: `docker-compose.yml` for development and the API tests' container |
+
 ## Back-end libraries
 
 | Component | Source | Licence | How it is used |
 |---|---|---|---|
 | AwesomeAssertions | https://github.com/AwesomeAssertions/AwesomeAssertions | Apache-2.0 | Assertions in the test projects only |
 | ChessRealms.Engine | https://github.com/ChessRealms/Engine | MIT | The rules of chess (legal moves, FEN, SAN, PGN, game endings), used only inside `ChessAscent.Chess` behind its own interface. It has no dependencies of its own |
+| dotnet-ef | https://github.com/dotnet/efcore | MIT | Command-line tool that creates and checks migrations, pinned in `backend/dotnet-tools.json`; run by developers, not part of the application |
 | Microsoft.AspNetCore.Mvc.Testing | https://github.com/dotnet/aspnetcore | MIT | Runs the API in memory for the API tests (`WebApplicationFactory`); test projects only |
+| Microsoft.EntityFrameworkCore.Design | https://github.com/dotnet/efcore | MIT | Design-time services that `dotnet ef` loads from the API project to generate migrations; not published with the application. It brings in the Roslyn compiler packages, Humanizer.Core and Mono.TextTemplating (all MIT) |
+| Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore | https://github.com/dotnet/aspnetcore | MIT | The readiness check that the database answers (`AddDbContextCheck`) |
+| Npgsql.EntityFrameworkCore.PostgreSQL | https://github.com/npgsql/efcore.pg | PostgreSQL | EF Core provider for PostgreSQL. It brings in Npgsql (PostgreSQL licence), the PostgreSQL driver, and Microsoft.EntityFrameworkCore (MIT) |
+| Testcontainers.PostgreSql | https://github.com/testcontainers/testcontainers-dotnet | MIT | Starts a PostgreSQL container for the API tests; test projects only. It brings in Testcontainers, Docker.DotNet.Enhanced, SSH.NET and SharpZipLib (all MIT), and starts the `testcontainers/ryuk` image (MIT, https://github.com/testcontainers/moby-ryuk), which removes the test containers when a run ends |
 | xunit.v3 | https://github.com/xunit/xunit | Apache-2.0 | Test framework; test projects only. It brings in Microsoft.Testing.Platform (MIT), the test runner, and with it Microsoft.Testing.Extensions.Telemetry and Microsoft.ApplicationInsights (both MIT), which send usage telemetry to Microsoft on each test run unless `TESTINGPLATFORM_TELEMETRY_OPTOUT=1` or `DOTNET_CLI_TELEMETRY_OPTOUT=1` is set |
 
 ## Front-end libraries

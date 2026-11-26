@@ -1,3 +1,4 @@
+using ChessAscent.Api.Database;
 using ChessAscent.Api.Features.AppVersion;
 using ChessAscent.Api.Features.Health;
 
@@ -28,12 +29,20 @@ var builder = WebApplication.CreateBuilder(args);
 //
 // AddProblemDetails makes errors use the RFC 9457 "problem details" JSON
 // shape. AddHealthChecks registers the service that runs health checks.
+// AddDatabase registers the EF Core context for PostgreSQL and the readiness
+// check that the database answers.
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
+builder.Services.AddDatabase();
 
 // LEARN: Build() freezes the container: no services can be added after this
 // line. What comes next configures how requests are handled.
 var app = builder.Build();
+
+// LEARN: `await` at the top level makes the generated Main method async
+// (`static async Task Main`), so start-up can wait on I/O without blocking a
+// thread. The schema is brought up to date before the API accepts a request.
+await app.ApplyPendingMigrationsAsync();
 
 // LEARN: The middleware pipeline. Each Use... call adds a step that a request
 // passes through on the way in, and the response passes back through in
@@ -60,4 +69,4 @@ app.UseStatusCodePages();
 app.MapHealthEndpoints();
 app.MapAppVersionEndpoints();
 
-app.Run();
+await app.RunAsync();

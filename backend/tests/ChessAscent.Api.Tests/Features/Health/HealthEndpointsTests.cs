@@ -1,18 +1,10 @@
 using System.Net;
 using ChessAscent.Api.Features.Health;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace ChessAscent.Api.Tests.Features.Health;
 
-// LEARN: WebApplicationFactory<Program> starts the real application from
-// Program.cs, with its real services and middleware, on an in-memory server,
-// and CreateClient() returns an HttpClient wired straight to it. It is the
-// counterpart of @SpringBootTest with MockMvc or TestRestTemplate: no port is
-// opened and no network is involved, but every request goes through the full
-// pipeline.
-//
 // LEARN: IClassFixture<T> is xUnit's shared setup. xUnit creates a new
 // instance of this class for every test (as JUnit 5 does by default), so the
 // constructor is per-test setup. A class fixture is created once for all the
@@ -23,8 +15,7 @@ namespace ChessAscent.Api.Tests.Features.Health;
 // `factory` is in scope in every member, so there is no field to declare and
 // no constructor body to write; Java records do the same, but only for
 // records.
-public sealed class HealthEndpointsTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class HealthEndpointsTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     [Theory]
     [InlineData("/health")]

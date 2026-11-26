@@ -16,15 +16,27 @@ Not playable yet. Each part gains its instructions as the first release is built
 
 ### Back end
 
-Needs the [.NET 11 SDK](https://dotnet.microsoft.com/download/dotnet/11.0), version 11.0.100 or a later 11.0 release. From `backend/`:
+Needs the [.NET 11 SDK](https://dotnet.microsoft.com/download/dotnet/11.0), version 11.0.100 or a later 11.0 release, and Docker.
+
+The API stores its data in PostgreSQL 18 (the `postgres:18.7` image). From the repository root, start it with:
+
+```sh
+docker compose up -d                         # PostgreSQL on 127.0.0.1:5540
+```
+
+The user, password and database in `docker-compose.yml` only work against that local container. To use another host port, set `CHESS_ASCENT_DB_PORT` before `docker compose up` and give the API a matching connection string in `Database__ConnectionString`. `docker compose down` stops the database; add `--volumes` to delete its data.
+
+Then, from `backend/`:
 
 ```sh
 dotnet build                                 # build; any warning fails it
-dotnet test                                  # run the tests
-dotnet run --project src/ChessAscent.Api     # serve the API on http://localhost:5100
+dotnet test                                  # run the tests; starts its own PostgreSQL container
+dotnet run --project src/ChessAscent.Api     # apply migrations, then serve the API on http://localhost:5100
 ```
 
-With the API running, `curl http://localhost:5100/health` answers `Healthy` and `curl http://localhost:5100/version` returns the version and the git commit it was built from.
+With the API running, `curl http://localhost:5100/health` answers `Healthy`, `curl http://localhost:5100/health/ready` answers `Healthy` while the database is reachable and `Unhealthy` with status 503 when it is not, and `curl http://localhost:5100/version` returns the version and the git commit it was built from.
+
+Migrations use the `dotnet-ef` tool, pinned in `backend/dotnet-tools.json`. Run `dotnet tool restore` once, then `dotnet ef migrations add <Name> --project src/ChessAscent.Api --output-dir Database/Migrations` to add one.
 
 The `dotnet` CLI and the test runner send usage telemetry to Microsoft. Set `DOTNET_CLI_TELEMETRY_OPTOUT=1` to turn it off.
 

@@ -1,0 +1,6 @@
+# `dotnet ef migrations add` names each migration class after its id, such as
+# _20261126230436_InitialCreate, so the leading underscore and the one before
+# the name are the tool's, not ours. Every other rule still applies here,
+# because a migration is sometimes edited by hand.
+[*.cs]
+dotnet_diagnostic.CA1707.severity = none

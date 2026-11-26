@@ -35,12 +35,19 @@ Each ticket that adds a command adds it under the matching heading below.
 
 ### Back end
 
+From the repo root, with Docker running:
+
+- `docker compose up -d`: starts PostgreSQL 18 for development on `127.0.0.1:5540`. Set `CHESS_ASCENT_DB_PORT` to use another host port, and then point the API at it with `Database__ConnectionString` (below). `docker compose down` stops it and keeps the data; `docker compose down --volumes` deletes the data too.
+
 From `backend/`, with the .NET 11 SDK (`backend/global.json` pins 11.0.100 and accepts later 11.0 feature bands):
 
 - `dotnet build`: builds the solution. Any warning, analyzer finding or code-style violation fails it.
-- `dotnet test`: runs every test project on Microsoft.Testing.Platform. The `dotnet` CLI and the test platform send usage telemetry to Microsoft unless `DOTNET_CLI_TELEMETRY_OPTOUT=1` is set.
+- `dotnet test`: runs every test project on Microsoft.Testing.Platform. Needs Docker: the API tests start their own PostgreSQL container with Testcontainers and never use the Compose database. The `dotnet` CLI and the test platform send usage telemetry to Microsoft unless `DOTNET_CLI_TELEMETRY_OPTOUT=1` is set.
 - `dotnet format --verify-no-changes`: fails on formatting or code-style drift. `dotnet format` fixes it.
-- `dotnet run --project src/ChessAscent.Api`: serves the API on `http://localhost:5100` in the Development environment. Add `-- --urls http://localhost:<port>` for another port. Endpoints: `GET /health` (liveness), `GET /health/ready` (readiness), `GET /version`.
+- `dotnet run --project src/ChessAscent.Api`: serves the API on `http://localhost:5100` in the Development environment. Add `-- --urls http://localhost:<port>` for another port. It applies pending migrations before it serves anything, and exits if it cannot reach the database. It reads the connection string from `Database:ConnectionString`: `appsettings.Development.json` holds the one for the Compose database, and the environment variable `Database__ConnectionString` overrides it. Endpoints: `GET /health` (liveness: 200 whenever the process serves, database or not), `GET /health/ready` (readiness: 503 when the database does not answer), `GET /version`.
+- `dotnet tool restore`: installs `dotnet-ef` at the version in `dotnet-tools.json`. Needed once per clone before the two commands below.
+- `dotnet ef migrations add <Name> --project src/ChessAscent.Api --output-dir Database/Migrations`: generates a migration from the change to the model. Run `dotnet format` afterwards.
+- `dotnet ef migrations has-pending-model-changes --project src/ChessAscent.Api`: fails if the model has changed without a migration to match.
 - `grep -rn "LEARN:" .`: lists the teaching comments.
 
 ### Front end
