@@ -40,7 +40,7 @@ bun run dev
 
 The app is then at http://localhost:3000. The checks are `bun run typecheck`, `bun run lint`, `bun run test` and `bun run build`.
 
-The scripts turn off Next.js telemetry (`NEXT_TELEMETRY_DISABLED=1`), and `frontend/bunfig.toml` turns off Bun's crash reports. One outside request remains: outside CI, `next dev` (and `next build`, when run in a terminal) asks the npm registry whether the installed Next.js version has a published security advisory, sending only that version number.
+The scripts turn off Next.js telemetry (`NEXT_TELEMETRY_DISABLED=1`), `frontend/bunfig.toml` turns off Bun's crash reports, and `frontend/next.config.ts` turns off Next.js agent feedback. One outside request remains: outside CI, `next dev` (and `next build`, when run in a terminal or by a coding agent) asks the npm registry whether the installed Next.js version has a published security advisory, sending only that version number. This is Next.js's `experimental.agentUpgrade` setting, left at its default.
 
 ### Chess engines
 

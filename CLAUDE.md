@@ -58,7 +58,7 @@ From `frontend/`:
 | `bun run format` / `bun run format:check` | Prettier: rewrite, or check only |
 
 - Bun installs packages and runs scripts; Next.js and Vitest themselves run on Node. Never add `bun --bun`.
-- Run Next.js through these scripts, not `bunx next`: the scripts set `NEXT_TELEMETRY_DISABLED=1`. `frontend/bunfig.toml` turns off Bun's crash reports, and `experimental.agentFeedback` is off in `next.config.ts`. Outside CI, `next dev` (and `next build`, when run in a terminal or by an agent) still sends the installed Next.js version to the npm registry's security-advisory endpoint (`experimental.agentUpgrade`, default `'security'`).
+- Run Next.js through these scripts, not `bunx next`: they set `NEXT_TELEMETRY_DISABLED=1`. `README.md` ("Run locally", "Front end") says what the front end does and does not send to outside services.
 - `bun add` pins exact versions (`bunfig.toml`). Record a new direct dependency in `THIRD-PARTY-NOTICES.md`.
 - The docs for the installed Next.js version are in `frontend/node_modules/next/dist/docs/` (see `frontend/AGENTS.md`, which `next dev` maintains).
 

@@ -4,9 +4,9 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   experimental: {
-    // Off explicitly so that no agent is told to prepare reports for the
-    // Next.js team. It is also inert while telemetry is off, which the
-    // package.json scripts ensure.
+    // Stated explicitly so that agents are never told to prepare reports for
+    // the Next.js team, even for someone who runs `next dev` outside the
+    // package.json scripts with telemetry on.
     agentFeedback: false,
   },
   turbopack: {

@@ -1,10 +1,5 @@
-# Prettier reads ignore files only from the directory it runs in, so the
-# repository's .gitignore does not apply here. Build output and generated
-# files are listed again.
-.next/
-out/
-coverage/
-next-env.d.ts
+# Build output and generated files are skipped through the repository's
+# .gitignore, which the format scripts pass with --ignore-path.
 
 # Written and rewritten by `next dev`; formatting it would only cause churn.
 AGENTS.md
