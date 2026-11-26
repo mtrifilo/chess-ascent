@@ -191,6 +191,56 @@ public sealed class UciEngineFailureTests
         await setOption.Should().ThrowExactlyAsync<UciEngineExitedException>();
     }
 
+    // A process that dies is reported as exited on every path through the
+    // client, never as a timeout or as the caller's cancellation, so that
+    // whoever owns the engine knows to replace it. Each case names the call
+    // and the command the fake dies on.
+    [Theory]
+    [InlineData("start", "uci")]
+    [InlineData("start", "isready")]
+    [InlineData("set option", "setoption")]
+    [InlineData("search", "position")]
+    [InlineData("search", "go")]
+    [InlineData("search that times out", "stop")]
+    [InlineData("search that is cancelled", "stop")]
+    public async Task EngineThatDiesIsReportedAsExitedOnEveryPath(string call, string diesOn)
+    {
+        using var fake = new FakeEngine("--exit-on", diesOn, "--exit-code", "5", "--search-ms", "30000");
+        fake.Options = fake.Options with { SearchTimeout = TimeSpan.FromMilliseconds(300) };
+        using var cancel = new CancellationTokenSource();
+        UciEngine? engine = null;
+        Func<Task> act = call switch
+        {
+            "start" => async () => engine = await fake.StartAsync(),
+            "set option" => async () => await (engine = await fake.StartAsync()).SetOptionAsync("Skill Level", "1", Token),
+            "search" or "search that times out" => async () => await (engine = await fake.StartAsync()).SearchAsync(Start, Depth1, Token),
+            "search that is cancelled" => async () =>
+            {
+                engine = await fake.StartAsync();
+                cancel.CancelAfter(TimeSpan.FromMilliseconds(100));
+                await engine.SearchAsync(Start, Depth1, cancel.Token);
+            }
+            ,
+            _ => throw new ArgumentOutOfRangeException(nameof(call)),
+        };
+
+        try
+        {
+            (await act.Should().ThrowExactlyAsync<UciEngineExitedException>()).Which.ExitCode.Should().Be(5);
+            if (engine is not null)
+            {
+                engine.IsUsable.Should().BeFalse();
+            }
+        }
+        finally
+        {
+            if (engine is not null)
+            {
+                await engine.DisposeAsync();
+            }
+        }
+    }
+
     [Fact]
     public async Task EngineKilledFromOutsideIsReportedAsExited()
     {
