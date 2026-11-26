@@ -5,6 +5,7 @@ Thumbs.db
 # Editors
 .idea/
 .vscode/
+.vs/
 *.swp
 *.suo
 *.user
@@ -26,9 +27,15 @@ secrets.json
 DataProtection-Keys/
 
 # Database dumps and local database files. A dump of the accounts tables
-# holds emails and password hashes. To commit a seed script on purpose, add
-# a narrow exception for that one file.
-*.sql
+# holds emails and password hashes. Dumps are matched by name and by where
+# they usually land, not by the .sql extension, because SQL the app needs
+# (a Compose init script, SQL read by a migration) must stay tracked.
+*dump*.sql
+*backup*.sql
+/*.sql
+/backend/*.sql
+dumps/
+backups/
 *.dump
 *.backup
 *.sqlite*
@@ -42,6 +49,8 @@ postgres-data/
 bin/
 obj/
 /backend/artifacts/
+efbundle
+efbundle.exe
 TestResults/
 *.trx
 *.cobertura.xml
@@ -49,6 +58,7 @@ TestResults/
 # Node and Bun
 node_modules/
 .next/
+next-env.d.ts
 /frontend/out/
 /frontend/coverage/
 *.tsbuildinfo
@@ -68,6 +78,10 @@ test-results/
 *.safetensors
 *.pb.gz
 *.nnue
+
+# Python environments and caches, wherever they are created
+.venv/
+venv/
 __pycache__/
 
 # Local agent state and per-machine instructions
