@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { reloadPage } from '@/lib/page-load'
 import {
   answer,
+  type Reply,
   renderWithQueries,
   routerWith,
   SIGNED_OUT,
@@ -17,6 +18,9 @@ vi.mock('next/navigation', () => ({ useRouter: vi.fn() }))
 vi.mock('@/lib/page-load', () => ({ reloadPage: vi.fn(), loadPage: vi.fn() }))
 
 const replace = vi.fn()
+
+// Lets React render what a settled query changed, and run its effects.
+const rendered = () => new Promise(resolve => setTimeout(resolve, 0))
 
 beforeEach(() => {
   replace.mockReset()
@@ -60,10 +64,12 @@ describe('RequireAccount', () => {
 
     answer({ '/api/auth/me': SIGNED_OUT })
     await queryClient.refetchQueries()
+    await rendered()
 
     expect(reloadPage).toHaveBeenCalledOnce()
     // The reload alone moves the visitor on; no client-side redirect races it.
     expect(replace).not.toHaveBeenCalled()
+    expect(screen.getByText('My games')).toBeInTheDocument()
   })
 
   it('loads the page afresh when another account has signed in meanwhile', async () => {
@@ -75,8 +81,35 @@ describe('RequireAccount', () => {
 
     answer({ '/api/auth/me': signedInAs('b@example.com') })
     await queryClient.refetchQueries()
+    await rendered()
 
     expect(reloadPage).toHaveBeenCalledOnce()
+    expect(replace).not.toHaveBeenCalled()
+    expect(screen.getByText('My games')).toBeInTheDocument()
+  })
+
+  it('ignores the answer to a session check that was cancelled', async () => {
+    answer({ '/api/auth/me': signedInAs('a@example.com') })
+    const { queryClient } = renderWithQueries(
+      <RequireAccount>My games</RequireAccount>
+    )
+    await screen.findByText('My games')
+
+    let release: (reply: Reply) => void = () => {}
+    answer({
+      '/api/auth/me': new Promise<Reply>(resolve => {
+        release = resolve
+      }),
+    })
+    const refetched = queryClient.refetchQueries()
+    await queryClient.cancelQueries({ queryKey: ['session'] })
+    release(SIGNED_OUT)
+    await refetched
+    await rendered()
+
+    expect(reloadPage).not.toHaveBeenCalled()
+    expect(replace).not.toHaveBeenCalled()
+    expect(screen.getByText('My games')).toBeInTheDocument()
   })
 
   it('stays put when a refresh finds the same account', async () => {
@@ -87,6 +120,7 @@ describe('RequireAccount', () => {
     await screen.findByText('My games')
 
     await queryClient.refetchQueries()
+    await rendered()
 
     expect(reloadPage).not.toHaveBeenCalled()
   })
