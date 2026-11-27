@@ -1,0 +1,92 @@
+{
+  "openapi": "3.1.2",
+  "info": {
+    "title": "ChessAscent.Api | v1",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/version": {
+      "get": {
+        "tags": [
+          "ChessAscent.Api"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppVersionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "summary": "Whether the API is ready to serve: every readiness check passes.",
+        "responses": {
+          "200": {
+            "description": "The overall status is Healthy or Degraded.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "enum": [
+                    "Healthy",
+                    "Degraded"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The overall status is Unhealthy.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "enum": [
+                    "Unhealthy"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AppVersionResponse": {
+        "required": [
+          "version",
+          "commit"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "description": "The application version, such as `0.1.0`."
+          },
+          "commit": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "The git commit checked out when the API was built, or `null` when the\nbuild had no git metadata to read (for example, a source archive). It does\nnot show whether the working tree had uncommitted changes."
+          }
+        },
+        "description": "The body of `GET /version`."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "ChessAscent.Api"
+    }
+  ]
+}

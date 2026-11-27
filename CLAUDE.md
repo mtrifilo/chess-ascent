@@ -45,7 +45,7 @@ From `backend/`, with the .NET 11 SDK (`backend/global.json` pins 11.0.100 and a
 - `dotnet test`: runs every test project on Microsoft.Testing.Platform. Needs Docker: the API tests start their own PostgreSQL container with Testcontainers and never use the Compose database. While they run, Docker publishes those containers' ports (and that of Testcontainers' clean-up container, Ryuk) on every network interface, as Testcontainers does by default; each test database gets a random password. The `dotnet` CLI and the test platform send usage telemetry to Microsoft unless `DOTNET_CLI_TELEMETRY_OPTOUT=1` is set.
 - `dotnet format --verify-no-changes`: fails on formatting or code-style drift. `dotnet format` fixes it.
 - `dotnet test --project tests/ChessAscent.Chess.Tests --explicit only --filter-trait "Category=Slow" --parallel all`: the slow tier of the rules tests, which `dotnet test` leaves out: perft to depth 5 on the six standard positions, and the check that every unlisted move is refused at every position of the random games (the normal run checks every tenth). `--parallel all` runs them side by side; even so it takes about three and a half minutes on a 10-core machine, most of it perft from Kiwipete.
-- `dotnet run --project src/ChessAscent.Api`: serves the API on `http://localhost:5100` in the Development environment. Add `-- --urls http://localhost:<port>` for another port. It applies pending migrations before it serves anything, and exits if it cannot reach the database. It reads the connection string named `ChessAscent` (`ConnectionStrings:ChessAscent`): `appsettings.Development.json` holds the one for the Compose database, and the environment variable `ConnectionStrings__ChessAscent` overrides it. Without one, it exits at start-up with a message naming that variable. Endpoints: `GET /health` (liveness: 200 whenever the process serves, database or not), `GET /health/ready` (readiness: 503 when the database does not accept a connection within 3 seconds), `GET /version`.
+- `dotnet run --project src/ChessAscent.Api`: serves the API on `http://localhost:5100` in the Development environment. Add `-- --urls http://localhost:<port>` for another port. It applies pending migrations before it serves anything, and exits if it cannot reach the database. It reads the connection string named `ChessAscent` (`ConnectionStrings:ChessAscent`): `appsettings.Development.json` holds the one for the Compose database, and the environment variable `ConnectionStrings__ChessAscent` overrides it. Without one, it exits at start-up with a message naming that variable. Endpoints: `GET /health` (liveness: 200 whenever the process serves, database or not), `GET /health/ready` (readiness: 503 when the database does not accept a connection within 3 seconds), `GET /version`. In Development only, it also serves its OpenAPI document at `/openapi/v1.json` and the Scalar API explorer at `/scalar`.
 - `dotnet tool restore`: installs `dotnet-ef` at the version in `dotnet-tools.json`. Needed once per clone before the two commands below.
 - `dotnet ef migrations add <Name> --project src/ChessAscent.Api --output-dir Database/Migrations`: generates a migration from the change to the model. Run `dotnet format` afterwards.
 - `dotnet ef migrations has-pending-model-changes --project src/ChessAscent.Api`: fails if the model has changed without a migration to match.
@@ -65,6 +65,7 @@ From `frontend/`:
 | `bun run build` | Production build |
 | `bun run start` | Serves the production build on all network interfaces, as a host needs |
 | `bun run format` / `bun run format:check` | Prettier: rewrite, or check only |
+| `bun run api:types` | Runs `scripts/gen-api-types.sh` (see "Both together") |
 
 - Bun installs packages and runs scripts; Next.js and Vitest themselves run on Node. Never add `bun --bun`.
 - `bun test` is Bun's own test runner, not this project's: it runs the tests without jsdom and they fail. Use `bun run test`.
@@ -76,4 +77,10 @@ From `frontend/`:
 
 ### Both together
 
-Nothing yet.
+The front end calls the API through types generated from the API's OpenAPI document, so the C# endpoint and response types are the one source of the contract.
+
+- `scripts/gen-api-types.sh` (or `bun run api:types` from `frontend/`): rebuilds the API with build-time OpenAPI generation, writes `backend/openapi/ChessAscent.Api.json` (OpenAPI 3.1), then `frontend/types/api.d.ts` from it with `openapi-typescript`. Both files are committed. It needs the .NET SDK and `bun install`, and no database or running server. Run it in the same PR as any change to an endpoint's route, parameters or response types; on a clean tree it leaves no diff.
+- The build-time generator runs `Program.cs` with a stand-in server. Start-up code that needs the outside world, such as the database migration, checks `ApiDocumentServices.IsBuildTimeGeneration` and skips itself.
+- Endpoints that the generator cannot describe from their C# types are added to the document by hand with a document transformer, as `Features/Health/HealthApiDescription.cs` does for `GET /health/ready`.
+- `frontend/lib/api.ts` is the typed client (`openapi-fetch`). It calls `/api/...` on the web app's own origin. In development, `next.config.ts` rewrites `/api/*` to the API at `CHESS_ASCENT_API_URL` (default `http://localhost:5100`, the `dotnet run` port), so the browser never calls the API's port directly. `next build` has no such rewrite. To change the address, copy `frontend/.env.example` to `frontend/.env.local`, or set the variable in the shell.
+- To run both: start the database and `dotnet run --project src/ChessAscent.Api` in `backend/`, then `bun run dev` in `frontend/`. The home page shows the API's readiness and version.

@@ -1,3 +1,4 @@
+using ChessAscent.Api.ApiDocument;
 using ChessAscent.Api.Database;
 using ChessAscent.Api.Features.AppVersion;
 using ChessAscent.Api.Features.Health;
@@ -30,10 +31,12 @@ var builder = WebApplication.CreateBuilder(args);
 // AddProblemDetails makes errors use the RFC 9457 "problem details" JSON
 // shape. AddHealthChecks registers the service that runs health checks.
 // AddDatabase registers the EF Core context for PostgreSQL and the readiness
-// check that the database answers.
+// check that the database answers. AddApiDocument registers the OpenAPI
+// document that describes the endpoints below.
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
 builder.Services.AddDatabase();
+builder.Services.AddApiDocument();
 
 // LEARN: Build() freezes the container: no services can be added after this
 // line. What comes next configures how requests are handled.
@@ -44,8 +47,12 @@ var app = builder.Build();
 // It does not free the main thread: the compiler's real entry point waits on
 // that Task until the application stops, as app.Run() would. The schema is
 // brought up to date before the API accepts a request, and if the database
-// cannot be reached the exception ends the process here.
-await app.ApplyPendingMigrationsAsync();
+// cannot be reached the exception ends the process here. The build-time
+// OpenAPI generator also runs this file, and must not need a database.
+if (!ApiDocumentServices.IsBuildTimeGeneration)
+{
+    await app.ApplyPendingMigrationsAsync();
+}
 
 // LEARN: The middleware pipeline. Each Use... call adds a step that a request
 // passes through on the way in, and the response passes back through in
@@ -71,5 +78,6 @@ app.UseStatusCodePages();
 // table of contents rather than a list of handlers.
 app.MapHealthEndpoints();
 app.MapAppVersionEndpoints();
+app.MapApiDocumentInDevelopment();
 
 await app.RunAsync();

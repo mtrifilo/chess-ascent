@@ -1,6 +1,22 @@
 import type { NextConfig } from 'next'
 
+// The back end's address, as `dotnet run` serves it unless told otherwise.
+// .env.example shows how to point the development server elsewhere.
+const apiUrl = process.env.CHESS_ASCENT_API_URL ?? 'http://localhost:5100'
+
 const nextConfig: NextConfig = {
+  // In development the browser calls the API at this app's own origin, under
+  // /api, and the development server forwards each request to the back end
+  // with the prefix removed. So the browser sees one origin: no cross-origin
+  // requests, and cookies the API sets belong to this app. `next build` reads
+  // this too, and gets no rewrite: how a deployment reaches the API is
+  // decided with the deployment.
+  async rewrites() {
+    if (process.env.NODE_ENV !== 'development') {
+      return []
+    }
+    return [{ source: '/api/:path*', destination: `${apiUrl}/:path*` }]
+  },
   // Cache Components, create-next-app's recommended caching model: data is
   // cached only where code opts in with 'use cache', and a component that
   // reads request data (cookies, uncached fetches) goes inside <Suspense>.

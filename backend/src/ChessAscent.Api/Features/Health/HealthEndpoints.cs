@@ -15,6 +15,12 @@ public static class HealthEndpoints
     /// </summary>
     public const string ReadinessTag = "ready";
 
+    private const string GroupPrefix = "/health";
+    private const string ReadinessRoute = "/ready";
+
+    /// <summary>The readiness endpoint's path.</summary>
+    public const string ReadinessPath = GroupPrefix + ReadinessRoute;
+
     // LEARN: These are ASP.NET Core's built-in health checks, the counterpart
     // of Spring Boot Actuator's liveness and readiness groups. A health check
     // is a service registered with AddHealthChecks(). Each endpoint runs the
@@ -28,7 +34,7 @@ public static class HealthEndpoints
         // LEARN: MapGroup is the counterpart of a class-level @RequestMapping:
         // every route mapped on the group starts with its prefix, and the
         // group can carry shared settings (authorization, filters) later.
-        var health = endpoints.MapGroup("/health");
+        var health = endpoints.MapGroup(GroupPrefix);
 
         // Liveness runs no checks: it answers 200 whenever the process can
         // serve a request, so a failing dependency never gets a healthy
@@ -40,11 +46,18 @@ public static class HealthEndpoints
 
         // Readiness runs every check tagged as a readiness check. With none
         // registered it answers 200.
-        health.MapHealthChecks("/ready", new HealthCheckOptions
-        {
-            Predicate = check => check.Tags.Contains(ReadinessTag),
-        });
+        health.MapHealthChecks(ReadinessRoute, ReadinessOptions());
 
         return endpoints;
     }
+
+    /// <summary>
+    /// The readiness endpoint's options, a new instance on each call. The
+    /// endpoint and its description in the OpenAPI document both read them,
+    /// so the status codes the document lists are the ones it answers with.
+    /// </summary>
+    internal static HealthCheckOptions ReadinessOptions() => new()
+    {
+        Predicate = check => check.Tags.Contains(ReadinessTag),
+    };
 }

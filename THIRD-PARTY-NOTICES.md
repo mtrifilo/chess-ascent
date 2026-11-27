@@ -29,9 +29,12 @@ Run as separate programs in containers. Not linked into Chess Ascent's own code.
 | AwesomeAssertions | https://github.com/AwesomeAssertions/AwesomeAssertions | Apache-2.0 | Assertions in the test projects only |
 | ChessRealms.Engine | https://github.com/ChessRealms/Engine | MIT | The rules of chess (legal moves, FEN, SAN, PGN, game endings), used only inside `ChessAscent.Chess` behind its own interface. It has no dependencies of its own |
 | dotnet-ef | https://github.com/dotnet/efcore | MIT | Command-line tool that creates and checks migrations, pinned in `backend/dotnet-tools.json`; run by developers, not part of the application |
+| Microsoft.AspNetCore.OpenApi | https://github.com/dotnet/aspnetcore | MIT | Describes the API's endpoints as an OpenAPI document, served at `/openapi/v1.json` in Development. It brings in Microsoft.OpenApi (MIT, https://github.com/microsoft/OpenAPI.NET), the document model |
 | Microsoft.AspNetCore.Mvc.Testing | https://github.com/dotnet/aspnetcore | MIT | Runs the API in memory for the API tests (`WebApplicationFactory`); test projects only |
 | Microsoft.EntityFrameworkCore.Design | https://github.com/dotnet/efcore | MIT | Design-time services that `dotnet ef` loads from the API project to generate migrations; not published with the application. It brings in the Roslyn compiler packages, Microsoft.Build.Framework, Humanizer.Core and Mono.TextTemplating (all MIT) |
+| Microsoft.Extensions.ApiDescription.Server | https://github.com/dotnet/aspnetcore | MIT | Build tool that generates the OpenAPI document when `scripts/gen-api-types.sh` asks for it; not part of the application |
 | Npgsql.EntityFrameworkCore.PostgreSQL | https://github.com/npgsql/efcore.pg | PostgreSQL | EF Core provider for PostgreSQL. It brings in Npgsql (PostgreSQL licence), the PostgreSQL driver, which the readiness check also uses directly, and Microsoft.EntityFrameworkCore (MIT) |
+| Scalar.AspNetCore | https://github.com/scalar/scalar | MIT | The API explorer at `/scalar`, in Development only. The package carries Scalar's API reference web page and its script inside itself and serves them from the API; its telemetry and AI chat are turned off |
 | Testcontainers.PostgreSql | https://github.com/testcontainers/testcontainers-dotnet | MIT | Starts a PostgreSQL container for the API tests; test projects only. It brings in Testcontainers, Docker.DotNet.Enhanced, Docker.DotNet.Enhanced.X509, SSH.NET, BouncyCastle.Cryptography and SharpZipLib (all MIT), and starts the `testcontainers/ryuk` image (MIT, https://github.com/testcontainers/moby-ryuk), which removes the test containers when a run ends |
 | xunit.v3 | https://github.com/xunit/xunit | Apache-2.0 | Test framework; test projects only. It brings in Microsoft.Testing.Platform (MIT), the test runner, and with it Microsoft.Testing.Extensions.Telemetry and Microsoft.ApplicationInsights (both MIT), which send usage telemetry to Microsoft on each test run unless `TESTINGPLATFORM_TELEMETRY_OPTOUT=1` or `DOTNET_CLI_TELEMETRY_OPTOUT=1` is set |
 
@@ -63,6 +66,8 @@ Runtime libraries, or code generated from them, ship to the browser or run in th
 | tailwind-merge | https://github.com/dcastil/tailwind-merge | MIT | Runtime: resolves conflicting Tailwind classes (`cn`) |
 | Lucide (`lucide-react`) | https://github.com/lucide-icons/lucide | ISC; the icons derived from Feather, which include `check`, `chevron-down`, `chevron-right` and `circle`, are MIT | Runtime: icons |
 | tw-animate-css | https://github.com/Wombosvideo/tw-animate-css | MIT | Runtime: the open and close animations of the dropdown menu, compiled into the served stylesheet |
+| openapi-fetch | https://github.com/openapi-ts/openapi-typescript | MIT | Runtime: the typed API client (`frontend/lib/api.ts`). It brings in openapi-typescript-helpers (MIT) |
+| openapi-typescript | https://github.com/openapi-ts/openapi-typescript | MIT | Development: generates `frontend/types/api.d.ts` from the API's OpenAPI document. It brings in Redocly's `@redocly/openapi-core` (MIT) and small utilities under MIT, ISC, Apache-2.0 (`yaml-ast-parser`) and MIT-or-CC0 (`type-fest`) |
 | `@testing-library/jest-dom` | https://github.com/testing-library/jest-dom | MIT | Development: DOM assertions in component tests (`toBeInTheDocument`, `toHaveClass`) |
 
 ## Code adapted from other projects
