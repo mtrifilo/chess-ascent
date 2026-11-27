@@ -32,7 +32,10 @@ public static class MaiaInstallation
     /// defaults that every other configuration source overrides.
     /// </summary>
     /// <param name="configuration">The application's configuration, which already holds the environment variables.</param>
-    /// <exception cref="InvalidOperationException"><see cref="EnginesDirectorySetting"/> is set to a relative path.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// <see cref="EnginesDirectorySetting"/> is set to a relative path, or is
+    /// not set when the API is not running from a checkout of the repository.
+    /// </exception>
     /// <param name="contentRootPath">
     /// The API's content root. When <see cref="EnginesDirectorySetting"/> is
     /// not set, the engines directory is <c>engines/</c> three levels above
@@ -54,17 +57,29 @@ public static class MaiaInstallation
         configuration.Sources.Insert(0, new MemoryConfigurationSource { InitialData = PoolSettings(enginesDirectory) });
     }
 
-    /// <summary>The engines directory, as a full path: the one given, or <c>engines/</c> three levels above the content root.</summary>
+    /// <summary>
+    /// The engines directory, as a full path: the one given, or <c>engines/</c>
+    /// at the repository root, three levels above the content root.
+    /// </summary>
     /// <exception cref="InvalidOperationException">
-    /// The path given is relative. The set-up script would read it against
+    /// The path given is relative: the set-up script would read it against
     /// the shell's directory and the API against its own, which differ, so
-    /// both refuse it.
+    /// both refuse it. Or none is given and the API is not running from a
+    /// checkout of the repository: three levels above a published
+    /// application could be anywhere, a shared directory such as /tmp
+    /// included, and the API would run whatever program it found there.
     /// </exception>
     internal static string EnginesDirectory(string? given, string contentRootPath)
     {
         if (string.IsNullOrWhiteSpace(given))
         {
-            return Path.GetFullPath(Path.Combine(contentRootPath, "..", "..", "..", "engines"));
+            var root = Path.GetFullPath(Path.Combine(contentRootPath, "..", "..", ".."));
+            return File.Exists(Path.Combine(root, "scripts", "setup-maia.sh"))
+                ? Path.Combine(root, "engines")
+                : throw new InvalidOperationException(
+                    $"{EnginesDirectorySetting} is not set, and the API is not running from a checkout of the repository "
+                    + "(there is no scripts/setup-maia.sh three levels above its content root). "
+                    + $"Set {EnginesDirectorySetting} to the full path of the directory that scripts/setup-maia.sh installed Maia into.");
         }
 
         return Path.IsPathFullyQualified(given)

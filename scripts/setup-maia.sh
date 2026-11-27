@@ -36,6 +36,17 @@ ENGINES="${CHESS_ASCENT_ENGINES_DIR:-$ROOT/engines}"
 say() { echo "setup-maia: $*"; }
 fail() { echo "setup-maia: $*" >&2; exit 1; }
 
+# The user's own Python, pip and Hugging Face settings would change what is
+# installed and from where: a module path, an extra package index, another
+# cache, server, token or offline switch. All of them are dropped, whatever
+# their names, and pip is told to read no configuration file.
+for variable in $(compgen -e); do
+  case "$variable" in
+    PYTHON* | PIP_* | HF_* | HUGGINGFACE_* | HUGGING_FACE_* | TRANSFORMERS_*) unset "$variable" ;;
+  esac
+done
+export PIP_CONFIG_FILE=/dev/null
+
 # A relative path would be read against this shell's directory here, and
 # against the API's working directory by the API, which differ.
 case "$ENGINES" in
@@ -49,11 +60,11 @@ PYTHON="$VENV/bin/python"
 HF_CACHE="$MAIA/huggingface"
 
 # PyTorch 2.15.0 publishes macOS packages for Apple Silicon and macOS 14 or
-# later only.
+# later only, so on macOS the Python must be an Apple Silicon build too (see
+# in_range).
 case "$(uname -s)" in
   Darwin)
     OS=macos
-    [ "$(uname -m)" = arm64 ] || fail "on macOS, PyTorch needs an Apple Silicon Mac"
     [ "$(sw_vers -productVersion | cut -d. -f1)" -ge 14 ] || fail "on macOS, PyTorch needs macOS 14 or later"
     ;;
   Linux) OS=linux ;;
@@ -63,8 +74,11 @@ command -v git >/dev/null || fail "git is needed to fetch Maia-3; install it and
 
 # 3.12 to 3.14: Maia-3 needs 3.10 or later, and every pinned package has
 # wheels for these. 3.13 is the version Maia was measured with, so it is
-# tried first.
-in_range() { "$1" -I -c 'import sys; sys.exit(not (3, 12) <= sys.version_info[:2] <= (3, 14))' 2>/dev/null; }
+# tried first. On macOS the interpreter itself must run as arm64: an Intel
+# build, under Rosetta, would find no PyTorch package.
+in_range() {
+  "$1" -I -c 'import platform, sys; sys.exit(not ((3, 12) <= sys.version_info[:2] <= (3, 14) and (sys.platform != "darwin" or platform.machine() == "arm64")))' 2>/dev/null
+}
 
 find_python() {
   local candidate
@@ -88,7 +102,7 @@ else
     say "the environment in $VENV no longer works; making it again"
     rm -rf "$VENV"
   fi
-  BASE_PYTHON="$(find_python)" || fail "no Python 3.12, 3.13 or 3.14 was found on PATH (as python3.13, python3.12, python3.14 or python3); install one and run this again"
+  BASE_PYTHON="$(find_python)" || fail "no Python 3.12, 3.13 or 3.14 (on macOS, an Apple Silicon build) was found on PATH as python3.13, python3.12, python3.14 or python3; install one and run this again"
   say "making the environment with $BASE_PYTHON ($("$BASE_PYTHON" --version))"
   if ! "$BASE_PYTHON" -I -m venv "$VENV"; then
     # A failed attempt can leave an environment without pip behind.
@@ -97,9 +111,9 @@ else
   fi
 fi
 
-# --isolated: pip ignores the user's pip configuration and PIP_* variables,
-# so an extra package index set there cannot be mixed in with the ones named
-# here.
+# With PIP_CONFIG_FILE set to /dev/null (above), pip reads no configuration
+# file, so no extra package index can be mixed in with the ones named here;
+# --isolated also keeps it from reading environment settings of its own.
 pip_install() {
   "$PYTHON" -I -m pip install --isolated --disable-pip-version-check --no-input --no-cache-dir "$@"
 }
@@ -140,17 +154,17 @@ fi
   || fail "the installed packages do not agree; see \`$PYTHON -m pip check\`"
 
 # Maia's own download tool, which puts the weights where the engine looks for
-# them. A revision that is already in the cache is not downloaded again. The
-# user's own Hugging Face settings are left out: another cache, server, token
-# or offline switch would send the download somewhere the engine does not
-# look, or stop it.
+# them. A revision that is already in the cache is not downloaded again.
 say "fetching the 5M model's weights at revision $WEIGHTS_REVISION"
-env -u HF_HUB_CACHE -u HUGGINGFACE_HUB_CACHE -u HF_ENDPOINT -u HF_HUB_OFFLINE -u HF_TOKEN -u HUGGING_FACE_HUB_TOKEN \
-  HF_HOME="$HF_CACHE" HF_HUB_DISABLE_TELEMETRY=1 \
+HF_HOME="$HF_CACHE" HF_HUB_DISABLE_TELEMETRY=1 \
   "$PYTHON" -I -m maia3.cache --model maia3-5m --revision "$WEIGHTS_REVISION" >/dev/null
-WEIGHTS="$HF_CACHE/hub/models--UofTCSSLab--Maia3-5M/snapshots/$WEIGHTS_REVISION/maia3-5m.pt"
-[ "$("$PYTHON" -I -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$WEIGHTS")" = "$WEIGHTS_SHA256" ] \
-  || fail "the downloaded weights in $WEIGHTS do not match the expected SHA-256; delete $HF_CACHE and run this again"
+SNAPSHOT="$HF_CACHE/hub/models--UofTCSSLab--Maia3-5M/snapshots/$WEIGHTS_REVISION"
+actual="$("$PYTHON" -I -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$SNAPSHOT/maia3-5m.pt")"
+if [ "$actual" != "$WEIGHTS_SHA256" ]; then
+  # Removed, so that the engine cannot load a file that failed the check.
+  rm -rf "$SNAPSHOT"
+  fail "the weights at revision $WEIGHTS_REVISION have SHA-256 $actual, not $WEIGHTS_SHA256, and were removed; if WEIGHTS_REVISION was changed, WEIGHTS_SHA256 must be changed with it"
+fi
 
 # The handshake is run the way the API runs the engine: the same arguments
 # (backend/src/ChessAscent.Api/appsettings.json) and an environment holding
@@ -179,7 +193,7 @@ ENGINE=(
   --local-files-only --device cpu --use-uci-history
 )
 reply="$(cd "$MAIA" && printf 'uci\nisready\nquit\n' | ${NO_NETWORK[@]+"${NO_NETWORK[@]}"} "${ENGINE[@]}" 2>/dev/null)" \
-  || fail "the engine exited with an error; run it by hand to see why: cd $MAIA && printf 'uci\\nisready\\n' | ${ENGINE[*]}"
+  || fail "the engine exited with an error; run it by hand to see why: cd $(printf %q "$MAIA") && printf 'uci\\nisready\\n' | $(printf '%q ' "${ENGINE[@]}")"
 grep -qx uciok <<<"$reply" && grep -qx readyok <<<"$reply" \
   || fail "the engine did not complete the UCI handshake"
 say "the engine answered uciok and readyok, $how"

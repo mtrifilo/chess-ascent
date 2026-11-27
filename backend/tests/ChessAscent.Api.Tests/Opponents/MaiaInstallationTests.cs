@@ -11,7 +11,7 @@ namespace ChessAscent.Api.Tests.Opponents;
 /// The Maia kind as the API configures it: appsettings.json, plus the
 /// settings that point it at the engines directory.
 /// </summary>
-public sealed class MaiaInstallationTests
+public sealed partial class MaiaInstallationTests
 {
     private static readonly string Engines = Path.Combine(Path.GetTempPath(), "chess-ascent-engines");
     private static readonly string Maia = Path.Combine(Engines, "maia");
@@ -19,11 +19,22 @@ public sealed class MaiaInstallationTests
     [Fact]
     public void TheEnginesDirectoryDefaultsToTheRepositoryRootSeenFromTheApiProject()
     {
-        var contentRoot = Path.Combine(Engines, "repo", "backend", "src", "ChessAscent.Api");
+        var contentRoot = Path.Combine(RepositoryRoot, "backend", "src", "ChessAscent.Api");
 
-        MaiaInstallation.EnginesDirectory(null, contentRoot).Should().Be(Path.Combine(Engines, "repo", "engines"));
-        MaiaInstallation.EnginesDirectory(" ", contentRoot).Should().Be(Path.Combine(Engines, "repo", "engines"));
+        MaiaInstallation.EnginesDirectory(null, contentRoot).Should().Be(Path.Combine(RepositoryRoot, "engines"));
+        MaiaInstallation.EnginesDirectory(" ", contentRoot).Should().Be(Path.Combine(RepositoryRoot, "engines"));
         MaiaInstallation.EnginesDirectory(Engines, contentRoot).Should().Be(Engines);
+    }
+
+    [Fact]
+    public void WithoutTheSettingOutsideACheckoutThereIsNoDefault()
+    {
+        // A published application three levels below a shared directory.
+        var contentRoot = Path.Combine(Path.GetTempPath(), "published", "chess-ascent", "api");
+
+        var unset = () => MaiaInstallation.EnginesDirectory(null, contentRoot);
+
+        unset.Should().Throw<InvalidOperationException>().WithMessage($"{MaiaInstallation.EnginesDirectorySetting} is not set*");
     }
 
     [Fact]
@@ -35,23 +46,38 @@ public sealed class MaiaInstallationTests
     }
 
     [Fact]
-    public void TheSetUpScriptChecksTheEngineWithTheSameCommandLineAndEnvironment()
+    public void TheSetUpScriptChecksTheEngineWithTheSameCommandLineEnvironmentAndPaths()
     {
-        // backend/tests/ChessAscent.Api.Tests/bin/<configuration>/<framework>/ is six levels below the repository root.
-        var script = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "scripts", "setup-maia.sh"));
+        var script = File.ReadAllText(Path.Combine(RepositoryRoot, "scripts", "setup-maia.sh"));
         var maia = Kind(BaseConfiguration());
-        var revision = maia.Arguments[maia.Arguments.IndexOf("--revision") + 1];
+        var revision = WeightsRevision().Match(script).Groups["value"].Value;
 
-        script.Should().Contain($"WEIGHTS_REVISION={revision}\n");
-        foreach (var argument in maia.Arguments.Where(argument => argument != revision))
+        // The handshake's command line, after `env -i "${ENGINE_ENV[@]}" "$PYTHON"`.
+        var handshake = Handshake().Match(script);
+        handshake.Success.Should().BeTrue("the script runs the engine as an ENGINE array of env -i, its ENGINE_ENV and $PYTHON");
+        handshake.Groups["arguments"].Value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Select(argument => argument == "\"$WEIGHTS_REVISION\"" ? revision : argument)
+            .Should().Equal(maia.Arguments);
+
+        // Its environment, with the same names and values; HF_HOME is a path, checked below.
+        var variables = EngineEnvironment().Match(script).Groups["variables"].Value
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Select(variable => variable.Trim('"').Split('=', 2))
+            .ToDictionary(pair => pair[0], pair => pair[1]);
+        variables.Keys.Should().BeEquivalentTo(maia.SetEnvironment.Keys);
+        variables.Where(variable => variable.Key != "HF_HOME").Should().BeEquivalentTo(maia.SetEnvironment.Where(variable => variable.Key != "HF_HOME"));
+        variables["HF_HOME"].Should().Be("$HF_CACHE");
+
+        // The paths it installs to, under $ENGINES/maia, are the ones the API runs from.
+        script.Should().Contain("MAIA=\"$(cd \"$ENGINES/maia\" && pwd)\"");
+        var paths = new Dictionary<string, string> { ["MAIA"] = Maia };
+        foreach (Match assignment in PathAssignment().Matches(script))
         {
-            script.Should().MatchRegex($@"\s{Regex.Escape(argument)}\s", "the script's handshake passes {0} too", argument);
+            paths[assignment.Groups["name"].Value] = Variable().Replace(assignment.Groups["value"].Value, name => paths[name.Groups["name"].Value]);
         }
 
-        foreach (var (name, value) in maia.SetEnvironment.Where(variable => variable.Key != "HF_HOME"))
-        {
-            script.Should().Contain($" {name}={value}", "the script's handshake sets {0} too", name);
-        }
+        paths["PYTHON"].Should().Be(maia.ExecutablePath);
+        paths["HF_CACHE"].Should().Be(maia.SetEnvironment["HF_HOME"]);
     }
 
     [Fact]
@@ -124,6 +150,36 @@ public sealed class MaiaInstallationTests
         configuration.AddMaiaInstallation(contentRootPath: Path.Combine(Engines, "unused"));
         return configuration;
     }
+
+    private static string RepositoryRoot { get; } = FindRepositoryRoot();
+
+    private static string FindRepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "scripts", "setup-maia.sh")))
+            {
+                return directory.FullName;
+            }
+        }
+
+        throw new InvalidOperationException($"No scripts/setup-maia.sh above {AppContext.BaseDirectory}.");
+    }
+
+    [GeneratedRegex(@"^WEIGHTS_REVISION=(?<value>[0-9a-f]+)$", RegexOptions.Multiline)]
+    private static partial Regex WeightsRevision();
+
+    [GeneratedRegex(@"ENGINE=\(\s*/usr/bin/env -i ""\$\{ENGINE_ENV\[@\]\}""\s+""\$PYTHON""(?<arguments>[^)]*)\)")]
+    private static partial Regex Handshake();
+
+    [GeneratedRegex(@"ENGINE_ENV=\((?<variables>[^)]*)\)")]
+    private static partial Regex EngineEnvironment();
+
+    [GeneratedRegex(@"^(?<name>VENV|PYTHON|HF_CACHE)=""(?<value>[^""]*)""$", RegexOptions.Multiline)]
+    private static partial Regex PathAssignment();
+
+    [GeneratedRegex(@"\$(?<name>[A-Z_]+)")]
+    private static partial Regex Variable();
 
     private static EngineKindOptions Kind(ConfigurationManager configuration)
     {

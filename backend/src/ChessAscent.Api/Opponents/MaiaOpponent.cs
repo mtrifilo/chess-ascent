@@ -117,7 +117,7 @@ public sealed partial class MaiaOpponent(EnginePool pool, IChessRules rules, ILo
         }
         catch (UciProtocolException)
         {
-            return Fault(lease, "(bestmove with no move)");
+            return Fault(lease, engineMove: null, whenNoMove: "(bestmove with no move)");
         }
 
         // LEARN: A `when` clause on a switch arm is a case guard, like a
@@ -128,22 +128,21 @@ public sealed partial class MaiaOpponent(EnginePool pool, IChessRules rules, ILo
         return answer switch
         {
             BestMove { Move: var move } when IsLegal(game, move) => new OpponentMove(move),
-            BestMove { Move: var move } => Fault(lease, ForLog(move)),
-            NoLegalMove => Fault(lease, "(no move)"),
+            BestMove { Move: var move } => Fault(lease, move),
+            NoLegalMove => Fault(lease, engineMove: null),
         };
     }
 
     private static bool IsLegal(IChessGame game, string move) =>
         game.LegalMoves().Any(legal => legal.Uci == move);
 
-    // What the engine wrote, made safe to log and cut short.
-    private static string ForLog(string reply) =>
-        UciText.ForLog(reply.Length > LoggedReplyLength ? reply[..LoggedReplyLength] + "..." : reply);
-
-    // `reply` is what to log: the engine's own text through ForLog, or a
-    // description in parentheses when it wrote no move.
-    private OpponentFailed Fault(EngineLease lease, string reply)
+    // Logs the engine's move, made safe and cut short, or `whenNoMove` when
+    // it gave none.
+    private OpponentFailed Fault(EngineLease lease, string? engineMove, string whenNoMove = "(no move)")
     {
+        var reply = engineMove is null
+            ? whenNoMove
+            : UciText.ForLog(engineMove.Length > LoggedReplyLength ? engineMove[..LoggedReplyLength] + "..." : engineMove);
         LogFault(logger, lease.Engine.ProcessId, reply);
         lease.ReportBroken();
         return new OpponentFailed("The opponent answered with something that is not a legal move in the position.");
