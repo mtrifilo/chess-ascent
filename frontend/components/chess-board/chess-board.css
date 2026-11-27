@@ -1,0 +1,142 @@
+@reference '../../app/globals.css';
+
+/* Chessground builds the board from its own elements (cg-board, square,
+ * piece, coords, the shapes svg) and classes (last-move, move-dest), so they
+ * are styled here, under the wrapper's `chess-board` class, rather than with
+ * utilities. This is a plain stylesheet, not a CSS module: next.config.ts
+ * passes every .css file through Tailwind as plain CSS. Colours come from the
+ * board tokens in globals.css; chessground's bundled board themes are not
+ * loaded. Sizes in percent are of the board, or of a square inside one; the
+ * design's 80px squares give the ratios. */
+
+/* The board follows its container's width and stays square. */
+.chess-board {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+.chess-board .cg-wrap {
+  width: 100%;
+  height: 100%;
+}
+
+/* A light square sits top-left in either orientation (a8 with White at the
+ * bottom, h1 with Black), so one checkerboard serves both. Each 25% tile is
+ * two squares by two. */
+.chess-board cg-board {
+  background: repeating-conic-gradient(
+      var(--board-square-dark) 0 25%,
+      var(--board-square-light) 0 50%
+    )
+    0 0 / 25% 25%;
+}
+
+/* Square marks are background colours, so a mark and a move dot can share a
+ * square. */
+.chess-board cg-board square.last-move {
+  background-color: var(--board-last-move);
+}
+
+.chess-board cg-board square.selected {
+  background-color: var(--board-selected);
+}
+
+.chess-board cg-board square.check {
+  background-color: var(--board-check);
+}
+
+/* A legal destination: a dot 32.5% of the square across (26px of 80). The
+ * gradient's ray is half the square, so the dot's radius is 32.5% of it. */
+.chess-board cg-board square.move-dest {
+  background-image: radial-gradient(
+    circle closest-side,
+    var(--board-move-dot) calc(32.5% - 1px),
+    transparent 32.5%
+  );
+}
+
+/* A legal capture: a ring at the square's edge, 7px wide on an 80px square,
+ * which is 17.5% of the gradient's ray. */
+.chess-board cg-board square.move-dest.oc {
+  background-image: radial-gradient(
+    circle closest-side,
+    transparent calc(82.5% - 1px),
+    var(--board-move-dot) 82.5% calc(100% - 1px),
+    transparent 100%
+  );
+}
+
+/* On a phone the pieces are drawn at 88% of the square, so the coordinates
+ * in the edge squares overlap them less. `md` is the width at which the app
+ * shell switches from its phone to its desktop layout. */
+.chess-board .cg-wrap piece {
+  @variant max-md {
+    background-size: 88%;
+    background-repeat: no-repeat;
+    background-position: center;
+  }
+}
+
+/* Coordinates sit inside the edge squares: ranks at the top-left of the left
+ * file, files at the bottom-right of the bottom rank, above the pieces.
+ * Chessground marks each label with the colour of the square under it. */
+.chess-board .cg-wrap coords {
+  @apply font-data text-data-m;
+  z-index: 3;
+  opacity: 1;
+}
+
+.chess-board .cg-wrap coords coord.coord-light {
+  color: var(--piece-black);
+}
+
+.chess-board .cg-wrap coords coord.coord-dark {
+  color: var(--piece-white);
+}
+
+/* `.left` matches chessground's own rule for left-hand ranks, which would
+ * otherwise tie with this one and win or lose on stylesheet order. */
+.chess-board .cg-wrap coords.ranks.left {
+  top: 0;
+  left: 0;
+  width: 12.5%;
+  height: 100%;
+  align-items: flex-start;
+}
+
+.chess-board .cg-wrap coords.ranks coord {
+  flex: 1 1 0;
+  padding: 1px 0 0 3px;
+  transform: none;
+}
+
+.chess-board .cg-wrap coords.files {
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: auto;
+  text-align: right;
+  text-transform: none;
+}
+
+.chess-board .cg-wrap coords.files coord {
+  flex: 1 1 0;
+  padding-right: 3px;
+}
+
+/* Arrows and circles. Chessground's brushes name `currentColor`, so the
+ * colour each shape takes comes from here. The token colours carry their
+ * own transparency, so chessground's dimming of the whole layer is undone. */
+.chess-board .cg-wrap .cg-shapes {
+  opacity: 1;
+}
+
+.chess-board .cg-wrap .cg-shapes line,
+.chess-board .cg-wrap .cg-shapes marker {
+  color: var(--board-hint-arrow);
+}
+
+.chess-board .cg-wrap .cg-shapes circle {
+  color: var(--board-hint);
+}
