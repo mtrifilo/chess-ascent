@@ -93,6 +93,13 @@ internal sealed class FakeEngine : IDisposable
         return false;
     }
 
+    /// <summary>Kills a process from outside, as a crash or the operating system would.</summary>
+    public static void Kill(int processId)
+    {
+        using var process = Process.GetProcessById(processId);
+        process.Kill();
+    }
+
     // A child that outlived its engine cannot be reached by disposing the
     // engine (see UciEngine.DisposeAsync), so the test cleans it up here.
     public void Dispose()

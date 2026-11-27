@@ -21,7 +21,7 @@ public sealed class EnginePoolHostingTests(PostgresFixture postgres)
         await using var api = Api(FakeEngineKind.Settings(Kind, fake.Options()));
         using var client = api.CreateClient();
 
-        await ReadinessBecomesAsync(client, HttpStatusCode.OK);
+        await ReadinessIsOkAsync(client);
         var pool = api.Services.GetRequiredService<EnginePool>();
         var processId = await pool.RunAsync(Kind, lease => Task.FromResult(lease.Engine.ProcessId), Token);
         processId.Should().Be(fake.StartedProcessIds().Single());
@@ -52,16 +52,13 @@ public sealed class EnginePoolHostingTests(PostgresFixture postgres)
         using var fake = new FakeEngineKind();
         await using var api = Api(FakeEngineKind.Settings(Kind, fake.Options()));
         using var client = api.CreateClient();
-        await ReadinessBecomesAsync(client, HttpStatusCode.OK);
+        await ReadinessIsOkAsync(client);
         var first = fake.StartedProcessIds().Single();
 
-        using (var process = System.Diagnostics.Process.GetProcessById(first))
-        {
-            process.Kill();
-        }
+        FakeEngine.Kill(first);
 
         await fake.WaitForStartedAsync(2);
-        await ReadinessBecomesAsync(client, HttpStatusCode.OK);
+        await ReadinessIsOkAsync(client);
     }
 
     [Fact]
@@ -75,7 +72,7 @@ public sealed class EnginePoolHostingTests(PostgresFixture postgres)
             .ToDictionary();
         var api = Api(settings);
         using var client = api.CreateClient();
-        await ReadinessBecomesAsync(client, HttpStatusCode.OK);
+        await ReadinessIsOkAsync(client);
         var processIds = obeys.StartedProcessIds().Concat(ignores.StartedProcessIds()).ToArray();
         processIds.Should().HaveCount(4);
 
@@ -137,23 +134,14 @@ public sealed class EnginePoolHostingTests(PostgresFixture postgres)
 
     private EngineApi Api(IReadOnlyDictionary<string, string?> settings) => new(postgres, settings);
 
-    private static async Task ReadinessBecomesAsync(HttpClient client, HttpStatusCode status)
-    {
-        var last = HttpStatusCode.OK;
-        for (var attempt = 0; attempt < 300; attempt++)
-        {
-            using var response = await client.GetAsync("/health/ready", Token);
-            last = response.StatusCode;
-            if (last == status)
+    private static Task ReadinessIsOkAsync(HttpClient client) =>
+        Eventually.TrueAsync(
+            async () =>
             {
-                return;
-            }
-
-            await Task.Delay(100, Token);
-        }
-
-        throw new TimeoutException($"Readiness stayed {last}; expected {status}.");
-    }
+                using var response = await client.GetAsync("/health/ready", Token);
+                return response.StatusCode == HttpStatusCode.OK;
+            },
+            "readiness to answer 200");
 
     /// <summary>The API, as <see cref="ApiFactory"/> runs it, with engine settings of its own.</summary>
     private sealed class EngineApi(PostgresFixture postgres, IReadOnlyDictionary<string, string?> settings) : WebApplicationFactory<Program>

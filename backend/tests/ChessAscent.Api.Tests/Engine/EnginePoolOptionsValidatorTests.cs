@@ -67,7 +67,7 @@ public sealed class EnginePoolOptionsValidatorTests
         var result = Validator.Validate(null, With(Complete(stopTimeout: TimeSpan.FromSeconds(5), exitTimeout: TimeSpan.FromSeconds(5))));
 
         result.Failures.Should().ContainSingle().Which.Should()
-            .Contain(Prefix + "StopTimeout plus five times " + Prefix + "ExitTimeout").And.Contain("shutdown timeout");
+            .Contain(Prefix + "StopTimeout").And.Contain(Prefix + "ExitTimeout").And.Contain("shutdown timeout");
     }
 
     private static string Required(string setting) => $"{Prefix}{setting} is required.";

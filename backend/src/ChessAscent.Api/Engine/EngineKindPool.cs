@@ -16,7 +16,6 @@ namespace ChessAscent.Api.Engine;
 /// </remarks>
 internal sealed partial class EngineKindPool
 {
-    private readonly string _kind;
     private readonly UciEngineOptions _engineOptions;
     private readonly TimeSpan _checkOutTimeout;
     private readonly int _startAttempts;
@@ -42,7 +41,7 @@ internal sealed partial class EngineKindPool
 
     public EngineKindPool(string kind, EngineKindOptions options, ILogger logger, ILogger<UciEngine> engineLogger, CancellationToken stopping)
     {
-        _kind = kind;
+        Kind = kind;
         _engineOptions = options.ToEngineOptions();
         _checkOutTimeout = options.CheckOutTimeout!.Value;
         _startAttempts = options.StartAttempts!.Value;
@@ -55,7 +54,7 @@ internal sealed partial class EngineKindPool
         _slotsTrying = options.Processes;
     }
 
-    public string Kind => _kind;
+    public string Kind { get; }
 
     /// <summary>Whether at least one of this kind's processes is running and usable, idle or not.</summary>
     public bool HasWorkingEngine
@@ -77,9 +76,6 @@ internal sealed partial class EngineKindPool
     /// <summary>Runs every slot until stopping is requested, and returns once each has stopped its process.</summary>
     public Task RunAsync() => Task.WhenAll(Enumerable.Range(0, _current.Length).Select(RunSlotAsync));
 
-    /// <summary>Ends every wait for an engine, once stopping has been requested.</summary>
-    public void CloseIdleQueue() => _idle.Writer.TryComplete();
-
     /// <summary>
     /// Waits for an idle engine that passes its check, and takes it. Engines
     /// that fail the check are retired, and the wait goes on.
@@ -88,8 +84,8 @@ internal sealed partial class EngineKindPool
     /// <exception cref="EngineUnavailableException">No engine was ready in time, the kind has none left, or the pool is stopping.</exception>
     public async Task<PooledEngine> CheckOutAsync(CancellationToken cancellationToken)
     {
-        using var deadline = new CancellationTokenSource(_checkOutTimeout);
-        using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token, _stopping);
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stopping);
+        wait.CancelAfter(_checkOutTimeout);
         try
         {
             while (true)
@@ -104,15 +100,11 @@ internal sealed partial class EngineKindPool
         catch (OperationCanceledException) when (wait.IsCancellationRequested)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            throw _stopping.IsCancellationRequested
-                ? Unavailable("the engine pool is stopping")
-                : Unavailable(string.Create(CultureInfo.InvariantCulture, $"no engine was free within {_checkOutTimeout.TotalMilliseconds:0} ms"));
+            throw Unavailable(string.Create(CultureInfo.InvariantCulture, $"no engine was free within {_checkOutTimeout.TotalMilliseconds:0} ms"));
         }
         catch (ChannelClosedException)
         {
-            throw _stopping.IsCancellationRequested
-                ? Unavailable("the engine pool is stopping")
-                : Unavailable("none of its processes could be started, and the pool has stopped trying");
+            throw Unavailable("none of its processes could be started, and the pool has stopped trying");
         }
     }
 
@@ -163,7 +155,7 @@ internal sealed partial class EngineKindPool
         {
             // InvalidOperationException includes ObjectDisposedException:
             // the pool began stopping the engine.
-            LogCheckFailed(_logger, e, _kind, engine.ProcessId);
+            LogCheckFailed(_logger, e, Kind, engine.ProcessId);
             pooled.Retire("it failed its check before hand-out");
             return false;
         }
@@ -176,6 +168,10 @@ internal sealed partial class EngineKindPool
     // resets the count, because it showed the program works.
     private async Task RunSlotAsync(int slot)
     {
+        // Process.Start is synchronous, and the first start would otherwise
+        // run on the caller's thread: the host's, during start-up.
+        await Task.Yield();
+
         var failures = 0;
         while (!_stopping.IsCancellationRequested)
         {
@@ -187,30 +183,28 @@ internal sealed partial class EngineKindPool
             var engine = await TryStartAsync(slot, failures + 1);
             if (engine is null)
             {
-                if (_stopping.IsCancellationRequested || GaveUp(slot, ++failures))
+                failures++;
+            }
+            else
+            {
+                var pooled = new PooledEngine(engine);
+                Volatile.Write(ref _current[slot], pooled);
+                _idle.Writer.TryWrite(pooled);
+
+                var reason = await WaitUntilRetiredAsync(pooled);
+
+                Volatile.Write(ref _current[slot], null);
+                await engine.DisposeAsync();
+                if (reason is null || _stopping.IsCancellationRequested)
                 {
                     return;
                 }
 
-                continue;
+                LogReplacing(_logger, Kind, slot, engine.ProcessId, reason);
+                failures = pooled.WasHandedOut ? 0 : failures + 1;
             }
 
-            var pooled = new PooledEngine(engine);
-            Volatile.Write(ref _current[slot], pooled);
-            _idle.Writer.TryWrite(pooled);
-
-            var reason = await WaitUntilRetiredAsync(pooled);
-
-            Volatile.Write(ref _current[slot], null);
-            await engine.DisposeAsync();
-            if (reason is null || _stopping.IsCancellationRequested)
-            {
-                return;
-            }
-
-            LogReplacing(_logger, _kind, slot, engine.ProcessId, reason);
-            failures = pooled.WasHandedOut ? 0 : failures + 1;
-            if (failures > 0 && GaveUp(slot, failures))
+            if (!_stopping.IsCancellationRequested && GaveUp(slot, failures))
             {
                 return;
             }
@@ -238,7 +232,7 @@ internal sealed partial class EngineKindPool
         try
         {
             var engine = await UciEngine.StartAsync(_engineOptions, _engineLogger, _stopping);
-            LogStarted(_logger, _kind, slot, engine.ProcessId);
+            LogStarted(_logger, Kind, slot, engine.ProcessId);
             return engine;
         }
         catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
@@ -251,7 +245,7 @@ internal sealed partial class EngineKindPool
         // all, and a slot whose loop ended here would stay empty unnoticed.
         catch (Exception e)
         {
-            LogStartFailed(_logger, e, _kind, slot, attempt, _startAttempts);
+            LogStartFailed(_logger, e, Kind, slot, attempt, _startAttempts);
             return null;
         }
     }
@@ -277,7 +271,7 @@ internal sealed partial class EngineKindPool
             return false;
         }
 
-        LogGaveUp(_logger, _kind, slot, failures);
+        LogGaveUp(_logger, Kind, slot, failures);
         if (Interlocked.Decrement(ref _slotsTrying) == 0)
         {
             _idle.Writer.TryComplete();
@@ -286,7 +280,9 @@ internal sealed partial class EngineKindPool
         return true;
     }
 
-    private EngineUnavailableException Unavailable(string reason) => new(_kind, reason);
+    // Stopping explains any failure to get an engine once it has begun.
+    private EngineUnavailableException Unavailable(string reason) =>
+        new(Kind, _stopping.IsCancellationRequested ? "the engine pool is stopping" : reason);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Engine kind {Kind}, slot {Slot}: started process {ProcessId}")]
     private static partial void LogStarted(ILogger logger, string kind, int slot, int processId);

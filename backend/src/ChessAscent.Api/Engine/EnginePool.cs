@@ -123,11 +123,9 @@ public sealed class EnginePool : IAsyncDisposable
 
     private async Task StopOnceAsync()
     {
+        // Every wait for an engine is linked to this token, so cancelling it
+        // ends them all, and each slot then stops its process.
         await _stopping.CancelAsync();
-        foreach (var pool in _kinds.Values)
-        {
-            pool.CloseIdleQueue();
-        }
 
         // Start() cannot set this once _stop is set, so it is read without the lock.
         if (_running is { } running)

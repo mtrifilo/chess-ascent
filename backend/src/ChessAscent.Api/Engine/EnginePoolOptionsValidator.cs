@@ -65,17 +65,16 @@ internal sealed class EnginePoolOptionsValidator(IOptions<HostOptions> host) : I
         ValidateWait(engine.CheckOutTimeout, Key(nameof(engine.CheckOutTimeout)), failures);
         ValidateWait(engine.RestartDelay, Key(nameof(engine.RestartDelay)), failures);
 
-        // Stopping an engine takes at most the stop timeout plus five times
-        // the exit timeout (see UciEngine.DisposeAsync), and the pool stops
-        // all of them at once. For every process to be gone before the host
-        // gives up on shutting down, that has to fit in the host's time.
+        // The pool stops all its engines at once. For every process to be
+        // gone before the host gives up on shutting down, the longest an
+        // engine can take to stop has to fit in the host's time.
         if (engine.StopTimeout > TimeSpan.Zero && engine.ExitTimeout > TimeSpan.Zero)
         {
-            var longestStop = engine.StopTimeout.Value + (5 * engine.ExitTimeout.Value);
+            var longestStop = UciEngineOptions.LongestDisposal(engine.StopTimeout.Value, engine.ExitTimeout.Value);
             if (longestStop >= host.Value.ShutdownTimeout)
             {
                 failures.Add(
-                    $"{Key(nameof(engine.StopTimeout))} plus five times {Key(nameof(engine.ExitTimeout))} is {longestStop}, "
+                    $"With {Key(nameof(engine.StopTimeout))} and {Key(nameof(engine.ExitTimeout))} as set, stopping an engine can take {longestStop}, "
                     + $"which must be less than the host's shutdown timeout of {host.Value.ShutdownTimeout}.");
             }
         }
@@ -87,7 +86,7 @@ internal sealed class EnginePoolOptionsValidator(IOptions<HostOptions> host) : I
         {
             failures.Add($"{key} is required.");
         }
-        else if (wait <= TimeSpan.Zero || wait > UciEngineOptions.LongestWait)
+        else if (!UciEngineOptions.IsValidWait(wait.Value))
         {
             failures.Add($"{key} is {wait}; it must be greater than zero and at most {UciEngineOptions.LongestWait}.");
         }

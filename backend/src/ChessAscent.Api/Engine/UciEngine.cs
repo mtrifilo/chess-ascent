@@ -155,6 +155,9 @@ public sealed partial class UciEngine : IAsyncDisposable
     private readonly Task _exitWatcher;
     private Task? _disposal;
 
+    // Completed when the engine ends or disposal begins; see Ended.
+    private readonly TaskCompletionSource _ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     // How the process ended, once it has: set once, by whichever notices
     // first (the exit watcher, the output reader, or a failed write).
     //
@@ -209,11 +212,12 @@ public sealed partial class UciEngine : IAsyncDisposable
     public bool IsUsable => !_lifetime.IsCancellationRequested && !HasEnded && _fault is null;
 
     /// <summary>
-    /// Completes once the process has exited, at most the exit timeout after
-    /// it does, or once disposal has begun. It never fails. An owner can wait
+    /// Completes as soon as the process is seen to have exited or closed its
+    /// output, which is when <see cref="IsUsable"/> turns false for that
+    /// reason, or once disposal has begun. It never fails. An owner can wait
     /// on it to replace an engine that dies while nobody is using it.
     /// </summary>
-    public Task Ended => _exitWatcher;
+    public Task Ended => _ended.Task;
 
     private bool HasEnded => _end is not null || _outputClosed;
 
@@ -407,7 +411,8 @@ public sealed partial class UciEngine : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// It takes at most the stop timeout plus five times the exit timeout:
+    /// It takes at most the stop timeout plus five times the exit timeout
+    /// (<see cref="UciEngineOptions.LongestDisposal"/>):
     /// waiting for a call in progress to finish; for <c>quit</c> to be written
     /// and the process to exit (two waits if the write finds the input
     /// closed); for the process to go after it is killed; for its output to
@@ -447,6 +452,7 @@ public sealed partial class UciEngine : IAsyncDisposable
         // Calls in progress stop waiting, and read the reply they owe, which
         // takes at most the stop timeout.
         await _lifetime.CancelAsync();
+        _ended.TrySetResult();
         var entered = await _gate.WaitAsync(_options.StopTimeout);
         try
         {
@@ -580,8 +586,11 @@ public sealed partial class UciEngine : IAsyncDisposable
         }
     }
 
-    private void RecordEnd(int? exitCode) =>
+    private void RecordEnd(int? exitCode)
+    {
         Interlocked.CompareExchange(ref _end, new ProcessEnd(exitCode), null);
+        _ended.TrySetResult();
+    }
 
     // Waits up to the exit timeout for the process to exit; false if it has not.
     private async Task<bool> WaitForExitAsync()
@@ -854,6 +863,7 @@ public sealed partial class UciEngine : IAsyncDisposable
             }
 
             _outputClosed = true;
+            _ended.TrySetResult();
             exitCode = await WaitForExitAsync() ? _process.ExitCode : null;
         }
         catch (Exception e) when (e is IOException or ObjectDisposedException or ChannelClosedException)

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using ChessAscent.Api.Engine;
 
 namespace ChessAscent.Api.Tests.Engine;
@@ -45,7 +44,7 @@ public sealed class UciEngineHealthTests
     {
         using var fake = new FakeEngine();
         await using var engine = await fake.StartAsync();
-        Kill(engine.ProcessId);
+        FakeEngine.Kill(engine.ProcessId);
         (await FakeEngine.IsGoneAsync(engine.ProcessId)).Should().BeTrue();
 
         var ping = () => engine.PingAsync(Token);
@@ -60,7 +59,7 @@ public sealed class UciEngineHealthTests
         await using var engine = await fake.StartAsync();
         engine.Ended.IsCompleted.Should().BeFalse();
 
-        Kill(engine.ProcessId);
+        FakeEngine.Kill(engine.ProcessId);
 
         await engine.Ended.WaitAsync(TimeSpan.FromSeconds(10), Token);
         engine.IsUsable.Should().BeFalse();
@@ -75,11 +74,5 @@ public sealed class UciEngineHealthTests
         await engine.DisposeAsync();
 
         engine.Ended.IsCompleted.Should().BeTrue();
-    }
-
-    private static void Kill(int processId)
-    {
-        using var process = Process.GetProcessById(processId);
-        process.Kill();
     }
 }

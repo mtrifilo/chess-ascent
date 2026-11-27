@@ -75,9 +75,22 @@ public sealed record UciEngineOptions
         ValidateWait(ExitTimeout, nameof(ExitTimeout));
     }
 
+    /// <summary>Whether a wait is one this client accepts: greater than zero and at most <see cref="LongestWait"/>.</summary>
+    internal static bool IsValidWait(TimeSpan wait) => wait > TimeSpan.Zero && wait <= LongestWait;
+
+    /// <summary>
+    /// The longest <see cref="UciEngine.DisposeAsync"/> can take with these
+    /// waits: the stop timeout, for a call in progress, plus five exit
+    /// timeouts, one for each wait around the process's end that disposal
+    /// makes in turn.
+    /// </summary>
+    internal static TimeSpan LongestDisposal(TimeSpan stopTimeout, TimeSpan exitTimeout) => stopTimeout + (5 * exitTimeout);
+
     private static void ValidateWait(TimeSpan wait, string name)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(wait, TimeSpan.Zero, name);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(wait, LongestWait, name);
+        if (!IsValidWait(wait))
+        {
+            throw new ArgumentOutOfRangeException(name, wait, $"A wait must be greater than zero and at most {LongestWait}.");
+        }
     }
 }

@@ -55,7 +55,7 @@ public sealed class EnginePoolTests
         await using var pool = StartPool(fake.Options(), out var logger);
         var first = await ProcessIdAsync(pool);
 
-        KillFromOutside(first);
+        FakeEngine.Kill(first);
         (await FakeEngine.IsGoneAsync(first)).Should().BeTrue();
 
         var second = await pool.RunAsync(Kind, async lease =>
@@ -79,7 +79,7 @@ public sealed class EnginePoolTests
         var first = (await fake.WaitForStartedAsync(1)).Single();
         await Eventually.TrueAsync(() => pool.KindsWithoutWorkingEngine().Count == 0, "the first engine to be ready");
 
-        KillFromOutside(first);
+        FakeEngine.Kill(first);
 
         await fake.WaitForStartedAsync(2);
         await Eventually.TrueAsync(() => pool.KindsWithoutWorkingEngine().Count == 0, "the replacement to be ready");
@@ -96,7 +96,7 @@ public sealed class EnginePoolTests
         var dying = () => pool.RunAsync(Kind, async lease =>
         {
             killed = lease.Engine.ProcessId;
-            KillFromOutside(killed);
+            FakeEngine.Kill(killed);
             (await FakeEngine.IsGoneAsync(killed)).Should().BeTrue();
             return await lease.Engine.SearchAsync(Start, Depth1, Token);
         }, Token);
@@ -275,9 +275,14 @@ public sealed class EnginePoolTests
         using var fake = new FakeEngineKind("--search-ms", "30000");
         await using var pool = StartPool(fake.Options(), out _);
         var processId = await ProcessIdAsync(pool);
-        var searching = pool.RunAsync(Kind, lease => lease.Engine.SearchAsync(Start, Depth1, Token), Token);
+        var searchStarted = new TaskCompletionSource();
+        var searching = pool.RunAsync(Kind, lease =>
+        {
+            searchStarted.SetResult();
+            return lease.Engine.SearchAsync(Start, Depth1, Token);
+        }, Token);
+        await searchStarted.Task.WaitAsync(Token);
         var waiting = pool.RunAsync(Kind, lease => Task.FromResult(lease.Engine.ProcessId), Token);
-        await Task.Delay(300, Token);
 
         await pool.StopAsync();
 
@@ -355,10 +360,4 @@ public sealed class EnginePoolTests
 
     private static Task<int> ProcessIdAsync(EnginePool pool) =>
         pool.RunAsync(Kind, lease => Task.FromResult(lease.Engine.ProcessId), Token);
-
-    private static void KillFromOutside(int processId)
-    {
-        using var process = Process.GetProcessById(processId);
-        process.Kill();
-    }
 }

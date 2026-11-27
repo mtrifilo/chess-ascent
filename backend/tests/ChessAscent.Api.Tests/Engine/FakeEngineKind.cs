@@ -119,11 +119,14 @@ internal sealed class FakeEngineKind : IDisposable
 /// <summary>Polls for a condition that becomes true in the background.</summary>
 internal static class Eventually
 {
-    public static async Task TrueAsync(Func<bool> condition, string what, int attempts = 300)
+    public static Task TrueAsync(Func<bool> condition, string what, int attempts = 300) =>
+        TrueAsync(() => Task.FromResult(condition()), what, attempts);
+
+    public static async Task TrueAsync(Func<Task<bool>> condition, string what, int attempts = 300)
     {
         for (var attempt = 0; attempt < attempts; attempt++)
         {
-            if (condition())
+            if (await condition())
             {
                 return;
             }
