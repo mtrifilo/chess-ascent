@@ -5,6 +5,7 @@ using ChessAscent.Api.Features.Accounts;
 using ChessAscent.Api.Features.AppVersion;
 using ChessAscent.Api.Features.Games;
 using ChessAscent.Api.Features.Health;
+using ChessAscent.Api.Json;
 using ChessAscent.Api.Opponents;
 using ChessAscent.Api.Security;
 
@@ -45,12 +46,14 @@ builder.Configuration.AddMaiaInstallation(builder.Environment.ContentRootPath);
 // readiness check that every configured kind has a working process.
 // AddApiDocument registers the OpenAPI document that describes the endpoints
 // below. AddValidation checks request bodies against their validation
-// attributes (see AccountContracts). AddAccounts registers ASP.NET Core
-// Identity, the session cookie and authorization. AddGames registers the
-// store that saves and loads games. AddOpponent registers the computer
+// attributes (see AccountContracts). AddJsonConventions sets how bodies are
+// read and written. AddAccounts registers ASP.NET Core Identity, the session
+// cookie and authorization. AddGames registers the store that saves and
+// loads games, and the chess rules. AddOpponent registers the computer
 // opponent, which plays through the engine pool.
 builder.Services.AddProblemDetails();
 builder.Services.AddValidation();
+builder.Services.AddJsonConventions();
 builder.Services.AddHealthChecks();
 builder.Services.AddDatabase();
 builder.Services.AddEnginePool();
@@ -124,6 +127,7 @@ app.UseAuthorization();
 app.MapHealthEndpoints();
 app.MapAppVersionEndpoints();
 app.MapAccountEndpoints();
+app.MapGameEndpoints();
 app.MapApiDocumentInDevelopment();
 
 await app.RunAsync();

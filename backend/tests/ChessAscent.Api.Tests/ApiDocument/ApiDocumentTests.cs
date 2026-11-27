@@ -52,7 +52,50 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
             .SelectMany(path => path.Value!.AsObject().Select(operation => $"{operation.Key} {path.Key}"));
         operations.Should().BeEquivalentTo(
             "post /auth/register", "post /auth/sign-in", "post /auth/sign-out", "get /auth/me",
+            "post /games", "get /games/{id}", "post /games/{id}/moves",
             "get /health/ready", "get /version");
+    }
+
+    // Every response the game endpoints can give, including the 401 the
+    // group's authorization gives and the 403 of the cross-site refusal.
+    [Theory]
+    [InlineData("/games", "post", new[] { "201", "400", "401", "403" })]
+    [InlineData("/games/{id}", "get", new[] { "200", "401", "404", "500" })]
+    [InlineData("/games/{id}/moves", "post", new[] { "200", "400", "401", "403", "404", "409", "422", "500" })]
+    public async Task DocumentListsEveryResponseOfTheGameEndpoints(string path, string method, string[] statuses)
+    {
+        var document = await GetDocumentAsync();
+
+        document["paths"]![path]![method]!["responses"]!.AsObject().Select(response => response.Key)
+            .Should().BeEquivalentTo(statuses);
+    }
+
+    // Number handling is strict, so an integer is described as a JSON
+    // integer only, not also as a string of digits.
+    [Theory]
+    [InlineData("MoveResponse", "halfMoveNumber", new[] { "integer" })]
+    [InlineData("OpponentResponse", "strength", new[] { "null", "integer" })]
+    [InlineData("ProblemDetails", "status", new[] { "null", "integer" })]
+    public async Task DocumentDescribesIntegersAsJsonIntegersOnly(string schema, string property, string[] types)
+    {
+        var document = await GetDocumentAsync();
+
+        var described = document["components"]!["schemas"]![schema]!["properties"]![property]!.AsObject();
+        var type = described["type"]!;
+        (type is JsonArray array ? array.Select(item => item!.GetValue<string>()) : [type.GetValue<string>()])
+            .Should().BeEquivalentTo(types);
+        described.ContainsKey("pattern").Should().BeFalse();
+    }
+
+    // Enumerations are written by name, so the document lists the names.
+    [Fact]
+    public async Task DocumentListsEnumerationsByTheirCamelCaseNames()
+    {
+        var document = await GetDocumentAsync();
+
+        document["components"]!["schemas"]!["GameEndReason"]!["enum"]!.AsArray()
+            .Select(value => value?.GetValue<string>())
+            .Should().Contain(["checkmate", "threefoldRepetition", "fiftyMoveRule", "deadPosition"]);
     }
 
     // Every response the account endpoints can give, including those that

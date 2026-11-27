@@ -279,7 +279,8 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         return now.AddTicks(-(now.Ticks % TimeSpan.TicksPerMicrosecond));
     }
 
-    private static (GameProgress Progress, GameResult? Result, GameEndReason? EndReason) ToStoredOutcome(
+    /// <summary>How the board's status is stored: the game's progress, result and end reason.</summary>
+    internal static (GameProgress Progress, GameResult? Result, GameEndReason? EndReason) ToStoredOutcome(
         GameStatus boardStatus) =>
         boardStatus switch
         {
