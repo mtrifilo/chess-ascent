@@ -3,7 +3,7 @@ import type { Config } from '@lichess-org/chessground/config'
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ChessBoard, type ChessBoardProps } from './chess-board'
+import { ChessBoard, type ChessBoardProps, type Square } from './chess-board'
 
 // These tests check what the wrapper passes to chessground and when, through
 // a stand-in for chessground's API. chess-board.render.test.tsx renders the
@@ -24,9 +24,14 @@ const FEN =
 const BLACK_TO_MOVE =
   'rnbqkbnr/pppppppp/8/8/4P3/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1'
 
+// The knight on f3 is picked up in the designs.
+const DESTINATIONS = new Map<Square, Square[]>([
+  ['f3', ['e5', 'g5', 'd4', 'h4', 'd2', 'g1']],
+])
+
 const props = (overrides: Partial<ChessBoardProps> = {}): ChessBoardProps => ({
   fen: FEN,
-  destinations: new Map([['f3', ['e5', 'g5', 'd4', 'h4', 'd2', 'g1']]]),
+  destinations: DESTINATIONS,
   lastMove: { from: 'd7', to: 'd6' },
   ...overrides,
 })
@@ -37,10 +42,7 @@ function createdWith(): Config {
 }
 
 beforeEach(() => {
-  vi.mocked(Chessground).mockClear()
-  api.set.mockClear()
-  api.setAutoShapes.mockClear()
-  api.destroy.mockClear()
+  vi.clearAllMocks()
 })
 
 describe('ChessBoard', () => {
@@ -61,9 +63,7 @@ describe('ChessBoard', () => {
     expect(config.lastMove).toEqual(['d7', 'd6'])
     expect(config.viewOnly).toBe(false)
     expect(config.movable?.color).toBe('white')
-    expect(config.movable?.dests).toEqual(
-      new Map([['f3', ['e5', 'g5', 'd4', 'h4', 'd2', 'g1']]])
-    )
+    expect(config.movable?.dests).toEqual(DESTINATIONS)
   })
 
   it('accepts no move but the destinations given', () => {

@@ -87,6 +87,11 @@
   opacity: 1;
 }
 
+/* Each label takes an equal share of its file or rank: one square. */
+.chess-board .cg-wrap coords coord {
+  flex: 1 1 0;
+}
+
 .chess-board .cg-wrap coords coord.coord-light {
   color: var(--piece-black);
 }
@@ -106,7 +111,6 @@
 }
 
 .chess-board .cg-wrap coords.ranks coord {
-  flex: 1 1 0;
   padding: 1px 0 0 3px;
   transform: none;
 }
@@ -121,7 +125,6 @@
 }
 
 .chess-board .cg-wrap coords.files coord {
-  flex: 1 1 0;
   padding-right: 3px;
 }
 

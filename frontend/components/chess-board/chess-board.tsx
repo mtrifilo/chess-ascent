@@ -7,18 +7,16 @@ import '@lichess-org/chessground/assets/chessground.cburnett.css'
 import type { Config } from '@lichess-org/chessground/config'
 import type { DrawBrushes, DrawShape } from '@lichess-org/chessground/draw'
 import { read as readFen } from '@lichess-org/chessground/fen'
-import type { Key } from '@lichess-org/chessground/types'
+import type { Color, Key } from '@lichess-org/chessground/types'
 import { useEffect, useEffectEvent, useRef } from 'react'
 
 import './chess-board.css'
 
-type File = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h'
-type Rank = '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8'
+// A square by its name, such as "e4". Chessground's Key also covers "a0", its
+// off-board square for dropped pieces, which this board never enables.
+export type Square = Exclude<Key, 'a0'>
 
-// A square by its name, such as "e4".
-export type Square = `${File}${Rank}`
-
-export type Side = 'white' | 'black'
+export type Side = Color
 
 export type BoardMove = { from: Square; to: Square }
 
@@ -44,27 +42,24 @@ export type ChessBoardProps = {
   onMove?: (move: BoardMove) => void
 }
 
-// Brush names for the shapes. Both draw in `currentColor`, which the
-// stylesheet sets from the hint tokens. A line width of 11 (in 64ths of a
-// square) matches the design's 14px arrow shaft on an 80px square.
 const ARROW_BRUSH = 'arrow'
 const CIRCLE_BRUSH = 'circle'
+
+// A brush draws in `currentColor`, which the stylesheet sets from the hint
+// tokens. A line width of 11 (in 64ths of a square) matches the design's 14px
+// arrow shaft on an 80px square.
+const brush = (key: string) => ({
+  key,
+  color: 'currentColor',
+  opacity: 1,
+  lineWidth: 11,
+})
 
 // Chessground merges configured brushes into its own defaults, so only these
 // two are given, although its type asks for its four default colours too.
 const BRUSHES = {
-  [ARROW_BRUSH]: {
-    key: ARROW_BRUSH,
-    color: 'currentColor',
-    opacity: 1,
-    lineWidth: 11,
-  },
-  [CIRCLE_BRUSH]: {
-    key: CIRCLE_BRUSH,
-    color: 'currentColor',
-    opacity: 1,
-    lineWidth: 11,
-  },
+  [ARROW_BRUSH]: brush(ARROW_BRUSH),
+  [CIRCLE_BRUSH]: brush(CIRCLE_BRUSH),
 } as Partial<DrawBrushes> as DrawBrushes
 
 // The parts of chessground's configuration that never change: legality comes
@@ -101,8 +96,6 @@ export function ChessBoard({
   // so a new onMove function, or a re-render with equal inputs, leaves the
   // board alone.
   const reportMove = useEffectEvent((from: Key, to: Key) => {
-    // Chessground's Key also covers "a0", its off-board square for dropped
-    // pieces, which this board never enables.
     onMove?.({ from: from as Square, to: to as Square })
   })
   const currentPosition = useEffectEvent(() =>
