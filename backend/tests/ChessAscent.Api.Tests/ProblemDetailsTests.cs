@@ -2,13 +2,11 @@ using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ChessAscent.Api.Tests;
 
-public sealed class ProblemDetailsTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class ProblemDetailsTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private const string ThrowingPath = "/test-only/throw";
     private const string ExceptionMessage = "secret detail that must not reach the client";

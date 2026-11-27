@@ -1,11 +1,9 @@
 using System.Net;
 using ChessAscent.Api.Features.AppVersion;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace ChessAscent.Api.Tests.Features.AppVersion;
 
-public sealed class AppVersionEndpointsTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class AppVersionEndpointsTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     [Fact]
     public async Task VersionReportsTheApplicationVersion()

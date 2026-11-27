@@ -1,0 +1,49 @@
+# PostgreSQL for local development. `docker compose up -d` starts it and
+# `docker compose down` stops it; the data stays in the postgres-data volume
+# until `docker compose down --volumes`.
+#
+# The user, password and database below only exist inside this container,
+# which only listens on this machine. backend/src/ChessAscent.Api/
+# appsettings.Development.json holds the matching connection string. They are
+# not credentials for anything else and must never be reused for one.
+#
+# ComposeFileTests in the API tests fails if the image, the default port, the
+# user, the password or the database here stop matching
+# appsettings.Development.json and the tests' PostgresFixture. By hand,
+# README.md and THIRD-PARTY-NOTICES.md also name the image version, and
+# README.md and CLAUDE.md the default port.
+services:
+  postgres:
+    # The Npgsql EF Core provider 11 documents PostgreSQL 18 features and
+    # targets 16 or later by default. Upgrading the major version needs a
+    # fresh volume (or pg_upgrade): a data directory only opens in the major
+    # version that created it.
+    image: postgres:18.7
+    environment:
+      POSTGRES_USER: chess_ascent
+      POSTGRES_PASSWORD: local-development-only
+      POSTGRES_DB: chess_ascent
+    ports:
+      # Bound to the loopback address so nothing else on the network can reach
+      # a database with a published password. CHESS_ASCENT_DB_PORT moves the
+      # host port; 5540 keeps clear of another PostgreSQL on 5432.
+      - "127.0.0.1:${CHESS_ASCENT_DB_PORT:-5540}:5432"
+    volumes:
+      # From PostgreSQL 18 the image keeps its data in a version-named folder
+      # under /var/lib/postgresql, so the volume is mounted there, not at
+      # /var/lib/postgresql/data as for 17 and earlier.
+      - postgres-data:/var/lib/postgresql
+    # `docker compose up -d --wait` returns once this passes, so the API can be
+    # started straight after it. The check goes over TCP, as the API does:
+    # while the image initialises a new volume it runs a temporary server that
+    # only listens on a Unix socket, and a socket check would pass against
+    # that. $$ leaves the variables for the container's shell to expand rather
+    # than Compose.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --host=127.0.0.1 --username=$${POSTGRES_USER} --dbname=$${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
