@@ -49,17 +49,29 @@ public sealed class RegistrationRaceTests(ApiFactory factory) : IClassFixture<Ap
         return await users.Users.CountAsync(user => user.NormalizedEmail == normalized, TestContext.Current.CancellationToken);
     }
 
-    // Holds each of the first two saves until the second arrives.
+    // Holds each of the first two saves until the second arrives. A save that
+    // waits more than ten seconds goes ahead, so a request that never comes
+    // fails the test instead of hanging it.
     private sealed class SavesHeldUntilBothArrive : SaveChangesInterceptor
     {
-        private readonly TwoArrivals _arrivals = new();
+        private readonly TaskCompletionSource _bothArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _arrived;
 
-        public bool BothArrived => _arrivals.BothArrived;
+        public bool BothArrived => _bothArrived.Task.IsCompletedSuccessfully;
 
         public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
             DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
         {
-            await _arrivals.ArriveAsync(cancellationToken);
+            var arrival = Interlocked.Increment(ref _arrived);
+            if (arrival == 2)
+            {
+                _bothArrived.TrySetResult();
+            }
+            else if (arrival == 1)
+            {
+                await Task.WhenAny(_bothArrived.Task, Task.Delay(TimeSpan.FromSeconds(10), cancellationToken));
+            }
+
             return result;
         }
     }

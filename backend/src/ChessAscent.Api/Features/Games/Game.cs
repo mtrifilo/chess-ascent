@@ -11,9 +11,11 @@ namespace ChessAscent.Api.Features.Games;
 // unless lazy-loading or change-tracking proxies are switched on (a separate
 // package, Microsoft.EntityFrameworkCore.Proxies, which needs unsealed
 // classes and virtual members); this project uses neither, so the class can
-// be sealed. And without those proxies there is no lazy loading: Moves holds
-// what the query loaded with Include, or on a tracking context whatever
-// moves that context has already loaded, and is otherwise simply empty.
+// be sealed. Nor is there lazy loading: EF Core offers it only through
+// those proxies or an ILazyLoader injected into the entity, and this class
+// has neither. Moves holds what the query loaded with Include, or on a
+// tracking context whatever moves that context has already loaded, and is
+// otherwise simply empty.
 //
 // It is internal: only GameStore reads and writes it, and what leaves
 // GameStore is a SavedGame, so the rest of the API never holds a mutable

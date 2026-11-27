@@ -20,6 +20,9 @@ namespace ChessAscent.Api.Features.Games;
 /// <para>
 /// Scoped, like the <see cref="AppDbContext"/> it uses, and like it not safe
 /// for concurrent calls: await each call before the next.
+/// <see cref="AppendMovesAsync"/> begins and commits a transaction of its
+/// own, so call it while the context has no transaction open; EF Core throws
+/// if it already has one.
 /// </para>
 /// </remarks>
 public sealed class GameStore(AppDbContext database, TimeProvider clock)
@@ -127,8 +130,8 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
     /// with <paramref name="gameId"/> belongs to <paramref name="ownerId"/>;
     /// <see cref="GameFinished"/> when the game is over;
     /// or <see cref="HalfMoveConflict"/> when the game does not have exactly
-    /// <c><paramref name="firstHalfMoveNumber"/> - 1</c> moves. In the last
-    /// three cases nothing is saved.
+    /// <c><paramref name="firstHalfMoveNumber"/> - 1</c> moves, or one of the
+    /// new numbers is already taken. In the last three cases nothing is saved.
     /// </returns>
     public async Task<AppendResult> AppendMovesAsync(
         string ownerId,
@@ -145,7 +148,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
             throw new ArgumentException("There are no moves to append.", nameof(moves));
         }
 
-        var (status, result, endReason) = ToStoredOutcome(statusAfter);
+        var (progress, result, endReason) = ToStoredOutcome(statusAfter);
         var now = Now();
 
         // LEARN: An explicit transaction. Spring's @Transactional opens and
@@ -173,7 +176,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
             .Where(g => g.Id == gameId && g.OwnerId == ownerId && g.Status == GameProgress.Ongoing)
             .ExecuteUpdateAsync(
                 game => game
-                    .SetProperty(g => g.Status, status)
+                    .SetProperty(g => g.Status, progress)
                     .SetProperty(g => g.Result, result)
                     .SetProperty(g => g.EndReason, endReason)
                     .SetProperty(g => g.UpdatedAt, now),
@@ -216,7 +219,8 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
             // The key of Moves is (game, half-move number), so a row already
             // holds one of these numbers even though the count matched: the
             // saved numbers have a gap that this store did not write. The
-            // key still refuses the duplicate.
+            // key still refuses the duplicate. Reloading will not help such a
+            // game, since its next half-move number is the taken one.
             //
             // Inside a transaction the caller began, SaveChanges sets a
             // savepoint and rolls back only to it on failure, so the update
@@ -247,8 +251,11 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         return now.AddTicks(-(now.Ticks % TimeSpan.TicksPerMicrosecond));
     }
 
-    private static (GameProgress Status, GameResult? Result, GameEndReason? EndReason) ToStoredOutcome(GameStatus status) =>
-        status switch
+    // Internal so a test can check it against every DrawReason: a member
+    // added to that enum compiles here, and fails only when it is saved.
+    internal static (GameProgress Progress, GameResult? Result, GameEndReason? EndReason) ToStoredOutcome(
+        GameStatus boardStatus) =>
+        boardStatus switch
         {
             Ongoing => (GameProgress.Ongoing, null, null),
             Checkmate checkmate => (GameProgress.Finished, WinFor(checkmate.Winner), GameEndReason.Checkmate),

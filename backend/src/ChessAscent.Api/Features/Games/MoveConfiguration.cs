@@ -19,11 +19,13 @@ internal sealed class MoveConfiguration : IEntityTypeConfiguration<Move>
         // an @EmbeddedId class for it. A primary key is enforced by a unique
         // index, so this key is also the uniqueness rule on (game, half-move
         // number): the database refuses a second row for the same half-move
-        // of a game, which is how a move submitted twice is saved once
-        // (see GameStore.AppendMovesAsync). A uniqueness rule that is not
-        // the key is declared with HasIndex(...).IsUnique(), the counterpart
-        // of JPA's @Table(uniqueConstraints = ...). A separate surrogate id
-        // would add a column and a second index and enforce nothing more.
+        // of a game, whatever code writes it. GameStore.AppendMovesAsync
+        // checks the count of saved moves first, under the game's row lock,
+        // and this key is the guarantee behind that check. A uniqueness rule
+        // that is not the key is declared with HasIndex(...).IsUnique(), the
+        // counterpart of JPA's @Table(uniqueConstraints = ...). A separate
+        // surrogate id would add a column and a second index and enforce
+        // nothing more.
         move.HasKey(m => new { m.GameId, m.HalfMoveNumber }).HasName(KeyName);
     }
 }

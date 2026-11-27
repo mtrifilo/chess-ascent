@@ -2,6 +2,7 @@ using ChessAscent.Api.Database;
 using ChessAscent.Api.Features.Games;
 using ChessAscent.Chess;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 
@@ -234,8 +235,11 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
     }
 
     // The context is the request's, and the caller may go on using it, so
-    // the store leaves nothing in its change tracker: not what a load read,
-    // and not what a create or an append wrote.
+    // the store leaves nothing in its change tracker on any path: a load, a
+    // create that succeeds or fails, an append that succeeds, one refused by
+    // the count of saved moves, and one refused by the key after its rows
+    // were added. A failed row left tracked would be inserted again by the
+    // caller's next SaveChanges.
     [Fact]
     public async Task TheStoreLeavesNothingTrackedAfterLoadingOrSaving()
     {
@@ -244,22 +248,29 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         var store = scope.ServiceProvider.GetRequiredService<GameStore>();
         var tracker = scope.ServiceProvider.GetRequiredService<AppDbContext>().ChangeTracker;
         var (e4, afterE4) = GameData.Rules.NewGame().Play("e2e4");
+        var tracked = new List<int>();
 
+        var failedCreate = () => store.CreateAsync(
+            "no-such-account", Side.White, Opponent.None, GameData.StartingFen, Cancellation);
+        await failedCreate.Should().ThrowAsync<DbUpdateException>();
+        tracked.Add(tracker.Entries().Count());
         var game = await store.CreateAsync(owner, Side.White, Opponent.None, GameData.StartingFen, Cancellation);
-        var trackedAfterCreate = tracker.Entries().Count();
+        tracked.Add(tracker.Entries().Count());
         await store.AppendMovesAsync(owner, game.Id, 1, e4, afterE4, Cancellation);
-        var trackedAfterAppend = tracker.Entries().Count();
-        var conflict = await store.AppendMovesAsync(owner, game.Id, 1, e4, afterE4, Cancellation);
-        var trackedAfterConflict = tracker.Entries().Count();
+        tracked.Add(tracker.Entries().Count());
+        var countConflict = await store.AppendMovesAsync(owner, game.Id, 1, e4, afterE4, Cancellation);
+        tracked.Add(tracker.Entries().Count());
+        await ExecuteAsync("""INSERT INTO "Moves" VALUES (@id, 3, 'g1f3', 'Nf3')""", game.Id);
+        var keyConflict = await store.AppendMovesAsync(
+            owner, game.Id, 3, [new PlayedMove("e7e5", "e5")], new Ongoing(), Cancellation);
+        tracked.Add(tracker.Entries().Count());
         var loaded = await store.LoadAsync(owner, game.Id, Cancellation);
-        var trackedAfterLoad = tracker.Entries().Count();
+        tracked.Add(tracker.Entries().Count());
 
-        conflict.Value.Should().BeOfType<HalfMoveConflict>();
-        loaded!.Moves.Should().ContainSingle("the load must have read a move for its tracking to be tested");
-        trackedAfterCreate.Should().Be(0);
-        trackedAfterAppend.Should().Be(0);
-        trackedAfterConflict.Should().Be(0);
-        trackedAfterLoad.Should().Be(0);
+        countConflict.Value.Should().BeOfType<HalfMoveConflict>();
+        keyConflict.Value.Should().BeOfType<HalfMoveConflict>();
+        loaded!.Moves.Should().HaveCount(2, "the load must have read moves for its tracking to be tested");
+        tracked.Should().AllBeEquivalentTo(0);
     }
 
     // The enums are stored by name, so the table reads well in psql and
@@ -282,18 +293,33 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         row.Should().Equal("White", "Computer", 1400, "Finished", "BlackWins", "Checkmate");
     }
 
-    // The stored text is each member's name, so these lists are the values
-    // rows already hold. A member renamed here would leave those rows
-    // unreadable, so a change to a list needs a migration that rewrites them.
+    // The stored text is each member's name, so rows already hold these
+    // names. Adding a member or reordering them is safe; renaming or removing
+    // one of these leaves rows unreadable until a migration rewrites them.
     [Fact]
     public void TheStoredEnumerationNamesAreTheOnesRowsHold()
     {
-        Enum.GetNames<Side>().Should().Equal("White", "Black");
-        Enum.GetNames<OpponentKind>().Should().Equal("None", "Computer");
-        Enum.GetNames<GameProgress>().Should().Equal("Ongoing", "Finished");
-        Enum.GetNames<GameResult>().Should().Equal("WhiteWins", "BlackWins", "Draw");
-        Enum.GetNames<GameEndReason>().Should().Equal(
-            "Checkmate", "Stalemate", "ThreefoldRepetition", "FiftyMoveRule", "DeadPosition", "Resignation");
+        Enum.GetNames<Side>().Should().Contain(["White", "Black"]);
+        Enum.GetNames<OpponentKind>().Should().Contain(["None", "Computer"]);
+        Enum.GetNames<GameProgress>().Should().Contain(["Ongoing", "Finished"]);
+        Enum.GetNames<GameResult>().Should().Contain(["WhiteWins", "BlackWins", "Draw"]);
+        Enum.GetNames<GameEndReason>().Should().Contain(
+            ["Checkmate", "Stalemate", "ThreefoldRepetition", "FiftyMoveRule", "DeadPosition", "Resignation"]);
+    }
+
+    // The mapping from a draw's reason to the stored reason is a switch over
+    // an enum, which the compiler does not check for completeness, so a
+    // reason added to DrawReason would fail only when a game ending that way
+    // was saved.
+    [Fact]
+    public void EveryDrawReasonTheChessInterfaceHasIsStoredAsADrawWithThatReason()
+    {
+        foreach (var reason in Enum.GetValues<DrawReason>())
+        {
+            var stored = GameStore.ToStoredOutcome(new Draw(reason));
+
+            stored.Should().Be((GameProgress.Finished, GameResult.Draw, Enum.Parse<GameEndReason>(reason.ToString())));
+        }
     }
 
     [Fact]

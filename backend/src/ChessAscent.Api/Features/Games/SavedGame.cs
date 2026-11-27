@@ -68,9 +68,14 @@ public readonly record struct GameNotFound;
 public readonly record struct GameFinished;
 
 /// <summary>
-/// The game does not have exactly one move fewer than the first half-move
-/// number given, so it is not the game the caller played the moves on:
-/// another request saved a move first, or this one was submitted twice.
-/// Nothing was saved. Load the game again to see where it stands.
+/// The new moves do not follow the saved ones. Nothing was saved.
 /// </summary>
+/// <remarks>
+/// Usually the game does not have exactly one move fewer than the first
+/// half-move number given, so it is not the game the caller played the moves
+/// on: another request saved a move first, or this one was submitted twice.
+/// Loading the game again shows where it stands. The other cause is a saved
+/// move list with a gap in its numbers, which this store never writes; then
+/// a new number is already taken, and reloading gives the same answer.
+/// </remarks>
 public readonly record struct HalfMoveConflict;
