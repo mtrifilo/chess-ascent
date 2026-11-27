@@ -16,12 +16,23 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOCUMENT="$ROOT/backend/openapi/ChessAscent.Api.json"
 TYPES="$ROOT/frontend/types/api.d.ts"
 
-# The document is written to an empty directory and copied into place only
-# once it exists, so a failed build leaves the committed files as they were.
+OPENAPI_TYPESCRIPT="$ROOT/frontend/node_modules/.bin/openapi-typescript"
+PRETTIER="$ROOT/frontend/node_modules/.bin/prettier"
+for tool in "$OPENAPI_TYPESCRIPT" "$PRETTIER"; do
+  if [ ! -x "$tool" ]; then
+    echo "gen-api-types: $tool is missing; run \`bun install\` in frontend/ first" >&2
+    exit 1
+  fi
+done
+
+# Both files are generated in an empty directory and copied into place only
+# once every step has succeeded, so a failure leaves the committed files as
+# they were, and never one updated without the other.
+GENERATED="$(mktemp -d "${TMPDIR:-/tmp}/chess-ascent-openapi.XXXXXX")"
+trap 'rm -rf "$GENERATED"' EXIT
+
 # --no-incremental rebuilds the API, because the generator skips its run when
 # the assembly is no newer than its last one.
-GENERATED="$(mktemp -d -t chess-ascent-openapi-XXXXXX)"
-trap 'rm -rf "$GENERATED"' EXIT
 dotnet build "$ROOT/backend/src/ChessAscent.Api" --no-incremental --nologo -v:q \
   -p:OpenApiGenerateDocumentsOnBuild=true \
   -p:OpenApiDocumentsDirectory="$GENERATED"
@@ -30,12 +41,16 @@ if [ ! -s "$GENERATED/ChessAscent.Api.json" ]; then
   echo "gen-api-types: the build wrote no OpenAPI document" >&2
   exit 1
 fi
-mkdir -p "$(dirname "$DOCUMENT")"
-cp "$GENERATED/ChessAscent.Api.json" "$DOCUMENT"
+# The generator ends the file without a newline; .editorconfig asks for one.
+printf '\n' >>"$GENERATED/ChessAscent.Api.json"
 
-cd "$ROOT/frontend"
-node_modules/.bin/openapi-typescript "$DOCUMENT" --output "$TYPES"
+"$OPENAPI_TYPESCRIPT" "$GENERATED/ChessAscent.Api.json" --output "$GENERATED/api.d.ts"
 # The generator's own formatting differs from the repo's Prettier settings,
-# which `bun run format:check` enforces on every file.
-node_modules/.bin/prettier --write --log-level warn "$TYPES"
+# which `bun run format:check` enforces. Prettier reads its settings for the
+# path the file will have, not the temporary one.
+"$PRETTIER" --stdin-filepath "$TYPES" <"$GENERATED/api.d.ts" >"$GENERATED/api.formatted.d.ts"
+
+mkdir -p "$(dirname "$DOCUMENT")" "$(dirname "$TYPES")"
+cp "$GENERATED/ChessAscent.Api.json" "$DOCUMENT"
+cp "$GENERATED/api.formatted.d.ts" "$TYPES"
 echo "gen-api-types: wrote $DOCUMENT and $TYPES"

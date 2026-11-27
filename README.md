@@ -38,7 +38,7 @@ The API applies any pending database migrations before it starts serving, so it 
 
 With the API running, `curl http://localhost:5100/health` answers `Healthy`, `curl http://localhost:5100/health/ready` answers `Healthy` while the database is reachable and `Unhealthy` with status 503 when it does not accept a connection within 3 seconds, and `curl http://localhost:5100/version` returns the version and the git commit it was built from.
 
-In Development, `http://localhost:5100/scalar` is an API explorer (Scalar) for the API's endpoints, and `http://localhost:5100/openapi/v1.json` is the OpenAPI document it reads. Scalar's telemetry and its AI chat are turned off, and its page and script are served by the API itself.
+In Development, `http://localhost:5100/scalar` is an API explorer (Scalar) for the API's endpoints, and `http://localhost:5100/openapi/v1.json` is the OpenAPI document it reads. Scalar's page and script are served by the API itself, and its telemetry, AI chat, MCP integration and developer toolbar (whose buttons would upload the document to Scalar) are turned off.
 
 Migrations use the `dotnet-ef` tool, pinned in `backend/dotnet-tools.json`. Run `dotnet tool restore` once, then `dotnet ef migrations add <Name> --project src/ChessAscent.Api --output-dir Database/Migrations` to add one.
 

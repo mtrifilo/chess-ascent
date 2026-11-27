@@ -9,7 +9,3 @@ import type { paths } from '@/types/api'
 // Requests go to /api on this app's own origin; next.config.ts forwards them
 // to the back end in development.
 export const api = createClient<paths>({ baseUrl: '/api' })
-
-// The bodies GET /health/ready can answer with, as the API documents them.
-type Readiness = paths['/health/ready']['get']['responses']
-export type ReadinessStatus = Readiness[200 | 503]['content']['text/plain']

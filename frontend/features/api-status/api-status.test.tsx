@@ -81,6 +81,40 @@ describe('ApiStatus', () => {
     )
   })
 
+  it.each([
+    [
+      'a 503 with a problem-details body',
+      {
+        status: 503,
+        body: JSON.stringify({ title: 'Service Unavailable', status: 503 }),
+        contentType: 'application/problem+json',
+      },
+    ],
+    [
+      'a 200 with a body the API does not document',
+      {
+        status: 200,
+        body: '<html>other server</html>',
+        contentType: 'text/html',
+      },
+    ],
+    ['a 200 that says Unhealthy', readiness(200, 'Unhealthy')],
+  ])('leaves the readiness blank for %s', async (_case, reply) => {
+    answer({
+      '/api/health/ready': reply,
+      '/api/version': version('0.1.0'),
+    })
+
+    render(<ApiStatus />)
+
+    await vi.waitFor(() =>
+      expect(valueOf('Version')).toHaveTextContent('0.1.0')
+    )
+    await vi.waitFor(() => expect(requested).toHaveLength(2))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(valueOf('API')).toBeEmptyDOMElement()
+  })
+
   it('leaves both values blank when the API cannot be reached', async () => {
     answer({
       '/api/health/ready': readiness(500, 'Internal Server Error'),

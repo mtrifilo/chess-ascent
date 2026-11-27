@@ -5,13 +5,16 @@ using Scalar.AspNetCore;
 
 namespace ChessAscent.Api.ApiDocument;
 
-// LEARN: ASP.NET Core describes its own endpoints as an OpenAPI document, so
-// there is no springdoc-style library scanning annotations at run time. It
-// reads the metadata every endpoint already carries: the route, the HTTP
-// method, the parameter types, and what the handler declares it returns (see
-// AppVersionEndpoints for how a TypedResults return type becomes a response).
-// The front end's TypeScript types are generated from that document, so the
-// C# types are the single source of the API contract.
+// LEARN: Microsoft.AspNetCore.OpenApi plays the part springdoc-openapi plays
+// in a Spring Boot app: it builds an OpenAPI document from the endpoints the
+// application maps. It reads the metadata each endpoint carries: the route,
+// the HTTP method, the parameter types, attributes such as [EndpointSummary],
+// and the response types. Where springdoc mostly learns a response's shape
+// from a controller method's return type plus annotations, a minimal API
+// endpoint states it in its handler's declared return type (see
+// AppVersionEndpoints for how a TypedResults type becomes a response). The
+// front end's TypeScript types are generated from this document, so the C#
+// types are the single source of the API contract.
 public static class ApiDocumentServices
 {
     /// <summary>
@@ -54,9 +57,15 @@ public static class ApiDocumentServices
         {
             app.MapOpenApi();
 
-            // Scalar's telemetry and its AI chat both reach Scalar's own
-            // servers; nothing about this project is sent out by default.
-            app.MapScalarApiReference(options => options.DisableTelemetry().DisableAgent());
+            // By default Scalar sends telemetry, and offers an AI chat, MCP
+            // integration and, on localhost, a developer toolbar whose
+            // buttons upload the document to Scalar's servers. Nothing about
+            // this project is sent out by default, so all four are off.
+            app.MapScalarApiReference(options => options
+                .DisableTelemetry()
+                .DisableAgent()
+                .DisableMcp()
+                .HideDeveloperTools());
         }
 
         return app;

@@ -2,7 +2,21 @@
 
 import { useEffect, useState } from 'react'
 
-import { api, type ReadinessStatus } from '@/lib/api'
+import { api } from '@/lib/api'
+import type { paths } from '@/types/api'
+
+type Readiness = paths['/health/ready']['get']['responses']
+type ReadinessCode = 200 | 503
+type ReadinessStatus = Readiness[ReadinessCode]['content']['text/plain']
+
+// The bodies the API documents for each readiness status code. The type
+// checks each entry against the generated document.
+const readinessBodies: {
+  [Code in ReadinessCode]: readonly Readiness[Code]['content']['text/plain'][]
+} = {
+  200: ['Healthy', 'Degraded'],
+  503: ['Unhealthy'],
+}
 
 // The API's readiness and version, fetched from the browser through the
 // typed client. A value stays blank until the API has answered with it.
@@ -36,19 +50,20 @@ export function ApiStatus() {
   )
 }
 
-// The readiness endpoint answers in plain text, so the body is read as text,
-// which openapi-fetch types as any string. It is narrowed to the documented
-// values only when the status is one the document lists; any other answer,
-// such as the development server's 500 when the API is not running, is not
-// the API's readiness and leaves the value blank.
+// The readiness endpoint answers in plain text, which openapi-fetch types as
+// any string, and on an error status it also tries to parse the body as
+// JSON. So the value shown is only ever one the document lists for the status
+// that came back. Any other answer, such as the development server's 500 when
+// the API is not running, or a problem-details 503 from something in front of
+// the API, is not the API's readiness and leaves the value blank.
 async function fetchReadiness(): Promise<ReadinessStatus | undefined> {
   try {
     const { data, error, response } = await api.GET('/health/ready', {
       parseAs: 'text',
     })
-    if (response.status === 200) return data as ReadinessStatus
-    if (response.status === 503) return error
-    return undefined
+    const code = response.status
+    if (code !== 200 && code !== 503) return undefined
+    return readinessBodies[code].find(body => body === (data ?? error))
   } catch {
     return undefined
   }
