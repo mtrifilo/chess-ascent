@@ -55,13 +55,15 @@
       project uses, transitive ones included, like Gradle's dependency
       locking or npm's package-lock.json; Maven has no built-in equivalent.
       An ordinary restore rewrites it when a package changes, so commit it
-      with that change. A restore in locked mode, which CI runs, instead
-      fails when the lock file no longer matches the project files or a
-      downloaded package does not match its recorded hash. (The option is
-      not spelled out here because an XML comment cannot contain two
-      hyphens in a row.)
+      with that change. A restore in locked mode instead fails when the
+      lock file no longer matches the project files or a downloaded package
+      does not match its recorded hash. Every restore in CI is locked,
+      including the ones that dotnet build and dotnet test start: GitHub's
+      runners set the environment variable CI to true, and MSBuild reads
+      environment variables as properties.
     -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
 
     <!--
       LEARN: The .NET code analyzers ship inside the SDK and run as part of

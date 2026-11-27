@@ -50,8 +50,10 @@ jobs:
         with:
           persist-credentials: false
 
-      # Caches the NuGet global packages folder, keyed on the lock files and
-      # the tool manifest.
+      # Only this job caches the NuGet packages folder. It restores every
+      # project and the tools, so the cache it saves is complete; a job that
+      # restored less and saved first would leave packages out of it until
+      # the lock files next change.
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: backend/global.json
@@ -60,9 +62,9 @@ jobs:
             backend/**/packages.lock.json
             backend/dotnet-tools.json
 
-      # Locked mode fails if a packages.lock.json is out of date or a package
-      # does not match its recorded hash. Restore also runs NuGet's audit of
-      # every package, transitive ones included (NuGetAuditMode "all"), and
+      # Locked mode: see RestorePackagesWithLockFile in Directory.Build.props.
+      # Restore also runs NuGet's audit of every package, transitive ones
+      # included (the SDK's default audit mode, "all"), and
       # Directory.Build.props makes a known vulnerability (NU1901 to NU1904)
       # an error, so this step is the back end's dependency-advisory check.
       - name: Restore
@@ -112,13 +114,6 @@ jobs:
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: backend/global.json
-          cache: true
-          cache-dependency-path: |
-            backend/**/packages.lock.json
-            backend/dotnet-tools.json
-
-      - name: Restore
-        run: dotnet restore --locked-mode
 
       - name: Slow rules tests
         run: dotnet test --project tests/ChessAscent.Chess.Tests --explicit only --filter-trait "Category=Slow" --parallel all
@@ -183,10 +178,6 @@ jobs:
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: backend/global.json
-          cache: true
-          cache-dependency-path: |
-            backend/**/packages.lock.json
-            backend/dotnet-tools.json
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -213,8 +204,9 @@ jobs:
       - name: Fail if they differ from the commit
         run: |
           contract=(backend/openapi/ChessAscent.Api.json frontend/types/api.d.ts)
-          if [ -n "$(git status --porcelain -- "${contract[@]}")" ]; then
-            git status --short -- "${contract[@]}"
+          changes="$(git status --porcelain -- "${contract[@]}")"
+          if [ -n "$changes" ]; then
+            echo "$changes"
             git diff -- "${contract[@]}"
             echo "::error::The committed API contract is out of date. Run scripts/gen-api-types.sh (or bun run api:types in frontend/) and commit both files."
             exit 1
@@ -253,9 +245,9 @@ jobs:
           "$RUNNER_TEMP/gitleaks" git --redact --verbose --no-banner .
 
   # The front end's packages are checked against the npm registry's advisory
-  # database. Any advisory, at any severity, fails the job, the same rule the
-  # back end already follows: there NuGet's audit runs during restore in the
-  # back-end job, at the lowest severity, with warnings as errors.
+  # database. Any advisory, at any severity, fails the job: the same rule as
+  # the back end's packages, which the Restore step of the back-end job
+  # audits.
   dependency-advisories:
     name: Dependency advisories
     runs-on: ubuntu-24.04

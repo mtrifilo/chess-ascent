@@ -9,7 +9,7 @@ telemetry = false
 exact = true
 
 # `bun add`, `bun update` and any install that has to resolve a version pick
-# only versions published at least three days (259200 seconds) ago, so a
+# only versions published at least three days ago, so a
 # release that is pulled or found to be malicious soon after publication
 # does not reach bun.lock. Three days matches the 72 hours in which npm
 # lets an author unpublish a new package. An install from an unchanged
