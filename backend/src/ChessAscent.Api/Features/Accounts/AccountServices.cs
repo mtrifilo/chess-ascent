@@ -45,7 +45,9 @@ public static class AccountServices
         // in parallel. Each failed attempt saves the new count with
         // Identity's concurrency check, so of many wrong passwords sent at the
         // same moment only one is counted (the rest fail their save and are
-        // answered as wrong), and a right password among them still signs in.
+        // answered as wrong). A right password among them signs in if the
+        // account had no failures counted yet; otherwise its reset of the
+        // count can lose the same race, and Identity answers it as wrong.
         // A cap on concurrent sign-ins per account would close that; it is
         // rate limiting, which this API does not have yet.
         //

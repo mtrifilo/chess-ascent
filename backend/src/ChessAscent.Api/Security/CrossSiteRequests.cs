@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.AspNetCore.Antiforgery;
 
 namespace ChessAscent.Api.Security;
@@ -69,8 +71,8 @@ public static partial class CrossSiteRequests
             {
                 if (logger.IsEnabled(LogLevel.Information))
                 {
-                    var secFetchSite = DescribeSecFetchSite(context.Request.Headers["Sec-Fetch-Site"].ToString());
-                    var origin = DescribeOrigin(context.Request.Headers.Origin.ToString());
+                    var secFetchSite = Printable(context.Request.Headers["Sec-Fetch-Site"].ToString());
+                    var origin = Printable(context.Request.Headers.Origin.ToString());
                     LogRefused(logger, context.Request.Method, context.Request.Path, secFetchSite, origin);
                 }
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -109,21 +111,36 @@ public static partial class CrossSiteRequests
     private static partial void LogRefused(
         ILogger logger, string method, PathString path, string secFetchSite, string origin);
 
-    // Both headers come from the client, and Kestrel lets control characters
-    // other than CR, LF and NUL through, which could rewrite a terminal's
-    // display of the log. So only known values are logged: a Sec-Fetch-Site
-    // value the Fetch Metadata specification defines, and an Origin's scheme,
-    // host (in its ASCII form) and port.
-    private static string DescribeSecFetchSite(string value) => value switch
-    {
-        "cross-site" or "same-site" or "same-origin" or "none" => value,
-        "" => "(none)",
-        _ => "(other)",
-    };
+    /// <summary>How many characters of each header a refusal's log entry keeps.</summary>
+    private const int LoggedHeaderLength = 100;
 
-    private static string DescribeOrigin(string value) =>
-        value.Length == 0 ? "(none)"
-        : Uri.TryCreate(value, UriKind.Absolute, out var origin) && origin.Scheme is "http" or "https"
-            ? $"{origin.Scheme}://{origin.IdnHost}:{origin.Port}"
-            : "(other)";
+    // Both headers come from the client, and Kestrel lets through every
+    // character but CR, LF and NUL, including the escape sequences that can
+    // rewrite a terminal's display of the log. So each is logged as it was
+    // sent, cut to LoggedHeaderLength characters, with every character
+    // outside printable ASCII written as \uXXXX. Nothing here parses the
+    // value, so no value can make logging throw.
+    private static string Printable(string value)
+    {
+        if (value.Length == 0)
+        {
+            return "(none)";
+        }
+
+        var kept = value.AsSpan(0, Math.Min(value.Length, LoggedHeaderLength));
+        var printable = new StringBuilder(kept.Length + 3);
+        foreach (var character in kept)
+        {
+            if (character is >= ' ' and <= '~')
+            {
+                printable.Append(character);
+            }
+            else
+            {
+                printable.Append(CultureInfo.InvariantCulture, $"\\u{(int)character:x4}");
+            }
+        }
+
+        return value.Length > LoggedHeaderLength ? printable.Append("...").ToString() : printable.ToString();
+    }
 }

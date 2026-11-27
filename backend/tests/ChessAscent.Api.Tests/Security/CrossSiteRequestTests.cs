@@ -1,6 +1,8 @@
 using System.Net;
 using ChessAscent.Api.Security;
 using ChessAscent.Api.Tests.Features.Accounts;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Net.Http.Headers;
 
 namespace ChessAscent.Api.Tests.Security;
@@ -96,6 +98,36 @@ public sealed class CrossSiteRequestTests(ApiFactory factory) : IClassFixture<Ap
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         response.Content.Headers.ContentType!.MediaType.Should().Be("text/plain");
+    }
+
+    // The refusal logs the headers it was given, and any client can choose
+    // them: a host that Uri accepts but cannot turn into ASCII, a terminal
+    // escape sequence, the "null" that sandboxed pages send, and a header far
+    // longer than the log keeps. Each is still refused with a 403, and the log
+    // holds only printable ASCII.
+    [Theory]
+    [InlineData("http://canada.c\u2100.microsoft.com")]
+    [InlineData("https://attacker.example\u001b[2K\u001b[1A")]
+    [InlineData("null")]
+    [InlineData("https://attacker.example/padding-padding-padding-padding-padding-padding-padding-padding-padding-padding-padding")]
+    public async Task ARefusalOfAnyOriginIsA403AndLogsItInPrintableAscii(string origin)
+    {
+        var logs = new CapturingLoggerProvider();
+        using var logged = factory.WithWebHostBuilder(host => host.ConfigureLogging(logging => logging
+            .AddProvider(logs)
+            .AddFilter<CapturingLoggerProvider>(category: null, LogLevel.Trace)));
+        using var client = logged.CreateClient();
+
+        using var forged = new HttpRequestMessage(HttpMethod.Post, "/auth/sign-out") { Content = EmptyForm() };
+        forged.Headers.Add("Sec-Fetch-Site", "cross-site");
+        forged.Headers.TryAddWithoutValidation(HeaderNames.Origin, origin).Should().BeTrue();
+        using var response = await client.SendAsync(forged, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var refusal = logs.Messages.Should().ContainSingle(message => message.StartsWith("Refused POST /auth/sign-out", StringComparison.Ordinal))
+            .Subject;
+        refusal.Should().MatchRegex("^[ -~]*$");
+        refusal.Length.Should().BeLessThan(300);
     }
 
     // A browser without Fetch Metadata, behind the same rewrite, has only an
