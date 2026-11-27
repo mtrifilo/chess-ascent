@@ -78,7 +78,7 @@ app.UseExceptionHandler();
 // their 401 and 403 answers.
 app.UseStatusCodePages();
 
-// A state-changing request that a page on another site started is refused
+// A state-changing request that a page on another origin started is refused
 // before anything reads its cookie (see CrossSiteRequests).
 app.UseCrossSiteRequestRefusal();
 

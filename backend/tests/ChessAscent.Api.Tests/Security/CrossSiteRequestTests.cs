@@ -79,6 +79,24 @@ public sealed class CrossSiteRequestTests(ApiFactory factory) : IClassFixture<Ap
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 
+    // A page may set Accept on its forged request. One that rules out JSON
+    // still gets a 403, as plain text, and never a server error.
+    [Theory]
+    [InlineData("text/plain")]
+    [InlineData("text/html")]
+    [InlineData("image/png")]
+    public async Task ARefusalThatCannotBeJsonIsStillA403(string accept)
+    {
+        using var client = factory.CreateClient();
+        await client.RegisterNewAsync(Accounts.NewEmail());
+
+        using var forged = Post("/auth/sign-out", "cross-site", AttackerOrigin, EmptyForm());
+        forged.Headers.Accept.ParseAdd(accept);
+        using var response = await client.SendAsync(forged, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     // A browser without Fetch Metadata, behind the same rewrite, has only an
     // Origin that differs from the API's Host, so it is refused.
     [Fact]

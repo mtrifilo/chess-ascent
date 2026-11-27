@@ -74,7 +74,13 @@ public static partial class CrossSiteRequests
                     context.Request.Headers["Sec-Fetch-Site"].ToString(),
                     context.Request.Headers.Origin.ToString());
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await problems.WriteAsync(new ProblemDetailsContext
+
+                // TryWriteAsync, not WriteAsync: when the request's Accept
+                // header rules out JSON, no problem-details writer applies,
+                // and WriteAsync would throw and turn the refusal into a 500
+                // that any page could trigger. Then the body stays empty, and
+                // UseStatusCodePages writes a plain-text 403 on the way out.
+                await problems.TryWriteAsync(new ProblemDetailsContext
                 {
                     HttpContext = context,
                     ProblemDetails = { Status = StatusCodes.Status403Forbidden, Detail = RefusedDetail },
@@ -87,13 +93,15 @@ public static partial class CrossSiteRequests
     }
 
     // LEARN: [LoggerMessage] on a partial method has a source generator
-    // write the method's body at build time. A call then allocates no array
-    // for its arguments and boxes none of them (PathString is a struct), as
-    // logger.LogWarning(template, args) would on every call; the template's
-    // placeholders become named fields in structured logs, as with SLF4J's
-    // {} placeholders and a structured appender. "partial" lets one part of
-    // a class or method be written by hand and the rest by a generator,
-    // which Java has no syntax for.
+    // write the method's body at build time. The message template is parsed
+    // once rather than on every call, a call does nothing at all when the
+    // level is switched off, and the arguments travel as typed values until
+    // a logging provider asks for the text or the named fields. A call to
+    // logger.LogWarning(template, args) builds its params array every time,
+    // switched off or not. The placeholders become named fields in
+    // structured logs, as with SLF4J's {} placeholders and a structured
+    // appender. "partial" lets one part of a class or method be written by
+    // hand and the rest by a generator, which Java has no syntax for.
     [LoggerMessage(
         Level = LogLevel.Warning,
         Message = "Refused {Method} {Path}: Sec-Fetch-Site '{SecFetchSite}', Origin '{Origin}'.")]

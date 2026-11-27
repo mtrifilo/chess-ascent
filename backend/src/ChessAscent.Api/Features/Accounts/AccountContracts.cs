@@ -10,8 +10,10 @@ namespace ChessAscent.Api.Features.Accounts;
 // annotation on the endpoint: every minimal API parameter of a type that
 // carries validation attributes is checked before the handler runs, and a
 // failure answers 400 with a problem-details body that lists the errors under
-// each property's C# name (Email, not the JSON name email). The checks are
-// generated at compile time rather than discovered by reflection at run time.
+// each property's C# name (Email, not the JSON name email). Which types and
+// properties to check is worked out at compile time by a source generator,
+// rather than by scanning with reflection at run time as Hibernate Validator
+// does; the attributes themselves are read once at run time and cached.
 //
 // LEARN: In a positional record, an attribute written before a parameter
 // applies to the constructor parameter only. `property:` sends it to the
