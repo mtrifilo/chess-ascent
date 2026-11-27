@@ -43,7 +43,7 @@ public sealed class UciEngineDisposalTests
     }
 
     [Fact]
-    public async Task DisposalKillsTheWholeProcessTree()
+    public async Task DisposalKillsTheTreeOfAnEngineThatIgnoresQuit()
     {
         // The child inherits the engine's pipes, as a program started by a
         // wrapper script would, and ignores quit with its parent.
@@ -57,6 +57,26 @@ public sealed class UciEngineDisposalTests
 
         (await FakeEngine.IsGoneAsync(engine.ProcessId)).Should().BeTrue();
         (await FakeEngine.IsGoneAsync(childId)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task DisposalReportsAChildThatOutlivesTheEngine()
+    {
+        // The engine obeys quit, but its child goes on running with the
+        // engine's output open. Once the engine has gone the child is out of
+        // its process tree and cannot be reached; disposal still finishes.
+        using var fake = FakeEngine.WithChildProcess();
+        fake.Options = fake.Options with { ExitTimeout = TimeSpan.FromMilliseconds(500) };
+        var engine = await fake.StartAsync();
+        var clock = Stopwatch.StartNew();
+
+        await engine.DisposeAsync();
+
+        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5));
+        (await FakeEngine.IsGoneAsync(engine.ProcessId)).Should().BeTrue();
+        fake.Logger.Entries.Should().Contain(entry => entry.Level == Microsoft.Extensions.Logging.LogLevel.Error
+            && entry.Message.Contains("still holds its output open", StringComparison.Ordinal));
+        fake.Logger.Entries.Should().NotContain(entry => entry.Message.Contains("did not finish", StringComparison.Ordinal));
     }
 
     [Fact]

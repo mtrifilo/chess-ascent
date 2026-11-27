@@ -7,16 +7,20 @@ using ChessAscent.FakeUciEngine;
 //
 //   --bestmove <text>          what follows "bestmove " after a search (default "e2e4 ponder e7e5");
 //                              a search ended by "stop" answers "a7a6" instead
-//   --extra-bestmove <text>    print a second, unasked-for bestmove line after each search
+//   --extra-bestmove <text>    print a second, unasked-for bestmove line with each search's own
 //   --search-ms <n,n,...>      how long each search takes; the last value repeats (default 0)
 //   --silent-on <command>      never answer this command; for "go", ignore "stop" as well
 //   --silent-after <n>         answer the first n of those commands, then fall silent (default 0)
-//   --exit-on <command>        print one info line, then exit with --exit-code (default 3)
+//   --exit-on <command>        print one info line, then exit
+//   --exit-code <n>            the exit code for --exit-on (default 3)
 //   --long-line <length>       print an info line of this many characters during each search; repeatable
-//   --noise                    print junk lines, long and short, before "uciok"
+//   --noise                    print junk lines, long and short, then "uciok" 200 ms later, while
+//                              still reading commands; the transcript records "(uciok sent)"
 //   --crlf                     end lines with CR LF instead of LF
 //   --ignore-quit              stay running after "quit" and after standard input closes
+//   --stderr-flood <n>         write n lines to standard error at start
 //   --stderr <text>            write this line to standard error at start; repeatable
+//   --stderr-on <command> <text>  write the line to standard error when the command arrives; repeatable
 //   --transcript <path>        append every command received to this file
 //   --pid-file <path>          write this process's id to the file
 //   --child-pid-file <path>    start a child process that sleeps, and write its id to the file
@@ -48,24 +52,35 @@ foreach (var text in settings.StandardError)
     await Console.Error.WriteLineAsync(text);
 }
 
+for (var i = 0; i < settings.StandardErrorFlood; i++)
+{
+    await Console.Error.WriteLineAsync($"flood {i}");
+}
+
 // Console.Out is already synchronised, so a line written by a running
 // search never interleaves with one written by the command loop, and it
 // flushes after every write.
 Console.Out.NewLine = settings.CrLf ? "\r\n" : "\n";
 Console.Out.WriteLine("Fake UCI engine, for tests");
 
+var transcript = new Transcript(settings.Transcript);
 var searchCount = 0;
 var silentCount = 0;
 Search? search = null;
 
 while (await Console.In.ReadLineAsync() is { } command)
 {
-    if (settings.Transcript is { } transcript)
-    {
-        await File.AppendAllTextAsync(transcript, command + "\n");
-    }
+    transcript.Record(command);
 
     var word = command.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+    foreach (var (on, text) in settings.StandardErrorOn)
+    {
+        if (on == word)
+        {
+            await Console.Error.WriteLineAsync(text);
+        }
+    }
+
     if (word == settings.ExitOn)
     {
         Console.Out.WriteLine("info depth 1 score cp 0");
@@ -85,7 +100,12 @@ while (await Console.In.ReadLineAsync() is { } command)
             Console.Out.WriteLine("option name Skill Level type spin default 20 min 0 max 20");
             if (settings.Noise)
             {
+                // The real uciok comes later, while this loop goes on reading,
+                // so a client that took a near miss for it would send its next
+                // command before "(uciok sent)" appears in the transcript.
                 SendNoise();
+                _ = SendUciokLaterAsync(transcript);
+                break;
             }
 
             Console.Out.WriteLine("uciok");
@@ -152,6 +172,13 @@ static Process StartSleepingChild()
 
     start.ArgumentList.Add("--sleep");
     return Process.Start(start) ?? throw new InvalidOperationException("The child process did not start.");
+}
+
+static async Task SendUciokLaterAsync(Transcript transcript)
+{
+    await Task.Delay(200);
+    transcript.Record("(uciok sent)");
+    Console.Out.WriteLine("uciok");
 }
 
 static void SendNoise()

@@ -20,7 +20,7 @@ public sealed class UciEngineFailureTests
 
         var start = fake.StartAsync;
 
-        (await start.Should().ThrowExactlyAsync<UciEngineTimeoutException>()).Which.Awaited.Should().Be("uciok and readyok");
+        (await start.Should().ThrowExactlyAsync<UciEngineTimeoutException>()).Which.Awaited.Should().Be("uciok");
         (await FakeEngine.IsGoneAsync(await fake.ReadPidAsync())).Should().BeTrue();
     }
 
@@ -239,6 +239,49 @@ public sealed class UciEngineFailureTests
                 await engine.DisposeAsync();
             }
         }
+    }
+
+    [Fact]
+    public async Task EngineThatDiesWhileItsChildHoldsThePipesIsReportedAsExited()
+    {
+        // The child keeps the engine's output open after the engine dies, so
+        // the output never reaches its end; the exit itself is noticed.
+        using var fake = FakeEngine.WithChildProcess("--exit-on", "go", "--exit-code", "3");
+        fake.Options = fake.Options with { ExitTimeout = TimeSpan.FromMilliseconds(500) };
+        await using var engine = await fake.StartAsync();
+        var clock = Stopwatch.StartNew();
+
+        var search = () => engine.SearchAsync(Start, Depth1, Token);
+
+        (await search.Should().ThrowExactlyAsync<UciEngineExitedException>()).Which.ExitCode.Should().Be(3);
+        clock.Elapsed.Should().BeLessThan(fake.Options.SearchTimeout);
+        engine.IsUsable.Should().BeFalse();
+        fake.Logger.Entries.Should().Contain(entry => entry.Message.Contains("still holds its output open", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task EngineThatClosesItsInputBecomesUnusable()
+    {
+        // The .NET runtime keeps its own copy of a program's standard input,
+        // so the fake cannot close it; a two-line POSIX shell engine can.
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Needs /bin/sh.");
+        using var fake = new FakeEngine();
+        fake.Options = fake.Options with
+        {
+            ExecutablePath = "/bin/sh",
+            Arguments = ["-c", "read l; echo uciok; read l; echo readyok; exec 0<&-; exec sleep 30"],
+            ExitTimeout = TimeSpan.FromMilliseconds(300),
+        };
+        await using var engine = await fake.StartAsync();
+        await Task.Delay(300, Token);
+
+        var setOption = () => engine.SetOptionAsync("Skill Level", "1", Token);
+
+        var closed = (await setOption.Should().ThrowExactlyAsync<UciEngineExitedException>()).Which;
+        closed.ExitCode.Should().BeNull();
+        closed.Message.Should().Contain("closed its input");
+        engine.IsUsable.Should().BeFalse();
+        await setOption.Should().ThrowExactlyAsync<InvalidOperationException>();
     }
 
     [Fact]

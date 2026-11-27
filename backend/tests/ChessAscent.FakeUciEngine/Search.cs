@@ -44,10 +44,12 @@ internal sealed class Search
         }
 
         Console.Out.WriteLine("info depth 1 score cp 13 pv e2e4");
-        Console.Out.WriteLine("bestmove " + (stopped ? StoppedBestMove : settings.BestMove));
-        if (settings.ExtraBestMove is { } extra)
-        {
-            Console.Out.WriteLine("bestmove " + extra);
-        }
+        var answer = "bestmove " + (stopped ? StoppedBestMove : settings.BestMove);
+
+        // One write, so that nothing the command loop prints comes between the
+        // two lines, as in a single-threaded engine.
+        Console.Out.Write(settings.ExtraBestMove is { } extra
+            ? answer + Console.Out.NewLine + "bestmove " + extra + Console.Out.NewLine
+            : answer + Console.Out.NewLine);
     }
 }

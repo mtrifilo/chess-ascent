@@ -93,7 +93,26 @@ internal sealed class FakeEngine : IDisposable
         return false;
     }
 
-    public void Dispose() => Directory.Delete(_directory, recursive: true);
+    // A child that outlived its engine cannot be reached by disposing the
+    // engine (see UciEngine.DisposeAsync), so the test cleans it up here.
+    public void Dispose()
+    {
+        if (File.Exists(ChildPidPath)
+            && int.TryParse(File.ReadAllText(ChildPidPath), System.Globalization.CultureInfo.InvariantCulture, out var childId))
+        {
+            try
+            {
+                using var child = Process.GetProcessById(childId);
+                child.Kill();
+            }
+            catch (Exception e) when (e is ArgumentException or InvalidOperationException)
+            {
+                // Already gone.
+            }
+        }
+
+        Directory.Delete(_directory, recursive: true);
+    }
 
     private static async Task<int> ReadIdAsync(string path) =>
         int.Parse(await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken), System.Globalization.CultureInfo.InvariantCulture);

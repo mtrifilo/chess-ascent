@@ -3,6 +3,9 @@ namespace ChessAscent.Api.Engine;
 /// <summary>An engine failed. Each subclass says how, so that whoever owns the engine can decide what to do.</summary>
 public abstract class UciEngineException : Exception
 {
+    // LEARN: `private protected` means "subclasses in this assembly only",
+    // which Java has no modifier for: code in another project can catch these
+    // exceptions but cannot derive new kinds from them.
     private protected UciEngineException(string message)
         : base(message)
     {
@@ -10,23 +13,31 @@ public abstract class UciEngineException : Exception
 }
 
 /// <summary>
-/// The engine process ended, or closed its output, while the client still
-/// needed it. The engine is unusable and must be replaced.
+/// The engine process ended, or closed its input or output, while the client
+/// still needed it. The engine is unusable and must be replaced.
 /// </summary>
 public sealed class UciEngineExitedException : UciEngineException
 {
-    internal UciEngineExitedException(int? exitCode)
-        : base(exitCode is { } code ? $"The engine process exited with code {code}." : "The engine process closed its output.")
+    private UciEngineExitedException(int? exitCode, string message)
+        : base(message)
     {
         ExitCode = exitCode;
     }
 
     /// <summary>
-    /// The exit code, or null if the process had not exited within the exit
-    /// timeout after closing its output. On Linux and macOS a process ended by
-    /// a signal reports 128 plus the signal number: 139 for a segmentation fault.
+    /// The exit code, or null if the process had not exited (it closed a pipe
+    /// instead) or its exit code could not be read in time. On Linux and macOS
+    /// a process ended by a signal reports 128 plus the signal number: 137 for
+    /// SIGKILL, 139 for a segmentation fault.
     /// </summary>
     public int? ExitCode { get; }
+
+    internal static UciEngineExitedException Exited(int? exitCode) =>
+        exitCode is { } code ? new(code, $"The engine process exited with code {code}.") : ClosedOutput();
+
+    internal static UciEngineExitedException ClosedOutput() => new(null, "The engine process closed its output.");
+
+    internal static UciEngineExitedException ClosedInput() => new(null, "The engine process closed its input.");
 }
 
 /// <summary>
@@ -36,17 +47,23 @@ public sealed class UciEngineExitedException : UciEngineException
 /// </summary>
 public sealed class UciEngineTimeoutException : UciEngineException
 {
-    internal UciEngineTimeoutException(string awaited, TimeSpan timeout)
-        : base($"The engine did not answer with {awaited} within {timeout.TotalMilliseconds:0} ms.")
+    internal UciEngineTimeoutException(string? awaited, TimeSpan timeout)
+        : base(awaited is null
+            ? $"The engine did not read a command within {timeout.TotalMilliseconds:0} ms."
+            : $"The engine did not answer with {awaited} within {timeout.TotalMilliseconds:0} ms.")
     {
         Awaited = awaited;
         Timeout = timeout;
     }
 
-    /// <summary>The reply the client was waiting for, such as <c>bestmove</c>.</summary>
-    public string Awaited { get; }
+    /// <summary>
+    /// The reply the client was waiting for: <c>uciok</c>, <c>readyok</c> or
+    /// <c>bestmove</c>. Null when the time ran out while a command was still
+    /// being written, because the engine was not reading its input.
+    /// </summary>
+    public string? Awaited { get; }
 
-    /// <summary>How long the client waited.</summary>
+    /// <summary>The time allowed for the whole call, from the timeout that applies to it.</summary>
     public TimeSpan Timeout { get; }
 }
 

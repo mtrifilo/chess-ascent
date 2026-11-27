@@ -4,7 +4,8 @@ namespace ChessAscent.Api.Engine;
 /// <remarks>
 /// The waits have no defaults: what is reasonable depends on the engine and
 /// on the machine, so whoever configures an engine chooses them. Each must be
-/// greater than zero and at most <see cref="int.MaxValue"/> milliseconds.
+/// greater than zero and at most <see cref="int.MaxValue"/> milliseconds
+/// (about 24.8 days): a longer wait is taken as a configuration mistake.
 /// </remarks>
 // LEARN: `required` makes the compiler insist that every object initializer
 // sets the property (`new UciEngineOptions { ExecutablePath = ..., ... }`),
@@ -31,16 +32,20 @@ public sealed record UciEngineOptions
     /// <summary>After an option is set, until the engine answers <c>isready</c> with <c>readyok</c>.</summary>
     public required TimeSpan ReadyTimeout { get; init; }
 
-    /// <summary>From sending a position until the engine answers with <c>bestmove</c>.</summary>
+    /// <summary>
+    /// For a whole search: from the <c>isready</c> that begins it until the
+    /// engine answers with <c>bestmove</c>.
+    /// </summary>
     public required TimeSpan SearchTimeout { get; init; }
 
     /// <summary>After <c>stop</c> ends a search early, until the engine answers with <c>bestmove</c>.</summary>
     public required TimeSpan StopTimeout { get; init; }
 
     /// <summary>
-    /// After <c>quit</c>, until the process exits; after the process is
-    /// killed, until it is gone; and after its output closes, until its exit
-    /// code is known.
+    /// Each wait around the process's end: after <c>quit</c>, until the
+    /// process exits; after it is killed, until it is gone; after its output
+    /// closes, until its exit code is known; after it exits, until its output
+    /// closes; and after a write finds its input closed, until it exits.
     /// </summary>
     public required TimeSpan ExitTimeout { get; init; }
 
@@ -60,8 +65,6 @@ public sealed record UciEngineOptions
         ValidateWait(ExitTimeout, nameof(ExitTimeout));
     }
 
-    // CancellationTokenSource and Task.WaitAsync take at most int.MaxValue
-    // milliseconds, about 24.8 days.
     private static void ValidateWait(TimeSpan wait, string name)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(wait, TimeSpan.Zero, name);

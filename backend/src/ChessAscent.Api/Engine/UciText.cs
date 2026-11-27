@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace ChessAscent.Api.Engine;
 
 /// <summary>Splitting and checking the text that goes to and comes from an engine.</summary>
@@ -26,17 +28,26 @@ internal static class UciText
     }
 
     /// <summary>
-    /// Engine output with its control characters replaced, so that a log
-    /// line cannot carry terminal escape sequences.
+    /// Engine output made safe to log: control characters (which carry
+    /// terminal escape sequences), Unicode line and paragraph separators
+    /// (which some viewers break lines at) and invisible format characters
+    /// (such as the ones that reverse text direction) are each replaced with
+    /// <c>?</c>, so that a log line cannot be forged or disguised.
     /// </summary>
     public static string ForLog(string text) =>
-        text.Any(char.IsControl)
+        text.Any(IsUnsafeForLog)
             ? string.Create(text.Length, text, (chars, source) =>
             {
                 for (var i = 0; i < source.Length; i++)
                 {
-                    chars[i] = char.IsControl(source[i]) ? '?' : source[i];
+                    chars[i] = IsUnsafeForLog(source[i]) ? '?' : source[i];
                 }
             })
             : text;
+
+    private static bool IsUnsafeForLog(char c) =>
+        char.GetUnicodeCategory(c) is UnicodeCategory.Control
+            or UnicodeCategory.Format
+            or UnicodeCategory.LineSeparator
+            or UnicodeCategory.ParagraphSeparator;
 }

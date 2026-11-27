@@ -27,7 +27,11 @@ internal sealed class Settings
 
     public bool IgnoreQuit { get; private set; }
 
+    public int StandardErrorFlood { get; private set; }
+
     public List<string> StandardError { get; } = [];
+
+    public List<(string Command, string Text)> StandardErrorOn { get; } = [];
 
     public string? Transcript { get; private set; }
 
@@ -61,7 +65,9 @@ internal sealed class Settings
                 case "--noise": settings.Noise = true; break;
                 case "--crlf": settings.CrLf = true; break;
                 case "--ignore-quit": settings.IgnoreQuit = true; break;
+                case "--stderr-flood": settings.StandardErrorFlood = ParseInt(Next()); break;
                 case "--stderr": settings.StandardError.Add(Next()); break;
+                case "--stderr-on": settings.StandardErrorOn.Add((Next(), Next())); break;
                 case "--transcript": settings.Transcript = Next(); break;
                 case "--pid-file": settings.PidFile = Next(); break;
                 case "--child-pid-file": settings.ChildPidFile = Next(); break;
