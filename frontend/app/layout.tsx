@@ -4,6 +4,7 @@ import { Golos_Text, Hanken_Grotesk, Schibsted_Grotesk } from 'next/font/google'
 import { AppShell } from '@/components/layout/app-shell'
 
 import './globals.css'
+import { Providers } from './providers'
 
 // next/font downloads these from Google Fonts at build time and serves them
 // from this app, so browsers never contact Google.
@@ -43,8 +44,9 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
       className={`${hankenGrotesk.variable} ${schibstedGrotesk.variable} ${golosText.variable}`}
     >
       <body className="antialiased">
-        {/* Signed out until the app has sessions: no email is passed. */}
-        <AppShell>{children}</AppShell>
+        <Providers>
+          <AppShell>{children}</AppShell>
+        </Providers>
       </body>
     </html>
   )
