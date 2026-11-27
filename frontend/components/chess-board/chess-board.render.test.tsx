@@ -130,6 +130,31 @@ describe('ChessBoard with chessground', () => {
     expect(onMove).toHaveBeenCalledWith({ from: 'f3', to: 'g5' })
   })
 
+  // Chessground shows a move at once but reports it on a timer; an update in
+  // between must be held back too.
+  it('lets nothing more move when the inputs change before the move is reported', async () => {
+    const onMove = vi.fn()
+    const board = (props: Partial<ChessBoardProps>) => (
+      <ChessBoard
+        fen={FEN}
+        destinations={WHITE_MOVES}
+        onMove={onMove}
+        {...props}
+      />
+    )
+    const { rerender } = render(board({}))
+    tap('f3', 'g5')
+
+    rerender(board({ check: 'e1' }))
+    await settle()
+    rerender(board({}))
+    tap('a2', 'a3')
+    await settle()
+
+    expect(onMove).toHaveBeenCalledTimes(1)
+    expect(onMove).toHaveBeenCalledWith({ from: 'f3', to: 'g5' })
+  })
+
   it('lets the next side move once the new position arrives', async () => {
     const onMove = vi.fn()
     const { rerender } = render(
@@ -173,12 +198,18 @@ describe('ChessBoard with chessground', () => {
   })
 
   it.each([
-    [false, 1],
-    [true, 0],
-  ])(
-    'passes touches and clicks to chessground only when not read-only (read-only %s)',
-    (readOnly, reached) => {
-      const board = renderBoard({ readOnly }).querySelector('cg-board')!
+    ['playable', [false], 1],
+    ['read-only', [true], 0],
+    ['read-only, then playable again', [true, false], 1],
+  ] as const)(
+    'passes touches and clicks to chessground only when playable (%s)',
+    (_, readOnlyRenders, reached) => {
+      const { container, rerender } = render(
+        <ChessBoard fen={FEN} readOnly={readOnlyRenders[0]} />
+      )
+      for (const readOnly of readOnlyRenders.slice(1))
+        rerender(<ChessBoard fen={FEN} readOnly={readOnly} />)
+      const board = container.querySelector('cg-board')!
       const listener = vi.fn()
       board.addEventListener('touchstart', listener)
       board.addEventListener('mousedown', listener)

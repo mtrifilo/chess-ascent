@@ -8,7 +8,10 @@ import { ChessBoard, type ChessBoardProps, type Square } from './chess-board'
 // These tests check what the wrapper passes to chessground and when, through
 // a stand-in for chessground's API. chess-board.render.test.tsx renders the
 // real board.
+// `state.turnColor` is the side chessground gives the move: the side to move
+// in the position, until the person moves.
 const api = vi.hoisted(() => ({
+  state: { turnColor: 'white' },
   set: vi.fn(),
   setAutoShapes: vi.fn(),
   cancelMove: vi.fn(),
@@ -44,6 +47,7 @@ function createdWith(): Config {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  api.state.turnColor = 'white'
 })
 
 describe('ChessBoard', () => {
@@ -218,7 +222,8 @@ describe('ChessBoard', () => {
 
   it('holds the other position inputs back after a move, until the position changes', () => {
     const { rerender } = render(<ChessBoard {...props()} />)
-    createdWith().movable?.events?.after?.('f3', 'g5', { premove: false })
+    // The person moves: chessground passes the turn.
+    api.state.turnColor = 'black'
     api.set.mockClear()
 
     rerender(

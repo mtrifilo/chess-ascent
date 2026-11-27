@@ -97,11 +97,6 @@ export function ChessBoard({
 }: ChessBoardProps) {
   const elementRef = useRef<HTMLDivElement>(null)
   const apiRef = useRef<Api | null>(null)
-  // Set while the board shows a move the person made and `fen` has not yet
-  // changed. Chessground has then moved the piece, passed the turn and
-  // cleared the destinations; the inputs still describe the position before
-  // the move, so passing them on would let the same side move again.
-  const moveShownRef = useRef(false)
 
   // Effect events read the latest props without being effect dependencies,
   // so a new onMove function, or a re-render with equal inputs, leaves the
@@ -132,12 +127,7 @@ export function ChessBoard({
       movable: {
         ...FIXED_CONFIG.movable,
         ...marks.movable,
-        events: {
-          after: (from, to) => {
-            moveShownRef.current = true
-            reportMove(from, to)
-          },
-        },
+        events: { after: (from, to) => reportMove(from, to) },
       },
       drawable: { ...FIXED_CONFIG.drawable, autoShapes: currentShapes() },
     })
@@ -173,14 +163,21 @@ export function ChessBoard({
   // The pieces are redrawn from `fen` only when it changes, together with
   // everything that depends on the position.
   useEffect(() => {
-    moveShownRef.current = false
     apiRef.current?.set({ fen, ...currentMarks() })
   }, [fen])
 
   // The rest never resets the pieces, and is held back while a move is
   // shown, so changing it while the move is being sent neither undoes the
-  // move nor allows another. A Map has no JSON form of its own, so its
-  // entries are listed.
+  // move nor allows another.
+  //
+  // A move is shown when chessground's turn differs from the side to move in
+  // `fen`: chessground passes the turn the moment it shows the person's
+  // move, and only a new `fen` passes it back. Its move callback is not the
+  // signal, because chessground calls it on a timer, after the move is
+  // already on the board. The inputs then still describe the position
+  // before the move, so passing them on would let the same side move again.
+  //
+  // A Map has no JSON form of its own, so its entries are listed.
   const marksKey = JSON.stringify([
     destinations ? [...destinations] : [],
     lastMove && [lastMove.from, lastMove.to],
@@ -189,7 +186,7 @@ export function ChessBoard({
   ])
   useEffect(() => {
     const api = apiRef.current
-    if (!api || moveShownRef.current) return
+    if (!api || api.state.turnColor !== sideToMove(currentFen())) return
     // Drops a piece the person has picked up, so a read-only board shows
     // nothing selected.
     if (readOnly) api.cancelMove()
@@ -231,7 +228,7 @@ function marksConfig(
   check: Square | undefined,
   readOnly: boolean
 ) {
-  const side: Side = fen.split(' ')[1] === 'b' ? 'black' : 'white'
+  const side = sideToMove(fen)
   return {
     turnColor: side,
     lastMove: lastMove ? [lastMove.from, lastMove.to] : undefined,
@@ -245,6 +242,11 @@ function marksConfig(
       ),
     },
   } satisfies Config
+}
+
+// The second field of a FEN; White when it is missing.
+function sideToMove(fen: string): Side {
+  return fen.split(' ')[1] === 'b' ? 'black' : 'white'
 }
 
 // Chessground marks check by colour, on that colour's king, so the colour is
