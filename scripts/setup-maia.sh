@@ -82,14 +82,15 @@ in_range() {
   "$1" -I -c 'import platform, sys; sys.exit(not ((3, 12) <= sys.version_info[:2] <= (3, 14) and (sys.platform != "darwin" or platform.machine() == "arm64")))' 2>/dev/null
 }
 
-# Every match on PATH is tried for each name in turn. One inside a virtual
-# environment, such as this one activated in the user's shell, is passed
-# over: it may be the very one about to be made again.
+# Every match on PATH is tried for each name in turn. The interpreter of
+# this environment itself (activated in the user's shell, say) is passed
+# over, since it is about to be made again; another environment's is fine.
 find_python() {
   local name candidate
   for name in python3.13 python3.12 python3.14 python3; do
     while IFS= read -r candidate; do
-      if in_range "$candidate" && "$candidate" -I -c 'import sys; sys.exit(sys.prefix != sys.base_prefix)' 2>/dev/null; then
+      if in_range "$candidate" \
+        && "$candidate" -I -c 'import os, sys; sys.exit(os.path.realpath(sys.prefix) == os.path.realpath(sys.argv[1]))' "$VENV" 2>/dev/null; then
         echo "$candidate"
         return 0
       fi

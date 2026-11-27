@@ -70,7 +70,7 @@ public static class MaiaInstallation
             // All three, or Maia would start in the API's directory and look
             // for its weights in the user's own Hugging Face cache.
             string[] paths = [Key(nameof(EngineKindOptions.ExecutablePath)), Key(nameof(EngineKindOptions.WorkingDirectory)), Key(nameof(EngineKindOptions.SetEnvironment), "HF_HOME")];
-            var missing = paths.Where(key => string.IsNullOrWhiteSpace(configuration[key])).ToList();
+            var missing = paths.Where(key => !IsSet(configuration, key)).ToList();
             if (missing.Count > 0)
             {
                 throw new InvalidOperationException(
@@ -129,6 +129,16 @@ public static class MaiaInstallation
             // from the user's own cache, token and settings.
             [Key(nameof(EngineKindOptions.SetEnvironment), "HF_HOME")] = Path.Combine(maia, "huggingface"),
         };
+    }
+
+    // Configuration keys ignore case, but an environment variable's name
+    // reaches the engine as spelt, so HF_HOME must be spelt exactly.
+    private static bool IsSet(IConfiguration configuration, string key)
+    {
+        var setting = configuration.GetSection(key);
+        return !string.IsNullOrWhiteSpace(setting.Value)
+            && (!key.EndsWith(":HF_HOME", StringComparison.OrdinalIgnoreCase)
+                || configuration.GetSection(ConfigurationPath.GetParentPath(key)!).GetChildren().Any(child => child.Key == "HF_HOME"));
     }
 
     // A configuration key under the Maia kind, such as EnginePool:Kinds:maia:ExecutablePath.

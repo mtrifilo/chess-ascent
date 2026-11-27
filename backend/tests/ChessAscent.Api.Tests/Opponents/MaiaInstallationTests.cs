@@ -59,12 +59,19 @@ public sealed partial class MaiaInstallationTests
 
         var unset = () => new ConfigurationManager().AddMaiaInstallation(elsewhere);
         var programOnly = () => With(program).AddMaiaInstallation(elsewhere);
+        var misspelt = () => With(new Dictionary<string, string?>(program)
+        {
+            ["EnginePool:Kinds:maia:WorkingDirectory"] = "/opt/maia",
+            ["EnginePool:Kinds:maia:SetEnvironment:hf_home"] = "/opt/maia/huggingface",
+        }).AddMaiaInstallation(elsewhere);
         var configured = With(everything);
         configured.AddMaiaInstallation(elsewhere);
 
         unset.Should().Throw<InvalidOperationException>().WithMessage($"{MaiaInstallation.EnginesDirectorySetting} is not set*");
         programOnly.Should().Throw<InvalidOperationException>()
             .WithMessage("*missing: EnginePool:Kinds:maia:WorkingDirectory, EnginePool:Kinds:maia:SetEnvironment:HF_HOME.");
+        misspelt.Should().Throw<InvalidOperationException>("the engine would get hf_home, which Hugging Face does not read")
+            .WithMessage("*missing: EnginePool:Kinds:maia:SetEnvironment:HF_HOME.");
         configured["EnginePool:Kinds:maia:WorkingDirectory"].Should().Be("/opt/maia", "nothing is added over the configured paths");
 
         static ConfigurationManager With(Dictionary<string, string?> settings)
