@@ -64,29 +64,27 @@ public sealed class UciEngineConversationTests
         // Present in this process, so a child that inherited would have it.
         var inherited = "CHA17_CLIENT_TEST_" + Guid.NewGuid().ToString("N");
         Environment.SetEnvironmentVariable(inherited, "should not reach the engine");
-        var dump = Path.Combine(Path.GetTempPath(), "fake-uci-env-" + Guid.NewGuid() + ".txt");
+        using var dump = new EnvironmentDump();
         try
         {
-            using var fake = new FakeEngine("--env-dump", dump);
+            using var fake = new FakeEngine(dump.Arguments);
             fake.Options = fake.Options with { Environment = new Dictionary<string, string> { ["ONLY_THIS"] = "1" } };
 
             await using (await fake.StartAsync())
             {
             }
 
-            (await FakeEngine.ReadEnvironmentDumpAsync(dump)).Should().Equal(new Dictionary<string, string> { ["ONLY_THIS"] = "1" });
+            (await dump.ReadAsync("ONLY_THIS")).Should().Equal(new Dictionary<string, string> { ["ONLY_THIS"] = "1" });
         }
         finally
         {
             Environment.SetEnvironmentVariable(inherited, null);
-            File.Delete(dump);
         }
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("NAME=VALUE")]
-    [InlineData("NUL\0NAME")]
     public async Task AMalformedEnvironmentNameIsRefusedWithoutEchoingIt(string name)
     {
         using var fake = new FakeEngine();

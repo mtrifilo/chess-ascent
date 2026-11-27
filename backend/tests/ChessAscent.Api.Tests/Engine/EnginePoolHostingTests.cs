@@ -109,28 +109,21 @@ public sealed class EnginePoolHostingTests(PostgresFixture postgres)
     [Fact]
     public async Task EnvironmentSettingsAreReadFromConfiguration()
     {
-        var dump = Path.Combine(Path.GetTempPath(), "fake-uci-env-" + Guid.NewGuid() + ".txt");
-        try
-        {
-            using var fake = new FakeEngineKind("--env-dump", dump);
-            var kind = fake.Options();
-            kind.CopyEnvironment.Add("PATH");
-            kind.SetEnvironment["ENGINE_GIVEN"] = "from configuration";
-            await using var api = Api(FakeEngineKind.Settings(Kind, kind));
-            var pool = api.Services.GetRequiredService<EnginePool>();
+        using var dump = new EnvironmentDump();
+        using var fake = new FakeEngineKind(dump.Arguments);
+        var kind = fake.Options();
+        kind.CopyEnvironment.Add("PATH");
+        kind.SetEnvironment["ENGINE_GIVEN"] = "from configuration";
+        await using var api = Api(FakeEngineKind.Settings(Kind, kind));
+        var pool = api.Services.GetRequiredService<EnginePool>();
 
-            await pool.RunAsync(Kind, lease => Task.FromResult(0), Token);
+        await pool.RunAsync(Kind, lease => Task.FromResult(0), Token);
 
-            (await FakeEngine.ReadEnvironmentDumpAsync(dump)).Should().Equal(new Dictionary<string, string>
-            {
-                ["ENGINE_GIVEN"] = "from configuration",
-                ["PATH"] = Environment.GetEnvironmentVariable("PATH")!,
-            });
-        }
-        finally
+        (await dump.ReadAsync("ENGINE_GIVEN", "PATH")).Should().Equal(new Dictionary<string, string>
         {
-            File.Delete(dump);
-        }
+            ["ENGINE_GIVEN"] = "from configuration",
+            ["PATH"] = Environment.GetEnvironmentVariable("PATH")!,
+        });
     }
 
     [Fact]

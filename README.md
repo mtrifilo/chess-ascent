@@ -101,7 +101,7 @@ It rewrites `backend/openapi/ChessAscent.Api.json` (the OpenAPI 3.1 document) an
 
 The API runs chess engines as child processes, each kind configured under `EnginePool:Kinds:<name>` in configuration (`backend/src/ChessAscent.Api/Engine/EnginePoolOptions.cs` lists every setting). None is configured yet, and no engine is installed: setting one up comes with the tickets that add the engines.
 
-An engine starts with an environment of its own, not the API's: the API's environment holds secrets such as the database connection string, and an engine is a third-party program. A kind lists the names of the API's variables to copy (`CopyEnvironment`) and the variables to set to given values (`SetEnvironment`); the engine gets exactly those. With neither, its environment is empty.
+An engine starts with an environment of its own, not the API's: the API's environment holds secrets such as the database connection string, and an engine is a third-party program. A kind lists the names of the API's variables to copy (`CopyEnvironment`) and the variables to set to given values (`SetEnvironment`); the engine gets exactly those. With neither, its environment is empty. Give the engine program as a full path: a bare name is looked up with the API's own `PATH`, not the engine's.
 
 ## Repository layout
 

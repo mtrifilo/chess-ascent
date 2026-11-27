@@ -46,12 +46,15 @@ internal sealed class EnginePoolOptionsValidator(IOptions<HostOptions> host) : I
         }
 
         // A failure names the setting, never a value, and not a name in the
-        // copy list either, since a malformed one could be anything.
+        // copy list either, since a malformed one could be anything. The
+        // entry is given by its place in the list once every configuration
+        // source is merged, which can differ from the index in one source.
         for (var i = 0; i < engine.CopyEnvironment.Count; i++)
         {
             if (!UciEngineOptions.IsValidEnvironmentName(engine.CopyEnvironment[i]))
             {
-                failures.Add($"{Key(ConfigurationPath.Combine(nameof(engine.CopyEnvironment), i.ToString(CultureInfo.InvariantCulture)))} "
+                failures.Add(string.Create(CultureInfo.InvariantCulture,
+                    $"Entry {i} (counting from 0, after merging every configuration source) of {Key(nameof(engine.CopyEnvironment))} ")
                     + "is not a valid environment variable name: it must be non-empty, with no '=' or NUL character.");
             }
         }

@@ -94,19 +94,6 @@ internal sealed class FakeEngine : IDisposable
         return false;
     }
 
-    /// <summary>
-    /// Reads what the fake wrote for <c>--env-dump</c>, leaving out what the
-    /// fake's own runtime adds. On macOS, CoreFoundation, which the .NET
-    /// runtime loads, sets <c>__CF_USER_TEXT_ENCODING</c> in a process that
-    /// starts without it: a fake started with an empty environment reports
-    /// it, with a value other than this process's, so it is not inherited.
-    /// </summary>
-    public static async Task<Dictionary<string, string>> ReadEnvironmentDumpAsync(string path) =>
-        (await File.ReadAllLinesAsync(path, TestContext.Current.CancellationToken))
-            .Select(line => line.Split('=', 2))
-            .Where(parts => !(OperatingSystem.IsMacOS() && parts[0] == "__CF_USER_TEXT_ENCODING"))
-            .ToDictionary(parts => parts[0], parts => parts[1]);
-
     /// <summary>Kills a process from outside, as a crash or the operating system would.</summary>
     public static void Kill(int processId)
     {

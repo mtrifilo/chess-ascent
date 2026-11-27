@@ -81,8 +81,8 @@ public sealed class EnginePoolOptionsValidatorTests
         var result = Validator.Validate(null, With(kind));
 
         result.Failures.Should().HaveCount(3);
-        result.Failures.Should().Contain(failure => failure.StartsWith(Prefix + "CopyEnvironment:0 is not a valid", StringComparison.Ordinal));
-        result.Failures.Should().Contain(failure => failure.StartsWith(Prefix + "CopyEnvironment:1 is not a valid", StringComparison.Ordinal));
+        result.Failures.Should().Contain(failure => failure.StartsWith("Entry 0 (", StringComparison.Ordinal) && failure.Contains(Prefix + "CopyEnvironment is not a valid", StringComparison.Ordinal));
+        result.Failures.Should().Contain(failure => failure.StartsWith("Entry 1 (", StringComparison.Ordinal) && failure.Contains(Prefix + "CopyEnvironment is not a valid", StringComparison.Ordinal));
         result.Failures.Should().Contain(failure => failure.StartsWith(Prefix + "SetEnvironment has a variable name", StringComparison.Ordinal));
         result.Failures.Should().NotContain(failure => failure.Contains("injected", StringComparison.Ordinal) || failure.Contains("ALSO", StringComparison.Ordinal));
     }

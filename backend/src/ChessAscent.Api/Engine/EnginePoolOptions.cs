@@ -61,7 +61,12 @@ public sealed class EnginePoolOptions
 // and nothing set it afterwards.
 public sealed class EngineKindOptions
 {
-    /// <summary>The engine program.</summary>
+    /// <summary>
+    /// The engine program, as a full path. A bare name or a relative path is
+    /// looked up the way .NET looks up any program it starts: with the
+    /// application's own <c>PATH</c> and directories, not the engine's
+    /// environment or <see cref="WorkingDirectory"/>.
+    /// </summary>
     public string? ExecutablePath { get; init; }
 
     /// <summary>Command-line arguments, passed to the program as given, without a shell.</summary>
@@ -86,7 +91,11 @@ public sealed class EngineKindOptions
     /// <summary>
     /// Environment variables to give the engine with the values given here.
     /// A name that is also in <see cref="CopyEnvironment"/> takes the value
-    /// given here. Values are never logged. Empty unless set.
+    /// given here. Values are never logged. Empty unless set. The names are
+    /// configuration keys, which ignore case: an override from another
+    /// source must spell a name the same way, or the engine gets the
+    /// override's spelling, and two names that differ only in case cannot
+    /// both be set here (copy them instead).
     /// </summary>
     public Dictionary<string, string> SetEnvironment { get; } = new(StringComparer.Ordinal);
 

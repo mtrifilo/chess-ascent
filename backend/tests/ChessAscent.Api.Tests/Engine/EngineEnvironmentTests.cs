@@ -19,7 +19,7 @@ public sealed class EngineEnvironmentTests : IDisposable
 
     private readonly string _prefix = "CHA17_TEST_" + Guid.NewGuid().ToString("N")[..8] + "_";
     private readonly List<string> _set = [];
-    private readonly string _dump = Path.Combine(Path.GetTempPath(), "fake-uci-env-" + Guid.NewGuid() + ".txt");
+    private readonly EnvironmentDump _dump = new();
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
@@ -96,7 +96,7 @@ public sealed class EngineEnvironmentTests : IDisposable
             Environment.SetEnvironmentVariable(name, null);
         }
 
-        File.Delete(_dump);
+        _dump.Dispose();
     }
 
     // Sets a variable of this test's own in this process, and returns its name.
@@ -117,7 +117,7 @@ public sealed class EngineEnvironmentTests : IDisposable
         ListLogger<EnginePool>? poolLogger = null,
         ListLogger<UciEngine>? engineLogger = null)
     {
-        using var fake = new FakeEngineKind("--env-dump", _dump);
+        using var fake = new FakeEngineKind(_dump.Arguments);
         var kind = fake.Options();
         foreach (var name in copy)
         {
@@ -137,6 +137,6 @@ public sealed class EngineEnvironmentTests : IDisposable
             await pool.RunAsync(Kind, lease => lease.Engine.SearchAsync(UciPosition.StartingPosition([]), SearchLimit.Depth(1), Token), Token);
         }
 
-        return await FakeEngine.ReadEnvironmentDumpAsync(_dump);
+        return await _dump.ReadAsync([.. copy, .. set.Keys]);
     }
 }

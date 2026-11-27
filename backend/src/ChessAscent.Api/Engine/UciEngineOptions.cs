@@ -20,7 +20,11 @@ public sealed record UciEngineOptions
     /// <summary>The longest wait accepted: <see cref="int.MaxValue"/> milliseconds.</summary>
     internal static readonly TimeSpan LongestWait = TimeSpan.FromMilliseconds(int.MaxValue);
 
-    /// <summary>The engine program.</summary>
+    /// <summary>
+    /// The engine program. A bare name or a relative path is looked up with
+    /// the application's own <c>PATH</c> and directories, not with
+    /// <see cref="Environment"/>, so give a full path.
+    /// </summary>
     public required string ExecutablePath { get; init; }
 
     /// <summary>Command-line arguments, passed to the program as given, without a shell.</summary>
