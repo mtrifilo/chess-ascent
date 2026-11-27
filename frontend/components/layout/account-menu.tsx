@@ -1,3 +1,5 @@
+'use client'
+
 import { ChevronDownIcon, UserIcon } from 'lucide-react'
 
 import {
@@ -8,6 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useSignOut } from '@/features/auth/session'
 
 // Phones get a 44px icon-only trigger and 44px items, for touch; from `md` up
 // the trigger shows the email, cut short with an ellipsis when the bar runs
@@ -23,6 +26,7 @@ import {
 const MENU_GAP_BELOW_BAR = 4
 
 export function AccountMenu({ email }: { email: string }) {
+  const signOut = useSignOut()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -45,7 +49,12 @@ export function AccountMenu({ email }: { email: string }) {
           {email}
         </DropdownMenuLabel>
         <DropdownMenuSeparator className="mx-0 my-0" />
-        <DropdownMenuItem className="h-11 md:h-8">Sign out</DropdownMenuItem>
+        <DropdownMenuItem
+          className="h-11 md:h-8"
+          onSelect={() => signOut.mutate()}
+        >
+          Sign out
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )

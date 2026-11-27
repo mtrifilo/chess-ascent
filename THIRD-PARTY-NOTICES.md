@@ -66,8 +66,9 @@ Runtime libraries, or code generated from them, ship to the browser or run in th
 | class-variance-authority | https://github.com/joe-bell/cva | Apache-2.0 | Runtime: the variant classes of the button, badge and alert |
 | clsx | https://github.com/lukeed/clsx | MIT | Runtime: joins class names (`cn` in `frontend/lib/utils.ts`) |
 | tailwind-merge | https://github.com/dcastil/tailwind-merge | MIT | Runtime: resolves conflicting Tailwind classes (`cn`) |
-| Lucide (`lucide-react`) | https://github.com/lucide-icons/lucide | ISC; the icons derived from Feather, which include `check`, `chevron-down`, `chevron-right` and `circle`, are MIT | Runtime: icons |
+| Lucide (`lucide-react`) | https://github.com/lucide-icons/lucide | ISC; the icons derived from Feather, which include `check`, `chevron-down`, `chevron-right`, `circle` and `circle-alert`, are MIT | Runtime: icons |
 | tw-animate-css | https://github.com/Wombosvideo/tw-animate-css | MIT | Runtime: the open and close animations of the dropdown menu, compiled into the served stylesheet |
+| TanStack Query (`@tanstack/react-query`) | https://github.com/TanStack/query | MIT | Runtime: fetches and caches server state in the browser, starting with who is signed in (`frontend/features/auth/session.ts`). It brings in `@tanstack/query-core` (MIT) and nothing else |
 | openapi-fetch | https://github.com/openapi-ts/openapi-typescript | MIT | Runtime: the typed API client (`frontend/lib/api.ts`). It brings in openapi-typescript-helpers (MIT) |
 | openapi-typescript | https://github.com/openapi-ts/openapi-typescript | MIT | Development: generates `frontend/types/api.d.ts` from the API's OpenAPI document. It brings in Redocly's `@redocly/openapi-core` (MIT) and small utilities under MIT, ISC, Apache-2.0 (`yaml-ast-parser`), MIT-or-CC0 (`type-fest`) and Python-2.0 (`argparse`, through `js-yaml`; ESLint already brought it in) |
 | `@testing-library/jest-dom` | https://github.com/testing-library/jest-dom | MIT | Development: DOM assertions in component tests (`toBeInTheDocument`, `toHaveClass`) |

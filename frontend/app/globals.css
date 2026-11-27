@@ -120,7 +120,8 @@
 /* Text sizes. `xs`, `sm` and `base` keep Tailwind's values, because the ported
  * components use them: `xs` is the 12px floor, and `sm` (14px on 20px) is the
  * design's Body/M. The others are the design's text styles: Body/S, Display/M,
- * Data/M (the board's coordinates, set in the data face), and the product name
+ * Display/S (the sign-in and sign-up headings from `md` up), Data/M (the
+ * board's coordinates, set in the data face), and the product name
  * in the top bar (15px on 20px), which the design sets directly rather than
  * through a text style. Nothing below 12px. */
 @theme {
@@ -135,6 +136,9 @@
   --text-display-m: 1.75rem;
   --text-display-m--line-height: 2.25rem;
   --text-display-m--letter-spacing: -0.01em;
+  --text-display-s: 1.375rem;
+  --text-display-s--line-height: 1.875rem;
+  --text-display-s--letter-spacing: -0.01em;
   --text-data-m: 0.8125rem;
   --text-data-m--line-height: 1.125rem;
   --text-product-name: 0.9375rem;

@@ -1,21 +1,43 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { usePathname } from 'next/navigation'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { reloadPage } from '@/lib/page-load'
+import {
+  answer,
+  calls,
+  renderWithQueries,
+  SIGNED_OUT,
+  signedInAs,
+} from '@/lib/test-support'
 
 import { AppShell } from './app-shell'
 
 vi.mock('next/navigation', () => ({ usePathname: vi.fn() }))
+vi.mock('@/lib/page-load', () => ({ reloadPage: vi.fn(), loadPage: vi.fn() }))
 
 const EMAIL = 'player@example.com'
 
+const signedIn = { '/api/auth/me': signedInAs(EMAIL) }
+const signedOut = { '/api/auth/me': SIGNED_OUT }
+
 beforeEach(() => {
   vi.mocked(usePathname).mockReturnValue('/play')
+  vi.mocked(reloadPage).mockReset()
 })
 
-describe('AppShell', () => {
-  it('shows only the product name when signed out', () => {
-    render(<AppShell>Page</AppShell>)
+async function renderSignedIn() {
+  answer(signedIn)
+  renderWithQueries(<AppShell>Page</AppShell>)
+  return screen.findByRole('button', { name: EMAIL })
+}
 
+describe('AppShell', () => {
+  it('shows only the product name when signed out', async () => {
+    const sent = answer(signedOut)
+    renderWithQueries(<AppShell>Page</AppShell>)
+
+    await waitFor(() => expect(calls(sent)).toContain('GET /api/auth/me'))
     const banner = screen.getByRole('banner')
     expect(banner).toHaveTextContent(/^Chess Ascent$/)
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
@@ -23,13 +45,14 @@ describe('AppShell', () => {
   })
 
   it('renders the page inside the main landmark', () => {
-    render(<AppShell>Page</AppShell>)
+    answer(signedOut)
+    renderWithQueries(<AppShell>Page</AppShell>)
 
     expect(screen.getByRole('main')).toHaveTextContent('Page')
   })
 
-  it('links to Play and My games when signed in', () => {
-    render(<AppShell email={EMAIL}>Page</AppShell>)
+  it('links to Play and My games when signed in', async () => {
+    await renderSignedIn()
 
     const nav = within(screen.getByRole('navigation'))
     expect(nav.getByRole('link', { name: 'Play' })).toHaveAttribute(
@@ -42,9 +65,9 @@ describe('AppShell', () => {
     )
   })
 
-  it('marks the link to the current page', () => {
+  it('marks the link to the current page', async () => {
     vi.mocked(usePathname).mockReturnValue('/games')
-    render(<AppShell email={EMAIL}>Page</AppShell>)
+    await renderSignedIn()
 
     expect(screen.getByRole('link', { name: 'My games' })).toHaveAttribute(
       'aria-current',
@@ -55,30 +78,57 @@ describe('AppShell', () => {
     )
   })
 
-  it('names the account menu trigger with the email at every width', () => {
-    render(<AppShell email={EMAIL}>Page</AppShell>)
+  it('names the account menu trigger with the email at every width', async () => {
+    const trigger = await renderSignedIn()
 
-    expect(screen.getByRole('button', { name: EMAIL })).toHaveAttribute(
-      'aria-haspopup',
-      'menu'
-    )
+    expect(trigger).toHaveAttribute('aria-haspopup', 'menu')
   })
 
-  it('opens the account menu with the email and Sign out', () => {
-    render(<AppShell email={EMAIL}>Page</AppShell>)
+  it('opens the account menu with the email and Sign out', async () => {
+    const trigger = await renderSignedIn()
 
-    fireEvent.keyDown(screen.getByRole('button', { name: EMAIL }), {
-      key: 'Enter',
-    })
+    fireEvent.keyDown(trigger, { key: 'Enter' })
 
     const menu = within(screen.getByRole('menu'))
     expect(menu.getByText(EMAIL)).toBeInTheDocument()
     expect(menu.getByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument()
   })
 
-  it('treats an empty email as signed out', () => {
-    render(<AppShell email="">Page</AppShell>)
+  it('signs out from the account menu, then loads the page afresh', async () => {
+    const trigger = await renderSignedIn()
+    const sent = answer({
+      ...signedIn,
+      '/api/auth/sign-out': { status: 204 },
+    })
 
-    expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+    fireEvent.keyDown(trigger, { key: 'Enter' })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }))
+
+    await waitFor(() => expect(reloadPage).toHaveBeenCalledOnce())
+    expect(calls(sent)).toContain('POST /api/auth/sign-out')
+  })
+
+  it('stays signed in, and reports why, when the API refuses to sign out', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const trigger = await renderSignedIn()
+    const sent = answer({
+      ...signedIn,
+      '/api/auth/sign-out': { status: 403, body: { status: 403 } },
+    })
+
+    fireEvent.keyDown(trigger, { key: 'Enter' })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }))
+
+    await waitFor(() =>
+      expect(calls(sent)).toContain('POST /api/auth/sign-out')
+    )
+    await waitFor(() =>
+      expect(consoleError).toHaveBeenCalledWith(
+        new Error('sign-out answered 403.')
+      )
+    )
+    expect(reloadPage).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: EMAIL })).toBeInTheDocument()
+    consoleError.mockRestore()
   })
 })
