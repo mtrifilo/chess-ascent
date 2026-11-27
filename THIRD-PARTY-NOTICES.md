@@ -57,9 +57,81 @@ Runtime libraries, or code generated from them, ship to the browser or run in th
 | `@vitejs/plugin-react` | https://github.com/vitejs/vite-plugin-react | MIT | Development: compiles JSX for tests |
 | jsdom (`jsdom`) | https://github.com/jsdom/jsdom | MIT | Development: browser DOM for component tests |
 | Testing Library (`@testing-library/react`, `@testing-library/dom`) | https://github.com/testing-library/react-testing-library, https://github.com/testing-library/dom-testing-library | MIT | Development: renders components and queries them as a user would |
+| Radix UI Primitives (`@radix-ui/react-dropdown-menu`, `@radix-ui/react-label`, `@radix-ui/react-slot`) | https://github.com/radix-ui/primitives | MIT | Runtime: accessible behaviour for the dropdown menu, label and `asChild` button |
+| class-variance-authority | https://github.com/joe-bell/cva | Apache-2.0 | Runtime: the variant classes of the button, badge and alert |
+| clsx | https://github.com/lukeed/clsx | MIT | Runtime: joins class names (`cn` in `frontend/lib/utils.ts`) |
+| tailwind-merge | https://github.com/dcastil/tailwind-merge | MIT | Runtime: resolves conflicting Tailwind classes (`cn`) |
+| Lucide (`lucide-react`) | https://github.com/lucide-icons/lucide | ISC; the icons derived from Feather, which include `check`, `chevron-down`, `chevron-right` and `circle`, are MIT | Runtime: icons |
+| tw-animate-css | https://github.com/Wombosvideo/tw-animate-css | MIT | Runtime: the open and close animations of the dropdown menu, compiled into the served stylesheet |
+| `@testing-library/jest-dom` | https://github.com/testing-library/jest-dom | MIT | Development: DOM assertions in component tests (`toBeInTheDocument`, `toHaveClass`) |
+
+## Code adapted from other projects
+
+| Component | Source | Licence | How it is used |
+|---|---|---|---|
+| Psychic Homily's design tokens and UI components | https://github.com/mtrifilo/psychic-homily-web (`frontend/app/globals.css`, `frontend/app/layout.tsx`, `frontend/components/ui/`, `frontend/lib/utils.ts`) | MIT, Copyright (c) 2025-2026 Psychic Homily, as stated in the "License" section of its README. Notice below | The colour, radius and font tokens and base styles in `frontend/app/globals.css`, the font set-up in `frontend/app/layout.tsx`, and the components and tests in `frontend/components/ui/`, ported with small changes; `frontend/lib/utils.ts` is adapted from it |
+| shadcn/ui | https://github.com/shadcn-ui/ui | MIT, Copyright (c) 2023 shadcn. Notice below | Psychic Homily's components in `frontend/components/ui/` are derived from shadcn/ui's |
 
 ## Fonts, pieces and other assets
 
 | Component | Version | Source | Licence | How it is used |
 |---|---|---|---|---|
-| | | | | |
+| Hanken Grotesk | Whatever Google Fonts serves at build time; `next/font/google` does not pin a version | https://github.com/marcologous/hanken-grotesk, through Google Fonts | OFL-1.1 | Display type. Downloaded at build time and served by the app |
+| Schibsted Grotesk | As above | https://github.com/schibsted/schibsted-grotesk, through Google Fonts | OFL-1.1 | Body and interface type. Downloaded at build time and served by the app |
+| Golos Text | As above | https://github.com/googlefonts/golos-text, through Google Fonts | OFL-1.1 | Data type (counts, times, dates). Downloaded at build time and served by the app |
+
+## Licence notices for adapted code
+
+The MIT licence asks that its copyright and permission notice travel with copies of the code, so the notices for the code adapted above are reproduced here.
+
+### Psychic Homily
+
+```text
+MIT License
+
+Copyright (c) 2025-2026 Psychic Homily
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### shadcn/ui
+
+```text
+MIT License
+
+Copyright (c) 2023 shadcn
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
