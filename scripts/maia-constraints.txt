@@ -1,0 +1,30 @@
+# The exact version of every Python package scripts/setup-maia.sh installs,
+# as pip constraints: pip may install only these versions. They are what
+# Maia-3's own requirements (torch, numpy, python-chess, huggingface-hub)
+# resolved to on 2026-11-26. Each is listed with its licence in
+# THIRD-PARTY-NOTICES.md; change both together.
+anyio==4.16.0
+chess==1.11.2
+click==8.5.1
+filelock==4.3.1
+fsspec==2026.9.0
+h11==0.16.0
+hf-xet==1.8.0
+httpcore2==2.16.2
+httpx2==2.16.2
+huggingface-hub==2.5.0
+idna==3.20
+jinja2==3.1.6
+markupsafe==3.0.4
+mpmath==1.3.0
+networkx==3.7
+numpy==2.5.5
+packaging==26.4
+python-chess==1.999
+pyyaml==6.0.4
+setuptools==84.2.1
+sympy==1.14.0
+torch==2.15.0
+tqdm==4.70.1
+truststore==0.10.5
+typing-extensions==4.16.0

@@ -46,8 +46,9 @@ public sealed class EnginePoolOptions
 
 /// <summary>One kind of engine: the program to run, how many processes of it, and how long to wait for them.</summary>
 /// <remarks>
-/// Only <see cref="Arguments"/>, <see cref="WorkingDirectory"/>,
-/// <see cref="Processes"/> and the two environment settings have defaults.
+/// Only <see cref="Arguments"/>, <see cref="RandomSeedArgument"/>,
+/// <see cref="WorkingDirectory"/>, <see cref="Processes"/> and the two
+/// environment settings have defaults.
 /// Every wait and both restart
 /// settings must be set: what is reasonable depends on the engine and on the
 /// machine. A wait is written as <c>hh:mm:ss</c>, with a fraction if needed
@@ -71,6 +72,18 @@ public sealed class EngineKindOptions
 
     /// <summary>Command-line arguments, passed to the program as given, without a shell.</summary>
     public IList<string> Arguments { get; } = [];
+
+    /// <summary>
+    /// A command-line option, such as <c>--seed</c>, that each process of
+    /// this kind is started with after <see cref="Arguments"/>, followed by a
+    /// new random number from 0 to 2,147,483,646 (<see cref="int.MaxValue"/>
+    /// less one). An engine that samples its moves from a fixed seed
+    /// repeats the same choices every time it starts; a seed drawn at each
+    /// start gives every process, and every replacement, its own. Not set,
+    /// or blank (which an override can set, though it cannot remove a
+    /// setting), no seed is passed.
+    /// </summary>
+    public string? RandomSeedArgument { get; init; }
 
     /// <summary>The engine's working directory; the application's own when not set.</summary>
     public string? WorkingDirectory { get; init; }

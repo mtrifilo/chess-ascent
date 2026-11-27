@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using ChessAscent.Api.Engine;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -416,6 +417,37 @@ public sealed class EnginePoolTests
         await pool.StopAsync();
 
         (await FakeEngine.IsGoneAsync(processId)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task EachProcessIsStartedWithASeedOfItsOwn()
+    {
+        using var fake = new FakeEngineKind();
+        await using var pool = StartPool(fake.Options(processes: 2, randomSeedArgument: "--seed"), out _);
+        var first = await fake.WaitForStartedAsync(2);
+
+        // A replacement draws a seed of its own too.
+        FakeEngine.Kill(first[0]);
+        await fake.WaitForStartedAsync(3);
+        await Eventually.TrueAsync(() => fake.StartedSeeds().All(seed => seed.Length > 0), "every process to record its seed");
+
+        var seeds = fake.StartedSeeds();
+        seeds.Should().HaveCount(3).And.OnlyHaveUniqueItems();
+        seeds.Should().AllSatisfy(seed => int.Parse(seed, CultureInfo.InvariantCulture).Should().BeInRange(0, int.MaxValue - 1));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public async Task NoSeedIsPassedWithoutASeedArgument(string? seedArgument)
+    {
+        using var fake = new FakeEngineKind();
+        await using var pool = StartPool(fake.Options(randomSeedArgument: seedArgument), out _);
+
+        await pool.RunAsync(Kind, lease => Task.FromResult(0), Token);
+
+        fake.StartedSeeds().Should().Equal("");
     }
 
     [Fact]

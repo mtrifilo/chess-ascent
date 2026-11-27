@@ -29,15 +29,18 @@ internal sealed class FakeEngineKind : IDisposable
         TimeSpan? restartDelay = null,
         TimeSpan? readyTimeout = null,
         TimeSpan? exitTimeout = null,
-        string? executablePath = null)
+        string? executablePath = null,
+        TimeSpan? searchTimeout = null,
+        string? randomSeedArgument = null)
     {
         var options = new EngineKindOptions
         {
             ExecutablePath = executablePath ?? FakeEngine.DotnetHost,
+            RandomSeedArgument = randomSeedArgument,
             Processes = processes,
             HandshakeTimeout = TimeSpan.FromSeconds(20),
             ReadyTimeout = readyTimeout ?? TimeSpan.FromSeconds(5),
-            SearchTimeout = TimeSpan.FromSeconds(10),
+            SearchTimeout = searchTimeout ?? TimeSpan.FromSeconds(10),
             StopTimeout = TimeSpan.FromSeconds(2),
             ExitTimeout = exitTimeout ?? TimeSpan.FromSeconds(2),
             CheckOutTimeout = checkOutTimeout ?? TimeSpan.FromSeconds(30),
@@ -62,6 +65,7 @@ internal sealed class FakeEngineKind : IDisposable
         var settings = new Dictionary<string, string?>
         {
             [Key(nameof(options.ExecutablePath))] = options.ExecutablePath,
+            [Key(nameof(options.RandomSeedArgument))] = options.RandomSeedArgument,
             [Key(nameof(options.Processes))] = options.Processes.ToString(CultureInfo.InvariantCulture),
             [Key(nameof(options.HandshakeTimeout))] = Wait(options.HandshakeTimeout),
             [Key(nameof(options.ReadyTimeout))] = Wait(options.ReadyTimeout),
@@ -93,6 +97,9 @@ internal sealed class FakeEngineKind : IDisposable
     /// <summary>The id of every process of this kind that has started so far, in no order.</summary>
     public int[] StartedProcessIds() =>
         [.. Directory.GetFiles(_pidDirectory).Select(path => int.Parse(Path.GetFileName(path), CultureInfo.InvariantCulture))];
+
+    /// <summary>The seed each process that has started so far was given, in no order; empty for one given none.</summary>
+    public string[] StartedSeeds() => [.. Directory.GetFiles(_pidDirectory).Select(File.ReadAllText)];
 
     /// <summary>Waits until <paramref name="count"/> processes have started, and returns their ids.</summary>
     public async Task<int[]> WaitForStartedAsync(int count)

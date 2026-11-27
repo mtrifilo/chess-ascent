@@ -47,6 +47,8 @@ internal sealed class Settings
 
     public bool Sleep { get; private set; }
 
+    public string? Seed { get; private set; }
+
     public static Settings Parse(string[] args)
     {
         var settings = new Settings();
@@ -81,6 +83,7 @@ internal sealed class Settings
                 case "--env-dump": settings.EnvironmentDump = Next(); break;
                 case "--child-pid-file": settings.ChildPidFile = Next(); break;
                 case "--sleep": settings.Sleep = true; break;
+                case "--seed": settings.Seed = Next(); break;
                 default: throw new ArgumentException($"Unknown option {name}.", nameof(args));
             }
         }

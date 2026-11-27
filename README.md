@@ -99,9 +99,32 @@ It rewrites `backend/openapi/ChessAscent.Api.json` (the OpenAPI 3.1 document) an
 
 ### Chess engines
 
-The API runs chess engines as child processes, each kind configured under `EnginePool:Kinds:<name>` in configuration (`backend/src/ChessAscent.Api/Engine/EnginePoolOptions.cs` lists every setting). None is configured yet, and no engine is installed: setting one up comes with the tickets that add the engines.
+The computer opponent is Maia-3, a neural network that plays like a person of a chosen rating, run as a separate Python program. It is not in the repository; one script installs it, on macOS or Linux:
 
-An engine starts with an environment of its own, not the API's: the API's environment holds secrets such as the database connection string, and an engine is a third-party program. A kind lists the names of the API's variables to copy (`CopyEnvironment`) and the variables to set to given values (`SetEnvironment`); the engine gets exactly those. With neither, its environment is empty. Give the engine program as a full path: a bare name is looked up with the API's own `PATH`, not the engine's.
+```sh
+scripts/setup-maia.sh
+```
+
+It needs git, network access and a Python 3.12, 3.13 or 3.14 already on the machine (found as `python3.13`, `python3.12`, `python3.14` or `python3`), and stops with a message if there is none; it never installs Python or anything system-wide. Into `engines/maia/` at the repository root, it:
+
+- makes a Python virtual environment (`venv/`);
+- installs PyTorch 2.15.0 for the CPU only (on Linux from PyTorch's CPU-only index, because the default package brings more than a gigabyte of GPU libraries), then Maia-3 at a pinned commit, with every package at the exact version in `scripts/maia-constraints.txt`;
+- downloads the weights of Maia-3's 5M model at a pinned revision into a Hugging Face cache of its own (`huggingface/`);
+- checks that the engine answers a UCI handshake with the network taken away from it (on macOS with `sandbox-exec`; on Linux in a network namespace, where the system allows one).
+
+On an Apple Silicon Mac with a fast connection it took about 30 seconds and left 830 MB (810 MB of it the environment, 20 MB the weights). Running it again keeps what is there and takes a few seconds. To install somewhere else, set `CHESS_ASCENT_ENGINES_DIR` to a full path, for the script and for the API alike; Maia then goes in `$CHESS_ASCENT_ENGINES_DIR/maia`. Delete the directory to uninstall.
+
+The API runs Maia as a child process, the kind named `maia` in the engine pool (`backend/src/ChessAscent.Api/appsettings.json`), and looks for it in `engines/maia/` at the repository root, unless `CHESS_ASCENT_ENGINES_DIR` says otherwise. (It finds the root as three levels above its content root, which is the API's project directory when it is started with `dotnet run`.) Maia reads its weights from the local cache only, with the Hugging Face library set offline, and makes no network calls once installed. Without Maia installed the API still starts, `/health/ready` answers 503 and names the `maia` kind in the log, and asking the opponent for a move fails with a reason. The API tries three times to start Maia, so after installing it, restart the API.
+
+Each kind of engine is configured under `EnginePool:Kinds:<name>` (`backend/src/ChessAscent.Api/Engine/EnginePoolOptions.cs` lists every setting). An engine starts with an environment of its own, not the API's: the API's environment holds secrets such as the database connection string, and an engine is a third-party program. A kind lists the names of the API's variables to copy (`CopyEnvironment`) and the variables to set to given values (`SetEnvironment`); the engine gets exactly those. With neither, its environment is empty. Maia gets three: `HF_HOME` (where its weights are), `HF_HUB_OFFLINE=1` and `OMP_NUM_THREADS=1` (one thread). Give an engine program as a full path: a bare name is looked up with the API's own `PATH`, not the engine's.
+
+`dotnet test` never starts Maia: the opponent's tests use a fake engine. One test, run only when asked for, uses the real engine. With Maia installed and Docker running, from `backend/`:
+
+```sh
+dotnet test --project tests/ChessAscent.Api.Tests --explicit only --filter-trait "Category=Maia"
+```
+
+It asks for a reply at each strength (600, 800, 1000, 1200 and 1400) through 30 moves of a game, and checks that every reply is legal. It never checks which move it is: Maia chooses at random among the moves a player of that rating might make, with a new random seed each time it starts.
 
 ## Repository layout
 

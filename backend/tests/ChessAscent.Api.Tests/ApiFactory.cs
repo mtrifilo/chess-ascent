@@ -1,7 +1,10 @@
 using ChessAscent.Api.Database;
+using ChessAscent.Api.Engine;
+using ChessAscent.Api.Opponents;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 namespace ChessAscent.Api.Tests;
@@ -39,10 +42,29 @@ public sealed class ApiFactory(PostgresFixture postgres) : WebApplicationFactory
     // through this method too.
     private static readonly Lock StartUpLock = new();
 
-    protected override void ConfigureWebHost(IWebHostBuilder builder) =>
+    /// <summary>
+    /// Whether the application keeps the Maia engine kind that its
+    /// configuration describes. Off unless set: on a machine where the set-up
+    /// script has run, every test class's application would otherwise start
+    /// a Maia process, and where it has not, readiness would fail. Tests of
+    /// the opponent use the fake engine instead.
+    /// </summary>
+    public bool KeepsMaia { get; init; }
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
         // A setting given here outranks every configuration file the
         // application loads, so the API cannot reach the development database.
         builder.UseSetting(ConnectionStringKey, postgres.ConnectionString);
+
+        if (!KeepsMaia)
+        {
+            // PostConfigure runs after the configuration is bound, and before
+            // the options are validated and the pool reads them.
+            builder.ConfigureServices(services =>
+                services.PostConfigure<EnginePoolOptions>(options => options.Kinds.Remove(MaiaOpponent.EngineKind)));
+        }
+    }
 
     protected override IHost CreateHost(IHostBuilder builder)
     {

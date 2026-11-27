@@ -12,7 +12,39 @@ Run as separate programs, or loaded as data. Not linked into Chess Ascent's own 
 
 | Component | Version | Source | Licence | How it is used |
 |---|---|---|---|---|
-| | | | | |
+| Maia-3 (`maia3`) | Commit `1e13597c42d4858b7cfd7cfdae01e297263364b2` (package version 0.1.0); the project has no tags or releases | https://github.com/CSSLab/maia3 | AGPL-3.0 (its `LICENSE` file) | The computer opponent: the authors' program, run unmodified as a child process (`backend/src/ChessAscent.Api/Opponents/MaiaOpponent.cs`). `scripts/setup-maia.sh` installs it into the engines directory on each machine; it is not committed or distributed with Chess Ascent |
+| Maia-3 5M model weights (`maia3-5m.pt`) | Revision `b6559de2398d7140b985f28fd2c19fb5e47ddabe` of the Hugging Face repository | https://huggingface.co/UofTCSSLab/Maia3-5M | **Not stated.** The model card says "License: CC BY 4.0 (paper); see repo for code/weights license", and the code repository's only licence is AGPL-3.0, which does not mention weights. The card of the largest model in the family, Maia3-79M, says "License: AGPLv3". Read through the card's pointer to the repository, the weights are AGPL-3.0: an inference, not a statement by the authors. The owner has deferred the question to deployment, since the project does not redistribute the weights | Loaded by Maia-3 to choose the opponent's moves. `scripts/setup-maia.sh` downloads them from the authors' repository into the engines directory on each machine; they are not committed or distributed with Chess Ascent |
+
+### Maia-3's Python packages
+
+`scripts/setup-maia.sh` installs these into a Python virtual environment inside the engines directory, at the exact versions in `scripts/maia-constraints.txt`. They are what Maia-3 needs to run, and nothing from them is committed or distributed with Chess Ascent. The environment also holds pip, which Python's `venv` module puts there at the version that comes with the Python used (MIT, https://github.com/pypa/pip).
+
+| Component | Version | Source | Licence | How it is used |
+|---|---|---|---|---|
+| PyTorch (`torch`) | 2.15.0 (on Linux the CPU-only build, `2.15.0+cpu`, from https://download.pytorch.org/whl/cpu) | https://github.com/pytorch/pytorch | BSD-3-Clause for PyTorch itself; the package's metadata lists Apache-2.0, Apache-2.0 WITH LLVM-exception, BSD-2-Clause, BSD-3-Clause, BSL-1.0, ISC, MIT and Zlib for what it bundles | Runs Maia-3's neural network on the CPU |
+| python-chess (`chess`) | 1.11.2 | https://github.com/niklasf/python-chess | GPL-3.0-or-later | Maia-3's chess rules: board, legal moves, UCI notation |
+| `python-chess` | 1.999 | https://github.com/niklasf/python-chess | GPL-3.0-or-later | The old package name, which Maia-3 asks for; it contains nothing but a dependency on `chess` |
+| NumPy (`numpy`) | 2.5.5 | https://github.com/numpy/numpy | BSD-3-Clause, with 0BSD, MIT, Zlib and CC0-1.0 parts | Arrays, for Maia-3 and PyTorch |
+| `huggingface-hub` | 2.5.0 | https://github.com/huggingface/huggingface_hub | Apache-2.0 | Downloads the weights at set-up, and finds them in the local cache when Maia-3 starts |
+| `hf-xet` | 1.8.0 | https://github.com/huggingface/xet-core | Apache-2.0 | Hugging Face's file-transfer library, used by `huggingface-hub` for the download |
+| `httpx2`, `httpcore2` | 2.16.2 | https://github.com/pydantic/httpx2 | BSD-3-Clause | HTTP client used by `huggingface-hub` |
+| `anyio` | 4.16.0 | https://github.com/agronholm/anyio | MIT | Used by `httpx2` |
+| `h11` | 0.16.0 | https://github.com/python-hyper/h11 | MIT | Used by `httpcore2` |
+| `idna` | 3.20 | https://github.com/kjd/idna | BSD-3-Clause | Used by `httpx2` |
+| `truststore` | 0.10.5 | https://github.com/sethmlarson/truststore | MIT | Used by `httpx2` and `httpcore2` to check TLS certificates against the operating system's |
+| `click` | 8.5.1 | https://github.com/pallets/click | BSD-3-Clause | Used by `huggingface-hub` |
+| `filelock` | 4.3.1 | https://github.com/tox-dev/filelock | MIT | Used by `huggingface-hub` and PyTorch |
+| `fsspec` | 2026.9.0 | https://github.com/fsspec/filesystem_spec | BSD-3-Clause | Used by `huggingface-hub` and PyTorch |
+| `packaging` | 26.4 | https://github.com/pypa/packaging | Apache-2.0 OR BSD-2-Clause | Used by `huggingface-hub` |
+| PyYAML (`pyyaml`) | 6.0.4 | https://github.com/yaml/pyyaml | MIT | Used by `huggingface-hub` |
+| `tqdm` | 4.70.1 | https://github.com/tqdm/tqdm | MPL-2.0 AND MIT | Used by `huggingface-hub` for download progress |
+| `typing-extensions` | 4.16.0 | https://github.com/python/typing_extensions | PSF-2.0 | Used by PyTorch and `huggingface-hub` |
+| SymPy (`sympy`) | 1.14.0 | https://github.com/sympy/sympy | BSD-3-Clause (its metadata says "BSD"; its `LICENSE` is the three-clause text) | Used by PyTorch |
+| `mpmath` | 1.3.0 | https://github.com/mpmath/mpmath | BSD-3-Clause (its metadata says "BSD"; its `LICENSE` is the three-clause text) | Used by SymPy |
+| NetworkX (`networkx`) | 3.7 | https://github.com/networkx/networkx | BSD-3-Clause | Used by PyTorch |
+| Jinja (`jinja2`) | 3.1.6 | https://github.com/pallets/jinja | BSD-3-Clause | Used by PyTorch |
+| MarkupSafe (`markupsafe`) | 3.0.4 | https://github.com/pallets/markupsafe | BSD-3-Clause | Used by Jinja |
+| `setuptools` | 84.2.1 | https://github.com/pypa/setuptools | MIT | Used by PyTorch, and to build Maia-3 and python-chess from source during set-up |
 
 ## Services
 

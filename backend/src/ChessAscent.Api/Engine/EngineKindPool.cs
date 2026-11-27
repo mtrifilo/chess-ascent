@@ -17,6 +17,7 @@ namespace ChessAscent.Api.Engine;
 internal sealed partial class EngineKindPool
 {
     private readonly UciEngineOptions _engineOptions;
+    private readonly string? _randomSeedArgument;
     private readonly TimeSpan _checkOutTimeout;
     private readonly int _startAttempts;
     private readonly TimeSpan _restartDelay;
@@ -43,6 +44,7 @@ internal sealed partial class EngineKindPool
     {
         Kind = kind;
         _engineOptions = options.ToEngineOptions();
+        _randomSeedArgument = string.IsNullOrWhiteSpace(options.RandomSeedArgument) ? null : options.RandomSeedArgument;
         _checkOutTimeout = options.CheckOutTimeout!.Value;
         _startAttempts = options.StartAttempts!.Value;
         _restartDelay = options.RestartDelay!.Value;
@@ -287,7 +289,7 @@ internal sealed partial class EngineKindPool
     {
         try
         {
-            var engine = await UciEngine.StartAsync(_engineOptions, _engineLogger, _stopping);
+            var engine = await UciEngine.StartAsync(OptionsForStart(), _engineLogger, _stopping);
             LogStarted(_logger, Kind, slot, engine.ProcessId);
             return engine;
         }
@@ -305,6 +307,16 @@ internal sealed partial class EngineKindPool
             return null;
         }
     }
+
+    // The seed is drawn here, at each start, rather than once with the rest
+    // of the options, so that no two processes of the kind share one, and a
+    // replacement does not repeat its predecessor's choices.
+    private UciEngineOptions OptionsForStart() => _randomSeedArgument is null
+        ? _engineOptions
+        : _engineOptions with
+        {
+            Arguments = [.. _engineOptions.Arguments, _randomSeedArgument, Random.Shared.Next().ToString(CultureInfo.InvariantCulture)],
+        };
 
     // False if stopping began during the pause.
     private async Task<bool> PauseAsync()
