@@ -22,9 +22,14 @@ namespace ChessAscent.Api.Features.Games;
 /// for concurrent calls: await each call before the next.
 /// <see cref="AppendMovesAsync"/> begins and commits a transaction of its
 /// own, so call it while the context has no transaction open; EF Core throws
-/// if it already has one.
+/// if it already has one. And because SaveChanges saves everything a context
+/// tracks, both writes refuse to start while the context holds changes the
+/// caller has not saved, rather than save them along with the game.
 /// </para>
 /// </remarks>
+// LEARN: TimeProvider is .NET's counterpart of java.time.Clock: code asks it
+// for the time instead of calling DateTimeOffset.UtcNow, so a test can supply
+// one that returns whatever time it needs.
 public sealed class GameStore(AppDbContext database, TimeProvider clock)
 {
     /// <summary>Creates an ongoing game with no moves.</summary>
@@ -39,10 +44,17 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
         ArgumentNullException.ThrowIfNull(opponent);
         ArgumentException.ThrowIfNullOrWhiteSpace(startingFen);
+
+        // LEARN: A C# enum is a named integer, not a closed set of objects as
+        // in Java: (Side)7 compiles and is a value of type Side. Enum.IsDefined
+        // refuses such a value here, at the boundary, before its number would
+        // be stored as text.
         if (!Enum.IsDefined(playerSide))
         {
             throw new ArgumentOutOfRangeException(nameof(playerSide), playerSide, "Not a side.");
         }
+
+        RefuseUnsavedChanges();
 
         var now = Now();
         var game = new Game
@@ -148,6 +160,13 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
             throw new ArgumentException("There are no moves to append.", nameof(moves));
         }
 
+        foreach (var move in moves)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(move.Uci, nameof(moves));
+            ArgumentException.ThrowIfNullOrWhiteSpace(move.San, nameof(moves));
+        }
+
+        RefuseUnsavedChanges();
         var (progress, result, endReason) = ToStoredOutcome(statusAfter);
         var now = Now();
 
@@ -219,8 +238,8 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
             // The key of Moves is (game, half-move number), so a row already
             // holds one of these numbers even though the count matched: the
             // saved numbers have a gap that this store did not write. The
-            // key still refuses the duplicate. Reloading will not help such a
-            // game, since its next half-move number is the taken one.
+            // key still refuses the duplicate. Reloading may not help such a
+            // game, since the number it would append at can be the taken one.
             //
             // Inside a transaction the caller began, SaveChanges sets a
             // savepoint and rolls back only to it on failure, so the update
@@ -242,6 +261,15 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         return new MovesAppended(now);
     }
 
+    private void RefuseUnsavedChanges()
+    {
+        if (database.ChangeTracker.HasChanges())
+        {
+            throw new InvalidOperationException(
+                "The context holds unsaved changes, which the game store's save would save too. Save or discard them first.");
+        }
+    }
+
     // PostgreSQL keeps timestamps to the microsecond and .NET to a tenth of
     // one, so the time is cut to what the database stores. A time this class
     // returns then equals the one a later load reads back.
@@ -251,9 +279,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         return now.AddTicks(-(now.Ticks % TimeSpan.TicksPerMicrosecond));
     }
 
-    // Internal so a test can check it against every DrawReason: a member
-    // added to that enum compiles here, and fails only when it is saved.
-    internal static (GameProgress Progress, GameResult? Result, GameEndReason? EndReason) ToStoredOutcome(
+    private static (GameProgress Progress, GameResult? Result, GameEndReason? EndReason) ToStoredOutcome(
         GameStatus boardStatus) =>
         boardStatus switch
         {
@@ -263,11 +289,20 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
             Draw draw => (GameProgress.Finished, GameResult.Draw, ToEndReason(draw.Reason)),
         };
 
+    // LEARN: Because an enum may hold any number of its underlying type, the
+    // compiler checks a switch expression over one in two parts. Leaving out
+    // a named member is warning CS8509, an error in this build, so a member
+    // added to Side or DrawReason stops this file compiling until it is
+    // mapped. Covering every named member but no unnamed number is CS8524.
+    // A discard arm (`_ => ...`) would silence both, and with them the first
+    // check, so CS8524 alone is switched off here: an unnamed number, which
+    // Enum.IsDefined and the chess interface never let through, throws
+    // SwitchExpressionException.
+#pragma warning disable CS8524
     private static GameResult WinFor(Side winner) => winner switch
     {
         Side.White => GameResult.WhiteWins,
         Side.Black => GameResult.BlackWins,
-        _ => throw new ArgumentOutOfRangeException(nameof(winner), winner, "Not a side."),
     };
 
     private static GameEndReason ToEndReason(DrawReason reason) => reason switch
@@ -275,8 +310,8 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         DrawReason.ThreefoldRepetition => GameEndReason.ThreefoldRepetition,
         DrawReason.FiftyMoveRule => GameEndReason.FiftyMoveRule,
         DrawReason.DeadPosition => GameEndReason.DeadPosition,
-        _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, "Not a draw reason."),
     };
+#pragma warning restore CS8524
 
     private static SavedGame ToSavedGame(Game game) => new(
         game.Id,

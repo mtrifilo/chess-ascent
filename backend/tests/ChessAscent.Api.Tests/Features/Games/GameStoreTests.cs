@@ -12,6 +12,11 @@ namespace ChessAscent.Api.Tests.Features.Games;
 // load reads what the database holds rather than anything a context kept.
 public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres) : IClassFixture<ApiFactory>
 {
+    // A move saved at half-move 3 of a game with one move, as something other
+    // than the store might write it, leaving half-move 2 empty.
+    private const string GapAtHalfMoveTwo =
+        """INSERT INTO "Moves" ("GameId", "HalfMoveNumber", "Uci", "San") VALUES (@id, 3, 'g1f3', 'Nf3')""";
+
     private static CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     [Theory]
@@ -169,7 +174,7 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         var game = await factory.CreateGameAsync(owner);
         var (e4, afterE4) = GameData.Rules.NewGame().Play("e2e4");
         await factory.AppendAsync(owner, game.Id, 1, e4, afterE4);
-        await ExecuteAsync("""INSERT INTO "Moves" VALUES (@id, 3, 'g1f3', 'Nf3')""", game.Id);
+        await ExecuteAsync(GapAtHalfMoveTwo, game.Id);
         var before = await factory.LoadGameAsync(owner, game.Id);
 
         var outcome = await factory.AppendAsync(owner, game.Id, 3, [new PlayedMove("e7e5", "e5")], new Ongoing());
@@ -220,18 +225,43 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         loaded.Should().BeEquivalentTo(game);
     }
 
-    // Both are refused before the database is reached, so no account or game
+    // All are refused before the database is reached, so no account or game
     // is needed.
     [Fact]
-    public async Task AppendRefusesAnEmptyMoveListAndAHalfMoveNumberBelowOne()
+    public async Task AppendRefusesAnEmptyMoveListAnEmptyMoveAndAHalfMoveNumberBelowOne()
     {
         var (e4, afterE4) = GameData.Rules.NewGame().Play("e2e4");
 
         var noMoves = () => factory.AppendAsync("unused", Guid.CreateVersion7(), 1, [], afterE4);
+        var emptyMove = () => factory.AppendAsync("unused", Guid.CreateVersion7(), 1, [default], afterE4);
         var halfMoveZero = () => factory.AppendAsync("unused", Guid.CreateVersion7(), 0, e4, afterE4);
 
         await noMoves.Should().ThrowAsync<ArgumentException>().WithParameterName("moves");
+        await emptyMove.Should().ThrowAsync<ArgumentException>().WithParameterName("moves");
         await halfMoveZero.Should().ThrowAsync<ArgumentOutOfRangeException>().WithParameterName("firstHalfMoveNumber");
+    }
+
+    // SaveChanges saves everything the context tracks, so a save that began
+    // with the caller's own changes pending would save them too, or fail on
+    // them.
+    [Fact]
+    public async Task CreateAndAppendRefuseToStartWhileTheContextHoldsUnsavedChanges()
+    {
+        var owner = await factory.CreateOwnerAsync();
+        await using var scope = factory.Services.CreateAsyncScope();
+        var store = scope.ServiceProvider.GetRequiredService<GameStore>();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var game = await store.CreateAsync(owner, Side.White, Opponent.None, GameData.StartingFen, Cancellation);
+        var (e4, afterE4) = GameData.Rules.NewGame().Play("e2e4");
+        var account = await context.Users.SingleAsync(user => user.Id == owner, Cancellation);
+        account.PhoneNumber = "unsaved";
+
+        var create = () => store.CreateAsync(owner, Side.White, Opponent.None, GameData.StartingFen, Cancellation);
+        var append = () => store.AppendMovesAsync(owner, game.Id, 1, e4, afterE4, Cancellation);
+
+        await create.Should().ThrowAsync<InvalidOperationException>();
+        await append.Should().ThrowAsync<InvalidOperationException>();
+        (await factory.LoadGameAsync(owner, game.Id)).Should().BeEquivalentTo(game);
     }
 
     // The context is the request's, and the caller may go on using it, so
@@ -260,7 +290,7 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         tracked.Add(tracker.Entries().Count());
         var countConflict = await store.AppendMovesAsync(owner, game.Id, 1, e4, afterE4, Cancellation);
         tracked.Add(tracker.Entries().Count());
-        await ExecuteAsync("""INSERT INTO "Moves" VALUES (@id, 3, 'g1f3', 'Nf3')""", game.Id);
+        await ExecuteAsync(GapAtHalfMoveTwo, game.Id);
         var keyConflict = await store.AppendMovesAsync(
             owner, game.Id, 3, [new PlayedMove("e7e5", "e5")], new Ongoing(), Cancellation);
         tracked.Add(tracker.Entries().Count());
@@ -305,21 +335,6 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         Enum.GetNames<GameResult>().Should().Contain(["WhiteWins", "BlackWins", "Draw"]);
         Enum.GetNames<GameEndReason>().Should().Contain(
             ["Checkmate", "Stalemate", "ThreefoldRepetition", "FiftyMoveRule", "DeadPosition", "Resignation"]);
-    }
-
-    // The mapping from a draw's reason to the stored reason is a switch over
-    // an enum, which the compiler does not check for completeness, so a
-    // reason added to DrawReason would fail only when a game ending that way
-    // was saved.
-    [Fact]
-    public void EveryDrawReasonTheChessInterfaceHasIsStoredAsADrawWithThatReason()
-    {
-        foreach (var reason in Enum.GetValues<DrawReason>())
-        {
-            var stored = GameStore.ToStoredOutcome(new Draw(reason));
-
-            stored.Should().Be((GameProgress.Finished, GameResult.Draw, Enum.Parse<GameEndReason>(reason.ToString())));
-        }
     }
 
     [Fact]

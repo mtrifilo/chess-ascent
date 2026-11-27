@@ -20,6 +20,11 @@ namespace ChessAscent.Api.Features.Games;
 /// The moves, oldest first: the move at index <c>i</c> has half-move number
 /// <c>i + 1</c>.
 /// </param>
+// LEARN: A record's generated Equals compares each component with its own
+// Equals, which for a list is reference equality: two loads of the same game
+// hold two different lists, so they are never == each other. A Java record
+// would call List.equals and compare the moves. Compare saved games by their
+// members (or the moves with SequenceEqual) instead.
 public sealed record SavedGame(
     Guid Id,
     Side PlayerSide,
@@ -43,6 +48,8 @@ public sealed record SavedGame(
 /// <summary>The outcome of <see cref="GameStore.AppendMovesAsync"/>.</summary>
 public union AppendResult(MovesAppended, GameNotFound, GameFinished, HalfMoveConflict)
 {
+    // A union's own ToString names only the union type; the case is what a
+    // log line or a test failure needs.
     public override string ToString() => Value?.ToString() ?? "(no case)";
 }
 
@@ -75,7 +82,8 @@ public readonly record struct GameFinished;
 /// half-move number given, so it is not the game the caller played the moves
 /// on: another request saved a move first, or this one was submitted twice.
 /// Loading the game again shows where it stands. The other cause is a saved
-/// move list with a gap in its numbers, which this store never writes; then
-/// a new number is already taken, and reloading gives the same answer.
+/// move list with a gap in its numbers, which this store never writes: an
+/// append can then land in the gap, or meet a number that is already taken,
+/// and reloading does not clear that.
 /// </remarks>
 public readonly record struct HalfMoveConflict;
