@@ -5,18 +5,21 @@
  * app uses is defined here, and components reach them only through the
  * utilities these tokens generate (`bg-card`, `text-body-s`, `rounded-md`).
  *
- * How that holds: Tailwind's stock palette, radii, shadows and text sizes are
- * reset below, so only the tokens declared in this file produce CSS. A class
- * naming anything else (`text-white`, `text-lg`, `rounded-2xl`, `shadow-md`)
- * compiles to nothing, with no error: if a class seems to do nothing, its
- * token is missing. A new colour or size is added here first, then used.
+ * How that holds: Tailwind's stock palette, font families, radii, shadows and
+ * text sizes are reset below, so only the tokens declared in this file
+ * produce CSS. A class naming anything else (`text-white`, `text-lg`,
+ * `font-serif`, `rounded-2xl`, `shadow-md`) compiles to nothing, with no
+ * error: if a class seems to do nothing, its token is missing. A new colour,
+ * font or size is added here first, then used.
  *
  * The colour, radius and font tokens are Psychic Homily's design system
  * (paper background, burnt-orange primary, sharp corners): light mode is
  * "newsprint", dark mode is "vinyl record shop". Left behind: its sidebar
  * colours and layout sizes, graph edge colours, map and music-embed styles,
- * custom variants (none is used here), scroll padding for its fixed bars, the
- * typography plugin, and the `--radius` alias, which nothing here reads. */
+ * its custom variants (none is used here), the scroll padding and fixed
+ * `html::before` backdrop for its fixed bars, its `/shows` day-heading rules,
+ * the typography plugin, and the `--radius` alias, which nothing here
+ * reads. */
 
 /* `dark:` utilities apply only under an element with the `dark` class, never
  * from the operating system's colour scheme. Nothing sets that class, so the
@@ -30,6 +33,7 @@
  * values belong here as tokens, so neither is used. */
 @theme {
   --color-*: initial;
+  --font-*: initial;
   --radius-*: initial;
   --shadow-*: initial;
   --drop-shadow-*: initial;

@@ -6,12 +6,14 @@ import { AppShell } from '@/components/layout/app-shell'
 import './globals.css'
 
 // next/font downloads these from Google Fonts at build time and serves them
-// from this app, so browsers never contact Google. The variable classes go on <html>, not <body>: Tailwind's
-// preflight sets the page font on html from the theme's `--font-sans`, which
-// globals.css maps to these variables, and a variable defined only on body is
-// undefined at html. All three are variable fonts, so no weight list.
-// `subsets` only chooses which files are preloaded; every subset is still
-// served through unicode-range.
+// from this app, so browsers never contact Google.
+//
+// The variable classes go on <html>, not <body>: Tailwind's preflight sets
+// the page font on html from the theme's `--font-sans`, which globals.css
+// maps to these variables, and a variable defined only on body is undefined
+// at html. All three are variable fonts, so no weight list. `subsets` only
+// chooses which files are preloaded; every subset is still served through
+// unicode-range.
 const hankenGrotesk = Hanken_Grotesk({
   subsets: ['latin', 'latin-ext'],
   variable: '--font-hanken',
