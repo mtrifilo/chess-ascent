@@ -37,8 +37,11 @@ namespace ChessAscent.Api.Security;
 // different origins, their requests will say "same-site" or "cross-site" and
 // be refused here, until the front end's origin is trusted through a CORS
 // policy that allows credentials, which ICsrfProtection honours.
-public static class CrossSiteRequests
+public static partial class CrossSiteRequests
 {
+    /// <summary>The detail of the problem a refused request gets, which tells it apart from any other 403.</summary>
+    public const string RefusedDetail = "A page on another origin started this request.";
+
     /// <summary>
     /// Answers 403 to a request that could change state when the browser
     /// reports that a page from another origin started it.
@@ -48,6 +51,9 @@ public static class CrossSiteRequests
         // The default host registers ICsrfProtection as a Singleton, so it is
         // resolved once, while the pipeline is built, rather than per request.
         var protection = app.ApplicationServices.GetRequiredService<ICsrfProtection>();
+        var problems = app.ApplicationServices.GetRequiredService<IProblemDetailsService>();
+        var logger = app.ApplicationServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger(typeof(CrossSiteRequests).FullName!);
 
         // LEARN: app.Use with a lambda adds a middleware without writing a
         // class: it receives the request and `next`, the rest of the pipeline,
@@ -61,13 +67,36 @@ public static class CrossSiteRequests
             var verdict = await protection.ValidateAsync(context);
             if (!verdict.IsAllowed)
             {
-                // No body here: UseStatusCodePages, earlier in the pipeline,
-                // writes the problem-details body on the way out.
+                LogRefused(
+                    logger,
+                    context.Request.Method,
+                    context.Request.Path,
+                    context.Request.Headers["Sec-Fetch-Site"].ToString(),
+                    context.Request.Headers.Origin.ToString());
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await problems.WriteAsync(new ProblemDetailsContext
+                {
+                    HttpContext = context,
+                    ProblemDetails = { Status = StatusCodes.Status403Forbidden, Detail = RefusedDetail },
+                });
                 return;
             }
 
             await next(context);
         });
     }
+
+    // LEARN: [LoggerMessage] on a partial method has a source generator
+    // write the method's body at build time. A call then allocates no array
+    // for its arguments and boxes none of them (PathString is a struct), as
+    // logger.LogWarning(template, args) would on every call; the template's
+    // placeholders become named fields in structured logs, as with SLF4J's
+    // {} placeholders and a structured appender. "partial" lets one part of
+    // a class or method be written by hand and the rest by a generator,
+    // which Java has no syntax for.
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Refused {Method} {Path}: Sec-Fetch-Site '{SecFetchSite}', Origin '{Origin}'.")]
+    private static partial void LogRefused(
+        ILogger logger, string method, PathString path, string secFetchSite, string origin);
 }

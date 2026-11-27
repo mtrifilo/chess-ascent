@@ -35,7 +35,16 @@ public static class AccountServices
         // at least one each of a lower-case ASCII letter, an upper-case ASCII
         // letter, a digit and a character that is none of those. For lockout:
         // on for new accounts, after 5 failed sign-ins in a row, for 5
-        // minutes. Change them here, on options.Password and options.Lockout.
+        // minutes. For user names, which here are emails: only the characters
+        // a-z, A-Z, 0-9 and - . _ @ +, so an address such as o'neill@... or
+        // one with a non-ASCII letter cannot register. Change them here, on
+        // options.Password, options.Lockout and
+        // options.User.AllowedUserNameCharacters.
+        //
+        // The lockout cuts both ways: anyone who knows an account's email can
+        // keep it locked by sending five wrong passwords every five minutes,
+        // and the player then sees the same "incorrect" answer as for a wrong
+        // password (see AccountEndpoints for why).
         services.AddIdentityCore<IdentityUser>(options =>
             {
                 // The email is also the user name (see AccountEndpoints), and
@@ -70,6 +79,17 @@ public static class AccountServices
         // signed with ASP.NET Core Data Protection keys, so no session table
         // exists. It also re-reads the account every 30 minutes and rejects
         // the cookie if the account's security stamp has changed.
+        //
+        // Two consequences follow. Nothing on the server ends a session, so
+        // signing out deletes the cookie from the browser that signs out, and
+        // a copy of it taken earlier stays valid until it expires (see
+        // SignOutAsync in AccountEndpoints). And the cookie can be read only
+        // with the key ring it was written with. Data Protection's defaults
+        // keep that ring in the user profile of the machine that runs the
+        // API (on macOS and Linux, ~/.aspnet/DataProtection-Keys), which
+        // persists in development. A deployment has to keep the ring durable,
+        // private and shared between instances, or every restart signs every
+        // player out, and anyone who reads it can forge a session.
         //
         // LEARN: The options pattern. AddApplicationCookie returns an
         // OptionsBuilder<CookieAuthenticationOptions>, and Configure adds a

@@ -1,7 +1,10 @@
 using System.Net;
 using System.Text.Json.Nodes;
+using ChessAscent.Api.Database;
 using ChessAscent.Api.Features.Accounts;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ChessAscent.Api.Tests.Features.Accounts;
 
@@ -63,6 +66,49 @@ public sealed class AccountEndpointsTests(ApiFactory factory) : IClassFixture<Ap
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var problem = await response.ReadProblemAsync<HttpValidationProblemDetails>();
         problem.Errors.Keys.Should().Equal(nameof(RegisterRequest.Email));
+        var message = problem.Errors[nameof(RegisterRequest.Email)].Should().ContainSingle().Subject;
+        message.Should().Be(new IdentityErrorDescriber().InvalidEmail(email).Description);
+    }
+
+    [Fact]
+    public async Task RegisterAcceptsAnEmailOfTheLongestLength()
+    {
+        using var client = factory.CreateClient();
+
+        using var response = await client.RegisterAsync(EmailOfLength(AccountLimits.EmailLength));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Theory]
+    [InlineData("/auth/register")]
+    [InlineData("/auth/sign-in")]
+    public async Task AnEmailLongerThanAnAccountCanHoldIsReportedUnderTheEmailField(string path)
+    {
+        using var client = factory.CreateClient();
+        var email = EmailOfLength(AccountLimits.EmailLength + 1);
+
+        using var response = await client.PostAsJsonAsync(
+            path, new { email, password = Accounts.Password }, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var problem = await response.ReadProblemAsync<HttpValidationProblemDetails>();
+        problem.Errors.Keys.Should().Equal(nameof(RegisterRequest.Email));
+    }
+
+    // The limit the requests enforce is the one the database holds.
+    [Theory]
+    [InlineData(nameof(IdentityUser.Email))]
+    [InlineData(nameof(IdentityUser.NormalizedEmail))]
+    [InlineData(nameof(IdentityUser.UserName))]
+    [InlineData(nameof(IdentityUser.NormalizedUserName))]
+    public async Task TheEmailLimitIsTheColumnLength(string property)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var model = scope.ServiceProvider.GetRequiredService<AppDbContext>().Model;
+
+        model.FindEntityType(typeof(IdentityUser))!.FindProperty(property)!.GetMaxLength()
+            .Should().Be(AccountLimits.EmailLength);
     }
 
     [Theory]
@@ -173,6 +219,25 @@ public sealed class AccountEndpointsTests(ApiFactory factory) : IClassFixture<Ap
         me.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
+    // The cookie is still valid, but the account it names has gone.
+    [Fact]
+    public async Task CurrentUserAnswers401WhenTheAccountNoLongerExists()
+    {
+        using var client = factory.CreateClient();
+        var email = Accounts.NewEmail();
+        await client.RegisterNewAsync(email);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            (await users.DeleteAsync((await users.FindByEmailAsync(email))!)).Succeeded.Should().BeTrue();
+        }
+
+        using var response = await client.GetCurrentUserAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        await response.ReadProblemAsync();
+    }
+
     [Fact]
     public async Task SignOutAnswers204WhenNobodyIsSignedIn()
     {
@@ -222,6 +287,13 @@ public sealed class AccountEndpointsTests(ApiFactory factory) : IClassFixture<Ap
         using var response = await client.GetAsync(path + "?userId=x&code=y", TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // A well-formed address, all of whose characters Identity allows.
+    private static string EmailOfLength(int length)
+    {
+        const string domain = "@example.com";
+        return new string('a', length - domain.Length) + domain;
     }
 
     // The trace id differs on every response; everything else must match.

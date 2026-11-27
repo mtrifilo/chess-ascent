@@ -38,7 +38,7 @@ The API applies any pending database migrations before it starts serving, so it 
 
 With the API running, `curl http://localhost:5100/health` answers `Healthy`, `curl http://localhost:5100/health/ready` answers `Healthy` while the database is reachable and `Unhealthy` with status 503 when it does not accept a connection within 3 seconds, and `curl http://localhost:5100/version` returns the version and the git commit it was built from.
 
-Accounts are under `/auth`. `POST /auth/register` and `POST /auth/sign-in` take a JSON body with `email` and `password` and set the session cookie, `POST /auth/sign-out` clears it, and `GET /auth/me` returns the signed-in account's email, or 401 when nobody is signed in. A request that changes something (any method but GET, HEAD, OPTIONS, TRACE and QUERY) is refused with 403 when the browser reports that a page on another site started it; curl sends no such report, so it can call the API directly:
+Accounts are under `/auth`. `POST /auth/register` and `POST /auth/sign-in` take a JSON body with `email` and `password` and set the session cookie, `POST /auth/sign-out` clears it, and `GET /auth/me` returns the signed-in account's email, or 401 when nobody is signed in. A request that changes something (any method but GET, HEAD, OPTIONS, TRACE and QUERY) is refused with 403 when the browser reports that a page on another origin started it, a sibling subdomain included; curl sends no such report, so it can call the API directly:
 
 ```sh
 jar="${TMPDIR:-/tmp}/chess-ascent-cookies.txt"   # outside the repo: it holds a live session
@@ -46,6 +46,8 @@ curl -c "$jar" -H 'Content-Type: application/json' \
   -d '{"email":"you@example.com","password":"Example-passw0rd"}' http://localhost:5100/auth/register
 curl -b "$jar" http://localhost:5100/auth/me
 ```
+
+The session cookie is encrypted with ASP.NET Core Data Protection keys, which by default live in `~/.aspnet/DataProtection-Keys` on the machine running the API. Deleting them signs everyone out. A deployment must keep them durable, private and shared between instances.
 
 In Development, `http://localhost:5100/scalar` is an API explorer (Scalar) for the API's endpoints, and `http://localhost:5100/openapi/v1.json` is the OpenAPI document it reads. Scalar's page and script are served by the API itself, and its telemetry, AI chat, MCP integration and developer toolbar (whose buttons would upload the document to Scalar) are turned off.
 

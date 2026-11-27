@@ -11,9 +11,10 @@ namespace ChessAscent.Api.Features.Accounts;
 // together, including email confirmation, password reset, two-factor and
 // account management, which this release does not offer. Its sign-in also
 // issues bearer tokens on request and reports a locked-out account
-// differently from a wrong password, and it has neither a sign-out nor a
-// current-user endpoint. The handlers below call the same UserManager and
-// SignInManager methods it does.
+// differently from a wrong password, and it has no sign-out. Its nearest
+// thing to a current-user endpoint, GET /manage/info, sits among the
+// account-management routes and cannot be kept without them. The handlers
+// below call the same UserManager and SignInManager methods it does.
 public static class AccountEndpoints
 {
     /// <summary>The detail of the error a registration for an email that already has an account gets.</summary>
@@ -30,11 +31,19 @@ public static class AccountEndpoints
     {
         var auth = endpoints.MapGroup("/auth");
 
+        // The document learns most responses from each handler's return
+        // type. The rest are declared here: 400 from validation of the body,
+        // and 403 from the refusal of cross-site requests, which comes from
+        // middleware (see CrossSiteRequests) and so applies to every POST.
         auth.MapPost("/register", RegisterAsync)
-            .ProducesProblem(StatusCodes.Status409Conflict);
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
         auth.MapPost("/sign-in", SignInAsync)
-            .ProducesProblem(StatusCodes.Status401Unauthorized);
-        auth.MapPost("/sign-out", SignOutAsync);
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
+        auth.MapPost("/sign-out", SignOutAsync)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         // LEARN: RequireAuthorization attaches an authorization policy to the
         // endpoint as metadata; with no arguments, the default policy, which
@@ -88,7 +97,7 @@ public static class AccountEndpoints
         {
             return RegistrationErrors.IsDuplicateEmail(created)
                 ? DuplicateEmail()
-                : RegistrationErrors.ToValidationProblem(created);
+                : RegistrationErrors.ToValidationProblem(created, request.Email, userManager.ErrorDescriber);
         }
 
         await signInManager.SignInAsync(user, isPersistent: true);
@@ -108,18 +117,28 @@ public static class AccountEndpoints
         }
 
         // lockoutOnFailure counts this attempt towards the lockout. Every
-        // outcome other than success gets the same answer, a locked-out
-        // account included, so the response never shows whether an account
-        // exists: only an existing account can be locked out.
+        // outcome other than success gets the same status and body, a
+        // locked-out account included, because the approved sign-in screen
+        // has one error for all of them. That keeps the answer from saying
+        // whether an account exists or is locked. Other things still say
+        // whether it exists: registering the email answers 409, and an
+        // unknown email is answered sooner, without the password hashing.
         var result = await signInManager.PasswordSignInAsync(
             user, request.Password, isPersistent: true, lockoutOnFailure: true);
         return result.Succeeded ? TypedResults.Ok(new CurrentUserResponse(email)) : SignInFailed();
     }
 
     /// <summary>
-    /// Ends the session by telling the browser to delete the cookie. It
-    /// answers 204 whether or not anyone was signed in.
+    /// Ends the session in this browser by telling it to delete the cookie.
+    /// It answers 204 whether or not anyone was signed in.
     /// </summary>
+    /// <remarks>
+    /// Nothing is recorded on the server, so a copy of the cookie taken
+    /// before sign-out still works until it expires, and use renews it.
+    /// Revoking it would mean either changing the account's security stamp,
+    /// which signs out every browser the player uses, or keeping sessions on
+    /// the server; neither is part of this API yet.
+    /// </remarks>
     private static async Task<NoContent> SignOutAsync(SignInManager<IdentityUser> signInManager)
     {
         await signInManager.SignOutAsync();

@@ -1,4 +1,5 @@
 using System.Net;
+using ChessAscent.Api.Security;
 using ChessAscent.Api.Tests.Features.Accounts;
 using Microsoft.Net.Http.Headers;
 
@@ -11,6 +12,9 @@ namespace ChessAscent.Api.Tests.Security;
 public sealed class CrossSiteRequestTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private const string AttackerOrigin = "https://attacker.example";
+
+    // The web app's development address; the test server's own is http://localhost.
+    private const string WebAppOrigin = "http://localhost:3000";
 
     [Theory]
     [InlineData("cross-site")]
@@ -25,7 +29,7 @@ public sealed class CrossSiteRequestTests(ApiFactory factory) : IClassFixture<Ap
         using var response = await client.SendAsync(forged, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        await response.ReadProblemAsync();
+        (await response.ReadProblemAsync()).Detail.Should().Be(CrossSiteRequests.RefusedDetail);
         response.SessionCookieHeader().Should().BeNull();
         (await client.GetSignedInEmailAsync()).Should().Be(email);
     }
@@ -60,16 +64,33 @@ public sealed class CrossSiteRequestTests(ApiFactory factory) : IClassFixture<Ap
         response.SessionCookieHeader().Should().BeNull();
     }
 
+    // What the front end's own requests look like after the development
+    // rewrite: the browser saw one origin, so it says same-origin, but the
+    // Origin is the web app's and the Host the API's.
     [Fact]
-    public async Task ASameOriginRequestPasses()
+    public async Task AFrontEndRequestThroughTheRewritePasses()
     {
         using var client = factory.CreateClient();
         await client.RegisterNewAsync(Accounts.NewEmail());
 
-        using var request = Post("/auth/sign-out", "same-origin", "http://localhost");
+        using var request = Post("/auth/sign-out", "same-origin", WebAppOrigin);
         using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    // A browser without Fetch Metadata, behind the same rewrite, has only an
+    // Origin that differs from the API's Host, so it is refused.
+    [Fact]
+    public async Task AnOlderBrowserThroughTheRewriteIsRefused()
+    {
+        using var client = factory.CreateClient();
+        await client.RegisterNewAsync(Accounts.NewEmail());
+
+        using var request = Post("/auth/sign-out", secFetchSite: null, WebAppOrigin);
+        using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     // Reading is not refused: a cross-site page cannot read the response, and

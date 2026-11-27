@@ -47,15 +47,26 @@ internal static class RegistrationErrors
         result.Errors.Any(error => DuplicateEmailCodes.Contains(error.Code));
 
     /// <summary>A 400 validation problem listing each error under the field it concerns.</summary>
+    /// <remarks>
+    /// Identity reports a refused user name in its own words ("Username ...
+    /// can only contain letters or digits"), which are wrong for a player who
+    /// only ever typed an email. That error is reported with Identity's
+    /// invalid-email text instead, once, even when Identity also found the
+    /// address invalid as an email.
+    /// </remarks>
     /// <exception cref="InvalidOperationException">
     /// An error that is about neither field, which Identity's own validators
     /// do not produce: answering with a 400 would blame the player for a fault
     /// in the server.
     /// </exception>
-    public static ValidationProblem ToValidationProblem(IdentityResult result) =>
+    public static ValidationProblem ToValidationProblem(
+        IdentityResult result, string email, IdentityErrorDescriber describer) =>
         TypedResults.ValidationProblem(result.Errors
+            .Select(error => error.Code == nameof(IdentityErrorDescriber.InvalidUserName)
+                ? describer.InvalidEmail(email)
+                : error)
             .GroupBy(error => FieldOf(error.Code), error => error.Description)
-            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal));
+            .ToDictionary(group => group.Key, group => group.Distinct().ToArray(), StringComparer.Ordinal));
 
     private static string FieldOf(string code) =>
         EmailCodes.Contains(code) ? EmailField

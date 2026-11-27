@@ -79,6 +79,15 @@ export interface paths {
             'application/problem+json': components['schemas']['HttpValidationProblemDetails']
           }
         }
+        /** @description Forbidden */
+        403: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
         /** @description Conflict */
         409: {
           headers: {
@@ -127,8 +136,26 @@ export interface paths {
             'application/json': components['schemas']['CurrentUserResponse']
           }
         }
+        /** @description Bad Request */
+        400: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['HttpValidationProblemDetails']
+          }
+        }
         /** @description Unauthorized */
         401: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Forbidden */
+        403: {
           headers: {
             [name: string]: unknown
           }
@@ -168,6 +195,15 @@ export interface paths {
             [name: string]: unknown
           }
           content?: never
+        }
+        /** @description Forbidden */
+        403: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
         }
       }
     }
