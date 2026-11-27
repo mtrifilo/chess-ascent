@@ -491,6 +491,9 @@
           "Scalar.AspNetCore": "[3.3.0, )"
         }
       },
+      "chessascent.fakeuciengine": {
+        "type": "Project"
+      },
       "Microsoft.AspNetCore.OpenApi": {
         "type": "CentralTransitive",
         "requested": "[11.0.0, )",

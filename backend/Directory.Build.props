@@ -42,12 +42,17 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 
     <!--
-      NuGet raises NU1900 when it cannot download vulnerability data, for
-      example offline. That says nothing about the code, so it stays a
-      warning. A known vulnerability in a package (NU1901 to NU1904) is still
-      an error.
+      Restore checks every package, transitive ones included, against
+      NuGet's vulnerability data, and a known vulnerability in a package
+      (NU1901 to NU1904) is an error. NuGet raises NU1900 when it cannot
+      download that data, for example offline. On a developer's machine that
+      says nothing about the code, so it stays a warning there. In CI (the
+      environment variable CI is true) it is an error too, because there the
+      restore is the back end's advisory check, and a check that could not
+      run must not pass.
     -->
-    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1900</WarningsNotAsErrors>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <WarningsNotAsErrors Condition="'$(CI)' != 'true'">$(WarningsNotAsErrors);NU1900</WarningsNotAsErrors>
 
     <!--
       LEARN: A NuGet lock file (packages.lock.json beside each project file)

@@ -42,7 +42,7 @@ From the repo root, with Docker running:
 From `backend/`, with the .NET 11 SDK (`backend/global.json` pins 11.0.100 and accepts later 11.0 feature bands):
 
 - `dotnet build`: builds the solution. Any warning, analyzer finding or code-style violation fails it.
-- `dotnet restore --locked-mode`: restores packages only if every project's `packages.lock.json` still matches, and checks each package against the hash recorded there. An ordinary restore (and so `dotnet build`) rewrites a lock file when a package changes: commit it with that change, or CI fails. With the environment variable `CI` set to `true`, as on GitHub's runners, every restore is locked. A restore that resolves packages also checks them, transitive ones included, against NuGet's vulnerability data, and a known vulnerability fails it.
+- `dotnet restore --locked-mode`: restores packages only if every project's `packages.lock.json` still matches, and checks each package against the hash recorded there. An ordinary restore (and so `dotnet build`) rewrites a lock file when a package changes: commit it with that change, or CI fails. With the environment variable `CI` set to `true`, as on GitHub's runners, every restore is locked. A restore that resolves packages also checks them, transitive ones included, against NuGet's vulnerability data, and a known vulnerability fails it; in CI, so does failing to download that data (NU1900), which stays a warning locally.
 - `dotnet test`: runs every test project on Microsoft.Testing.Platform. Needs Docker: the API tests start their own PostgreSQL container with Testcontainers and never use the Compose database. While they run, Docker publishes those containers' ports (and that of Testcontainers' clean-up container, Ryuk) on every network interface, as Testcontainers does by default; each test database gets a random password. The `dotnet` CLI and the test platform send usage telemetry to Microsoft unless `DOTNET_CLI_TELEMETRY_OPTOUT=1` is set.
 - `dotnet format --verify-no-changes`: fails on formatting or code-style drift. `dotnet format` fixes it.
 - `dotnet test --project tests/ChessAscent.Chess.Tests --explicit only --filter-trait "Category=Slow" --parallel all`: the slow tier of the rules tests, which `dotnet test` leaves out: perft to depth 5 on the six standard positions, and the check that every unlisted move is refused at every position of the random games (the normal run checks every tenth). `--parallel all` runs them side by side; even so it takes about three and a half minutes on a 10-core machine, most of it perft from Kiwipete.
@@ -74,7 +74,7 @@ From `frontend/`:
 - `@types/node` stays on the same minor version as the Node.js in use (24.11, recorded in `frontend/.node-version`; Bun's version is the `packageManager` field of `package.json`), so the type check rejects Node APIs that the runtime lacks.
 - Run Next.js through these scripts, not `bunx next`: they set `NEXT_TELEMETRY_DISABLED=1`. `README.md` ("Run locally", "Front end") says what the front end does and does not send to outside services.
 - `bun add` pins exact versions (`bunfig.toml`). Record a new direct dependency in `THIRD-PARTY-NOTICES.md`.
-- `bun add` and `bun update` pick only versions published at least three days ago (`minimumReleaseAge` in `bunfig.toml`); asking for a newer one fails with "blocked by minimum-release-age". An install from an unchanged `bun.lock` is not affected.
+- `bun add` and `bun update` pick only versions published at least three days ago (`minimumReleaseAge` in `bunfig.toml`); asking for a newer one fails with "blocked by minimum-release-age". For an urgent security fix, `bun add <package>@<version> --minimum-release-age=0` overrides it for that one command; say so in the PR. An install from an unchanged `bun.lock` is not affected.
 - `bun audit`: checks the packages in `bun.lock` against the npm registry's advisories; any advisory fails it.
 - `trustedDependencies` in `package.json` lists the packages whose install scripts Bun may run. It is empty: no dependency needs one, and defining the field, even empty, replaces Bun's built-in allowlist of popular packages. Add a package only after reading the script it would run.
 - This Next.js version differs from older training data. Read the guide for the installed version in `frontend/node_modules/next/dist/docs/` before writing Next.js code, and heed its deprecation notices.
@@ -95,11 +95,16 @@ The front end calls the API through types generated from the API's OpenAPI docum
 
 | Job | Commands |
 |---|---|
-| Back end | From `backend/`, with Docker running: `dotnet restore --locked-mode`, `dotnet tool restore`, `dotnet build`, `dotnet format --verify-no-changes`, `dotnet test`, `dotnet ef migrations has-pending-model-changes --project src/ChessAscent.Api` |
+| Back end | From `backend/`, with Docker running: `dotnet restore --locked-mode` (then fails if `git status` shows a `packages.lock.json` that is not committed), `dotnet tool restore`, `dotnet build`, `dotnet format --verify-no-changes`, `dotnet test`, `dotnet ef migrations has-pending-model-changes --project src/ChessAscent.Api` |
 | Front end | From `frontend/`: `bun install --frozen-lockfile`, `bun run format:check`, `bun run typecheck`, `bun run lint`, `bun run test`, `bun run build` |
-| API types drift | `bun install --frozen-lockfile` in `frontend/`, then `scripts/gen-api-types.sh`; fails if `git status` shows a change to `backend/openapi/ChessAscent.Api.json` or `frontend/types/api.d.ts` |
-| Secret scanning | `gitleaks git --redact --verbose .` from the repo root, with Gitleaks (https://github.com/gitleaks/gitleaks) at the version the workflow pins; fails on any finding in any commit |
+| API types drift | `bun install --frozen-lockfile` in `frontend/`, then `scripts/gen-api-types.sh`; fails if `git status` then shows any change |
+| Secret scanning | `gitleaks git --redact --log-opts="--full-history --diff-filter=tuxdb HEAD" .` from the repo root, with Gitleaks (https://github.com/gitleaks/gitleaks) at the version the workflow pins; fails on any finding in any commit reachable from `HEAD`. Add `--verbose` locally to see each finding in context |
 | Dependency advisories | `bun audit` from `frontend/`. The back end's packages are checked by the restore in the back-end job |
 | Back end, slow rules tests | Pushes to `main` only: the slow-tier command under "Back end" above |
 
 A ticket that adds a command to "How to run things" that CI should also run adds it to the workflow and to this table in the same PR.
+
+When a check fails on something the PR did not change:
+
+- **Secret scanning.** A real credential is revoked or rotated first; deleting the commit does not make it secret again. A false positive, such as a test fixture that looks like a password, gets a `gitleaks:allow` comment at the end of its line, and the PR says why.
+- **Dependency advisories** (`bun audit`, or NU1901 to NU1904 from restore). Update the affected package, with the override above if the fix is newer than three days. If no fixed version exists, ask the owner before suppressing the advisory (`bun audit --ignore=<CVE>`, or `NuGetAuditSuppress` in a project file).
