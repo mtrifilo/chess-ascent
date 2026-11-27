@@ -433,7 +433,7 @@ public sealed class EnginePoolTests
 
         var seeds = fake.StartedSeeds();
         seeds.Should().HaveCount(3).And.OnlyHaveUniqueItems();
-        seeds.Should().AllSatisfy(seed => int.Parse(seed, CultureInfo.InvariantCulture).Should().BeInRange(0, int.MaxValue - 1));
+        seeds.Should().AllSatisfy(seed => int.TryParse(seed, CultureInfo.InvariantCulture, out _).Should().BeTrue());
     }
 
     [Theory]

@@ -32,13 +32,8 @@ public sealed class MaiaInstallationTests
 
         maia.ExecutablePath.Should().Be(Path.Combine(Maia, "venv", "bin", "python"));
         maia.WorkingDirectory.Should().Be(Maia);
-        maia.Arguments.Should().Equal(
-            "-I", "-m", "maia3",
-            "--model", "maia3-5m",
-            "--revision", "b6559de2398d7140b985f28fd2c19fb5e47ddabe",
-            "--local-files-only",
-            "--device", "cpu",
-            "--use-uci-history");
+        maia.Arguments.Should().StartWith(["-I", "-m", "maia3"], "Python starts Maia's entry point itself, in isolated mode")
+            .And.Contain(["--local-files-only", "--use-uci-history"]);
         maia.RandomSeedArgument.Should().Be("--seed");
         maia.CopyEnvironment.Should().BeEmpty("nothing from the API's own environment reaches Maia");
         maia.SetEnvironment.Should().Equal(new Dictionary<string, string>

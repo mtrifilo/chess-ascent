@@ -2,9 +2,8 @@ using System.Net;
 using ChessAscent.Api.Engine;
 using ChessAscent.Api.Opponents;
 using ChessAscent.Api.Tests.Engine;
+using ChessAscent.Api.Tests.Features.Games;
 using ChessAscent.Chess;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -13,7 +12,6 @@ namespace ChessAscent.Api.Tests.Opponents;
 /// <summary>The opponent inside the running application, with the Maia kind as the API configures it.</summary>
 public sealed class OpponentHostingTests(PostgresFixture postgres)
 {
-    private const string StandardStartingFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
     private static readonly string[] ShortGame = ["e2e4", "e7e5", "g1f3"];
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
@@ -24,7 +22,8 @@ public sealed class OpponentHostingTests(PostgresFixture postgres)
         var missing = Directory.CreateTempSubdirectory("no-engines-");
         try
         {
-            await using var api = Api(host => host.UseSetting(MaiaInstallation.EnginesDirectorySetting, missing.FullName));
+            await using var factory = new ApiFactory(postgres) { KeepsMaia = true };
+            await using var api = factory.WithWebHostBuilder(host => host.UseSetting(MaiaInstallation.EnginesDirectorySetting, missing.FullName));
             using var client = api.CreateClient();
             var opponent = api.Services.GetRequiredService<IOpponent>();
             var maia = api.Services.GetRequiredService<IOptions<EnginePoolOptions>>().Value.Kinds[MaiaOpponent.EngineKind];
@@ -52,7 +51,7 @@ public sealed class OpponentHostingTests(PostgresFixture postgres)
     [Trait("Category", "Maia")]
     public async Task InstalledMaiaGivesALegalReplyAtEveryPreset()
     {
-        await using var api = Api(_ => { });
+        await using var api = new ApiFactory(postgres) { KeepsMaia = true };
         using var client = api.CreateClient();
         await Eventually.TrueAsync(
             async () =>
@@ -62,7 +61,6 @@ public sealed class OpponentHostingTests(PostgresFixture postgres)
             },
             "Maia to start; has scripts/setup-maia.sh been run?");
         var opponent = api.Services.GetRequiredService<IOpponent>();
-        var rules = new ChessRules();
 
         foreach (var strength in OpponentStrengths.Offered)
         {
@@ -71,7 +69,7 @@ public sealed class OpponentHostingTests(PostgresFixture postgres)
             var moves = new List<string>(ShortGame);
             for (var ply = 0; ply < 30; ply++)
             {
-                if (rules.Load(StandardStartingFen, moves) is not GameLoaded { Game.Status: Ongoing })
+                if (GameData.Rules.Load(GameData.StartingFen, moves) is not GameLoaded { Game.Status: Ongoing })
                 {
                     break;
                 }
@@ -79,37 +77,9 @@ public sealed class OpponentHostingTests(PostgresFixture postgres)
                 var reply = await opponent.ChooseMoveAsync(moves, strength, Token);
 
                 var move = reply.Value.Should().BeOfType<OpponentMove>($"at {strength}, after {string.Join(' ', moves)}").Subject;
-                rules.Load(StandardStartingFen, [.. moves, move.Uci]).Value.Should().BeOfType<GameLoaded>();
+                GameData.Rules.Load(GameData.StartingFen, [.. moves, move.Uci]).Value.Should().BeOfType<GameLoaded>();
                 moves.Add(move.Uci);
             }
-        }
-    }
-
-    private MaiaApi Api(Action<IWebHostBuilder> configure) => new(postgres, configure);
-
-    /// <summary>
-    /// The API as <see cref="ApiFactory"/> runs it, which also makes it wait
-    /// its turn to start, but with the Maia kind kept.
-    /// </summary>
-    private sealed class MaiaApi : IAsyncDisposable
-    {
-        private readonly ApiFactory _factory;
-        private readonly WebApplicationFactory<Program> _configured;
-
-        public MaiaApi(PostgresFixture postgres, Action<IWebHostBuilder> configure)
-        {
-            _factory = new ApiFactory(postgres) { KeepsMaia = true };
-            _configured = _factory.WithWebHostBuilder(configure);
-        }
-
-        public IServiceProvider Services => _configured.Services;
-
-        public HttpClient CreateClient() => _configured.CreateClient();
-
-        public async ValueTask DisposeAsync()
-        {
-            await _configured.DisposeAsync();
-            await _factory.DisposeAsync();
         }
     }
 }

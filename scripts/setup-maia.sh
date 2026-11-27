@@ -23,7 +23,6 @@ MAIA3_COMMIT=1e13597c42d4858b7cfd7cfdae01e297263364b2
 # The commit of the weights' Hugging Face repository (UofTCSSLab/Maia3-5M).
 # backend/src/ChessAscent.Api/appsettings.json names the same revision.
 WEIGHTS_REVISION=b6559de2398d7140b985f28fd2c19fb5e47ddabe
-TORCH_VERSION=2.15.0
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONSTRAINTS="$ROOT/scripts/maia-constraints.txt"
@@ -90,12 +89,14 @@ pip_install --constraint "$CONSTRAINTS" setuptools
 # PyTorch on its own, without its dependencies, which come from PyPI with
 # the rest below. On Linux the package on PyPI pulls in more than a gigabyte
 # of NVIDIA GPU libraries, so it comes from PyTorch's CPU-only index
-# instead; the macOS package on PyPI already runs on the CPU only.
-say "installing PyTorch $TORCH_VERSION for the CPU"
+# instead; the macOS package on PyPI already runs on the CPU only. Its
+# version is the one in the constraints, which the Linux build's "+cpu"
+# label also matches.
+say "installing PyTorch for the CPU"
 if [ "$OS" = linux ]; then
-  pip_install --no-deps --index-url https://download.pytorch.org/whl/cpu "torch==$TORCH_VERSION"
+  pip_install --no-deps --constraint "$CONSTRAINTS" --index-url https://download.pytorch.org/whl/cpu torch
 else
-  pip_install --no-deps "torch==$TORCH_VERSION"
+  pip_install --no-deps --constraint "$CONSTRAINTS" torch
 fi
 
 say "installing Maia-3 at commit $MAIA3_COMMIT"
