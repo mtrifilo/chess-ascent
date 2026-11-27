@@ -228,8 +228,9 @@ public sealed partial class UciEngine : IAsyncDisposable
     /// <remarks>
     /// If the handshake fails, the process is stopped before the exception
     /// reaches the caller, without waiting for a reply the engine still owed
-    /// (unlike other calls, which read on to it). The engine inherits the
-    /// application's environment variables.
+    /// (unlike other calls, which read on to it). The process gets exactly
+    /// the environment variables in <see cref="UciEngineOptions.Environment"/>,
+    /// and none of the application's.
     /// </remarks>
     /// <exception cref="Win32Exception">The program could not be started, for example because it does not exist.</exception>
     // LEARN: There is no `.ConfigureAwait(false)` after any `await` in this
@@ -268,6 +269,23 @@ public sealed partial class UciEngine : IAsyncDisposable
         foreach (var argument in options.Arguments)
         {
             startInfo.ArgumentList.Add(argument);
+        }
+
+        // LEARN: ProcessStartInfo.Environment works like Java's
+        // ProcessBuilder.environment(): reading it gives a mutable copy of
+        // this process's environment, and the child starts with whatever the
+        // copy holds at Process.Start. So, as in Java, leaving it alone means
+        // the child inherits everything, which here would include the
+        // database connection string. Clearing the copy and adding the
+        // chosen variables gives the child those and nothing else. The
+        // differences are small: it is a property rather than a method, the
+        // copy is an IDictionary<string, string?> rather than a
+        // Map<String, String>, and it is taken when the property is first
+        // read, where Java takes it when the ProcessBuilder is created.
+        startInfo.Environment.Clear();
+        foreach (var (name, value) in options.Environment)
+        {
+            startInfo.Environment[name] = value;
         }
 
         var process = Process.Start(startInfo)

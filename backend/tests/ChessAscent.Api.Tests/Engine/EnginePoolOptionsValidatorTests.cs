@@ -71,6 +71,36 @@ public sealed class EnginePoolOptionsValidatorTests
     }
 
     [Fact]
+    public void MalformedEnvironmentNamesAreRefusedWithoutEchoingThem()
+    {
+        var kind = Complete();
+        kind.CopyEnvironment.Add("");
+        kind.CopyEnvironment.Add("NAME=injected");
+        kind.SetEnvironment["ALSO=BAD"] = "value";
+
+        var result = Validator.Validate(null, With(kind));
+
+        result.Failures.Should().HaveCount(3);
+        result.Failures.Should().Contain(failure => failure.StartsWith(Prefix + "CopyEnvironment:0 is not a valid", StringComparison.Ordinal));
+        result.Failures.Should().Contain(failure => failure.StartsWith(Prefix + "CopyEnvironment:1 is not a valid", StringComparison.Ordinal));
+        result.Failures.Should().Contain(failure => failure.StartsWith(Prefix + "SetEnvironment has a variable name", StringComparison.Ordinal));
+        result.Failures.Should().NotContain(failure => failure.Contains("injected", StringComparison.Ordinal) || failure.Contains("ALSO", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnEnvironmentValueWithANulCharacterIsRefusedWithoutEchoingIt()
+    {
+        var kind = Complete();
+        kind.SetEnvironment["NAME"] = "secret\0tail";
+        kind.SetEnvironment["EMPTY"] = "";
+
+        var result = Validator.Validate(null, With(kind));
+
+        result.Failures.Should().ContainSingle().Which.Should()
+            .StartWith(Prefix + "SetEnvironment:NAME has a value that is not valid").And.NotContain("secret");
+    }
+
+    [Fact]
     public void AnInfiniteShutdownTimeoutLeavesStoppingUnchecked()
     {
         var validator = new EnginePoolOptionsValidator(Options.Create(new HostOptions { ShutdownTimeout = Timeout.InfiniteTimeSpan }));

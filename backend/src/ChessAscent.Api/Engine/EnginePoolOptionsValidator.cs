@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Options;
 
 namespace ChessAscent.Api.Engine;
@@ -42,6 +43,29 @@ internal sealed class EnginePoolOptionsValidator(IOptions<HostOptions> host) : I
         if (string.IsNullOrWhiteSpace(engine.ExecutablePath))
         {
             failures.Add($"{Key(nameof(engine.ExecutablePath))} is required.");
+        }
+
+        // A failure names the setting, never a value, and not a name in the
+        // copy list either, since a malformed one could be anything.
+        for (var i = 0; i < engine.CopyEnvironment.Count; i++)
+        {
+            if (!UciEngineOptions.IsValidEnvironmentName(engine.CopyEnvironment[i]))
+            {
+                failures.Add($"{Key(ConfigurationPath.Combine(nameof(engine.CopyEnvironment), i.ToString(CultureInfo.InvariantCulture)))} "
+                    + "is not a valid environment variable name: it must be non-empty, with no '=' or NUL character.");
+            }
+        }
+
+        foreach (var (name, value) in engine.SetEnvironment)
+        {
+            if (!UciEngineOptions.IsValidEnvironmentName(name))
+            {
+                failures.Add($"{Key(nameof(engine.SetEnvironment))} has a variable name that is not valid: it must be non-empty, with no '=' or NUL character.");
+            }
+            else if (!UciEngineOptions.IsValidEnvironmentValue(value))
+            {
+                failures.Add($"{Key(ConfigurationPath.Combine(nameof(engine.SetEnvironment), name))} has a value that is not valid: it must be set, with no NUL character.");
+            }
         }
 
         if (engine.Processes < 1)

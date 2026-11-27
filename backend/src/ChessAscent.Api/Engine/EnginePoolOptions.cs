@@ -13,6 +13,8 @@ namespace ChessAscent.Api.Engine;
 ///       "ExecutablePath": "/path/to/engine",
 ///       "Arguments": [ "--flag" ],
 ///       "Processes": 2,
+///       "CopyEnvironment": [ "PATH" ],
+///       "SetEnvironment": { "HOME": "/path/to/engine-home" },
 ///       "HandshakeTimeout": "00:00:20",
 ///       ...
 ///     }
@@ -44,8 +46,9 @@ public sealed class EnginePoolOptions
 
 /// <summary>One kind of engine: the program to run, how many processes of it, and how long to wait for them.</summary>
 /// <remarks>
-/// Only <see cref="Arguments"/>, <see cref="WorkingDirectory"/> and
-/// <see cref="Processes"/> have defaults. Every wait and both restart
+/// Only <see cref="Arguments"/>, <see cref="WorkingDirectory"/>,
+/// <see cref="Processes"/> and the two environment settings have defaults.
+/// Every wait and both restart
 /// settings must be set: what is reasonable depends on the engine and on the
 /// machine. A wait is written as <c>hh:mm:ss</c>, with a fraction if needed
 /// (<c>00:00:00.500</c>); a bare number is read as days. Each must be greater
@@ -66,6 +69,26 @@ public sealed class EngineKindOptions
 
     /// <summary>The engine's working directory; the application's own when not set.</summary>
     public string? WorkingDirectory { get; init; }
+
+    /// <summary>
+    /// Names of the application's own environment variables to give the
+    /// engine, with the application's values, read once when the pool is
+    /// built. A name the application does not have is left out, without an
+    /// error. The engine gets these, plus <see cref="SetEnvironment"/>, and
+    /// nothing else: an engine is a third-party program, and the
+    /// application's environment holds secrets such as the database
+    /// connection string. Empty unless set, which gives the engine an empty
+    /// environment. (Configuration cannot tell an empty list from a missing
+    /// one, so this cannot be a required setting.)
+    /// </summary>
+    public IList<string> CopyEnvironment { get; } = [];
+
+    /// <summary>
+    /// Environment variables to give the engine with the values given here.
+    /// A name that is also in <see cref="CopyEnvironment"/> takes the value
+    /// given here. Values are never logged. Empty unless set.
+    /// </summary>
+    public Dictionary<string, string> SetEnvironment { get; } = new(StringComparer.Ordinal);
 
     /// <summary>How many processes of this kind run at once, each serving one caller at a time. At least 1; the default is 1.</summary>
     public int Processes { get; init; } = 1;
@@ -116,10 +139,31 @@ public sealed class EngineKindOptions
         ExecutablePath = ExecutablePath!,
         Arguments = [.. Arguments],
         WorkingDirectory = WorkingDirectory,
+        Environment = EngineEnvironment(),
         HandshakeTimeout = HandshakeTimeout!.Value,
         ReadyTimeout = ReadyTimeout!.Value,
         SearchTimeout = SearchTimeout!.Value,
         StopTimeout = StopTimeout!.Value,
         ExitTimeout = ExitTimeout!.Value,
     };
+
+    private Dictionary<string, string> EngineEnvironment()
+    {
+        var environment = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var name in CopyEnvironment)
+        {
+            if (System.Environment.GetEnvironmentVariable(name) is { } value)
+            {
+                environment[name] = value;
+            }
+        }
+
+        // Set after copying, so that a value given here wins.
+        foreach (var (name, value) in SetEnvironment)
+        {
+            environment[name] = value;
+        }
+
+        return environment;
+    }
 }

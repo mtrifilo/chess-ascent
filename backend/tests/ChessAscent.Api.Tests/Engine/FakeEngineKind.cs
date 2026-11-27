@@ -77,6 +77,16 @@ internal sealed class FakeEngineKind : IDisposable
             settings[ConfigurationPath.Combine(Key(nameof(options.Arguments)), i.ToString(CultureInfo.InvariantCulture))] = options.Arguments[i];
         }
 
+        for (var i = 0; i < options.CopyEnvironment.Count; i++)
+        {
+            settings[ConfigurationPath.Combine(Key(nameof(options.CopyEnvironment)), i.ToString(CultureInfo.InvariantCulture))] = options.CopyEnvironment[i];
+        }
+
+        foreach (var (name, value) in options.SetEnvironment)
+        {
+            settings[ConfigurationPath.Combine(Key(nameof(options.SetEnvironment)), name)] = value;
+        }
+
         return settings;
     }
 
