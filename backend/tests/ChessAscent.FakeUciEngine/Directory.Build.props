@@ -1,0 +1,11 @@
+<!--
+  The fake engine is a console program, not a test project, so it skips
+  tests/Directory.Build.props: that file references xUnit, and xUnit v3
+  generates an entry point that would collide with this program's own. It
+  imports the solution-wide settings in backend/ directly instead.
+-->
+<Project>
+
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../../'))" />
+
+</Project>
