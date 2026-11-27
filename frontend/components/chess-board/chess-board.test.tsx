@@ -216,6 +216,36 @@ describe('ChessBoard', () => {
     }
   )
 
+  it('holds the other position inputs back after a move, until the position changes', () => {
+    const { rerender } = render(<ChessBoard {...props()} />)
+    createdWith().movable?.events?.after?.('f3', 'g5', { premove: false })
+    api.set.mockClear()
+
+    rerender(
+      <ChessBoard
+        {...props({ lastMove: { from: 'f3', to: 'g5' }, readOnly: true })}
+      />
+    )
+    expect(api.set).not.toHaveBeenCalled()
+
+    rerender(
+      <ChessBoard
+        {...props({ fen: BLACK_TO_MOVE, lastMove: { from: 'f3', to: 'g5' } })}
+      />
+    )
+    expect(api.set).toHaveBeenCalledWith(
+      expect.objectContaining({ fen: BLACK_TO_MOVE })
+    )
+  })
+
+  it('drops a piece the person has picked up when read-only turns on', () => {
+    const { rerender } = render(<ChessBoard {...props()} />)
+
+    rerender(<ChessBoard {...props({ readOnly: true })} />)
+
+    expect(api.cancelMove).toHaveBeenCalledTimes(1)
+  })
+
   it('clears the last move when it is no longer given', () => {
     const { rerender } = render(<ChessBoard {...props()} />)
     api.set.mockClear()

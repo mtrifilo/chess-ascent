@@ -37,11 +37,11 @@ export type ChessBoardProps = {
   // Shows the position only: nothing can be picked up.
   readOnly?: boolean
   // Called with each move the person makes, by drag or by tapping the piece
-  // and then the square. The board shows the move at once and lets nothing
-  // more move until new destinations arrive. It draws the position in `fen`
-  // again only when `fen` changes, so the other inputs can change while the
-  // move is being sent without undoing it. To undo a move without a new
-  // `fen`, mount a new board by changing its React `key`.
+  // and then the square. The board shows the move at once, and until `fen`
+  // changes it lets nothing more move and leaves the move, the last-move and
+  // check marks as they are, whatever the other position inputs do. To undo
+  // a move without a new `fen`, mount a new board by changing its React
+  // `key`.
   onMove?: (move: BoardMove) => void
 }
 
@@ -64,6 +64,9 @@ const BRUSHES = {
   [ARROW_BRUSH]: brush(ARROW_BRUSH),
   [CIRCLE_BRUSH]: brush(CIRCLE_BRUSH),
 } as Partial<DrawBrushes> as DrawBrushes
+
+// The events with which chessground starts a selection or a drag.
+const POINTER_START_EVENTS = ['touchstart', 'mousedown'] as const
 
 // The parts of chessground's configuration that never change: legality comes
 // only from `destinations` (`free: false`), and the person cannot premove or
@@ -94,6 +97,11 @@ export function ChessBoard({
 }: ChessBoardProps) {
   const elementRef = useRef<HTMLDivElement>(null)
   const apiRef = useRef<Api | null>(null)
+  // Set while the board shows a move the person made and `fen` has not yet
+  // changed. Chessground has then moved the piece, passed the turn and
+  // cleared the destinations; the inputs still describe the position before
+  // the move, so passing them on would let the same side move again.
+  const moveShownRef = useRef(false)
 
   // Effect events read the latest props without being effect dependencies,
   // so a new onMove function, or a re-render with equal inputs, leaves the
@@ -109,8 +117,9 @@ export function ChessBoard({
   const currentOrientation = useEffectEvent(() => orientation)
 
   // Created once, with every input, so it does not animate from a default
-  // position. Read-only is applied through `movable` below rather than
-  // chessground's `viewOnly`, which is fixed at creation.
+  // position. Read-only is applied through `movable` and the effect after
+  // this one, rather than chessground's `viewOnly`, which is fixed at
+  // creation.
   useEffect(() => {
     const element = elementRef.current
     if (!element) return
@@ -123,7 +132,12 @@ export function ChessBoard({
       movable: {
         ...FIXED_CONFIG.movable,
         ...marks.movable,
-        events: { after: (from, to) => reportMove(from, to) },
+        events: {
+          after: (from, to) => {
+            moveShownRef.current = true
+            reportMove(from, to)
+          },
+        },
       },
       drawable: { ...FIXED_CONFIG.drawable, autoShapes: currentShapes() },
     })
@@ -137,6 +151,21 @@ export function ChessBoard({
     }
   }, [])
 
+  // Chessground cancels a touch that starts on or near a piece, to stop the
+  // page scrolling under a drag. A read-only board keeps those touches, and
+  // clicks, from reaching it, so a swipe across it scrolls the page.
+  useEffect(() => {
+    const element = elementRef.current
+    if (!readOnly || !element) return
+    const withhold = (event: Event) => event.stopPropagation()
+    for (const type of POINTER_START_EVENTS)
+      element.addEventListener(type, withhold, { capture: true })
+    return () => {
+      for (const type of POINTER_START_EVENTS)
+        element.removeEventListener(type, withhold, { capture: true })
+    }
+  }, [readOnly])
+
   // Each effect below passes a group of inputs on when its value changes.
   // The keys compare by value, holding only the fields used, so a parent
   // that builds new objects on every render leaves the board alone.
@@ -144,11 +173,13 @@ export function ChessBoard({
   // The pieces are redrawn from `fen` only when it changes, together with
   // everything that depends on the position.
   useEffect(() => {
+    moveShownRef.current = false
     apiRef.current?.set({ fen, ...currentMarks() })
   }, [fen])
 
-  // The rest never resets the pieces, so changing it while a move is being
-  // sent does not undo the move. A Map has no JSON form of its own, so its
+  // The rest never resets the pieces, and is held back while a move is
+  // shown, so changing it while the move is being sent neither undoes the
+  // move nor allows another. A Map has no JSON form of its own, so its
   // entries are listed.
   const marksKey = JSON.stringify([
     destinations ? [...destinations] : [],
@@ -157,8 +188,13 @@ export function ChessBoard({
     readOnly,
   ])
   useEffect(() => {
-    apiRef.current?.set(currentMarks())
-  }, [marksKey])
+    const api = apiRef.current
+    if (!api || moveShownRef.current) return
+    // Drops a piece the person has picked up, so a read-only board shows
+    // nothing selected.
+    if (readOnly) api.cancelMove()
+    api.set(currentMarks())
+  }, [marksKey, readOnly])
 
   useEffect(() => {
     apiRef.current?.set({ orientation })

@@ -25,6 +25,13 @@ const PLACEMENT = FEN.split(' ')[0]
 const KNIGHT_MOVES = new Map([
   ['f3', ['e5', 'g5', 'd4', 'h4', 'd2', 'g1']],
 ] as const)
+const WHITE_MOVES = new Map([
+  ['f3', ['g5']],
+  ['a2', ['a3']],
+] as const)
+// The position after 6. Ng5, Black to move.
+const AFTER_NG5 =
+  'r1bqk2r/ppp2ppp/2np1n2/2b1p1N1/2B1P3/2PP4/PP3PPP/RNBQK2R b KQkq - 1 6'
 
 // Renders the board and returns chessground's root element.
 function renderBoard(props: Partial<ChessBoardProps> = {}) {
@@ -92,6 +99,96 @@ describe('ChessBoard with chessground', () => {
     expect(onMove).not.toHaveBeenCalled()
     expect(created.api!.getFen()).toBe(PLACEMENT)
   })
+
+  // The screen sends a move to the server and waits for the new position; in
+  // that time the board must not let the same side move again.
+  it.each<[string, Partial<ChessBoardProps>]>([
+    ['the last move changes', { lastMove: { from: 'f3', to: 'g5' } }],
+    ['the king is marked in check', { check: 'e1' }],
+    ['the destinations change', { destinations: new Map([['a2', ['a3']]]) }],
+    ['read-only turns on', { readOnly: true }],
+  ])('lets nothing more move after a move when %s', async (_, change) => {
+    const onMove = vi.fn()
+    const board = (props: Partial<ChessBoardProps>) => (
+      <ChessBoard
+        fen={FEN}
+        destinations={WHITE_MOVES}
+        onMove={onMove}
+        {...props}
+      />
+    )
+    const { rerender } = render(board({}))
+    tap('f3', 'g5')
+    await settle()
+
+    rerender(board(change))
+    rerender(board({}))
+    tap('a2', 'a3')
+    await settle()
+
+    expect(onMove).toHaveBeenCalledTimes(1)
+    expect(onMove).toHaveBeenCalledWith({ from: 'f3', to: 'g5' })
+  })
+
+  it('lets the next side move once the new position arrives', async () => {
+    const onMove = vi.fn()
+    const { rerender } = render(
+      <ChessBoard fen={FEN} destinations={WHITE_MOVES} onMove={onMove} />
+    )
+    tap('f3', 'g5')
+    await settle()
+
+    rerender(
+      <ChessBoard
+        fen={AFTER_NG5}
+        destinations={new Map([['h7', ['h6']]])}
+        onMove={onMove}
+      />
+    )
+    tap('h7', 'h6')
+    await settle()
+
+    expect(onMove).toHaveBeenLastCalledWith({ from: 'h7', to: 'h6' })
+  })
+
+  it('drops a selected piece when read-only turns on', async () => {
+    const onMove = vi.fn()
+    const board = (readOnly: boolean) => (
+      <ChessBoard
+        fen={FEN}
+        destinations={KNIGHT_MOVES}
+        onMove={onMove}
+        readOnly={readOnly}
+      />
+    )
+    const { rerender } = render(board(false))
+    tap('f3')
+
+    rerender(board(true))
+    rerender(board(false))
+    tap('g5')
+    await settle()
+
+    expect(onMove).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [false, 1],
+    [true, 0],
+  ])(
+    'passes touches and clicks to chessground only when not read-only (read-only %s)',
+    (readOnly, reached) => {
+      const board = renderBoard({ readOnly }).querySelector('cg-board')!
+      const listener = vi.fn()
+      board.addEventListener('touchstart', listener)
+      board.addEventListener('mousedown', listener)
+
+      board.dispatchEvent(new Event('touchstart', { bubbles: true }))
+      board.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+
+      expect(listener).toHaveBeenCalledTimes(reached * 2)
+    }
+  )
 
   it('lets nothing move when read-only', async () => {
     const onMove = vi.fn()

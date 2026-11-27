@@ -21,8 +21,8 @@
   height: 100%;
 }
 
-/* Chessground shows a pointer over any board it listens to; a read-only
- * board still listens, but nothing on it can be picked up. */
+/* Chessground shows a pointer over any board it was created to listen to; a
+ * read-only board withholds clicks from it, and nothing can be picked up. */
 .chess-board.read-only .cg-wrap cg-board {
   cursor: default;
 }
