@@ -30,8 +30,9 @@ internal static class Perft
         var moves = game.LegalMoves();
 
         // Bulk counting: one ply from the end, each legal move is one leaf, so
-        // the last ply needs no branches. Every move counted this way is still
-        // played somewhere at a shallower depth, or in the random-game tests.
+        // the last ply needs no branches. Those moves are listed but never
+        // played here; that every listed move can be played as listed is
+        // checked by RandomGameTests, on the positions its games reach.
         if (depth == 1)
         {
             return moves.Count;
@@ -60,9 +61,10 @@ internal static class Perft
     }
 
     /// <summary>
-    /// A divide in the layout of Stockfish's <c>go perft</c>, one
-    /// <c>move: count</c> line per move and then the total, so the two can be
-    /// compared with <c>diff</c> to find the first move whose count differs.
+    /// A divide in the layout of Stockfish's <c>go perft</c>: one
+    /// <c>move: count</c> line per move, in UCI order, and then the total.
+    /// Stockfish lists the moves in its own order, so sort both outputs
+    /// before comparing them with <c>diff</c> to find the move whose count differs.
     /// </summary>
     public static string Format(IReadOnlyList<(string Uci, long Count)> divide)
     {

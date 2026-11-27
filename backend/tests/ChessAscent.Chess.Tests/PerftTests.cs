@@ -75,8 +75,8 @@ public sealed class PerftTests(ITestOutputHelper output)
             Assert.Fail(
                 $"Perft of {name} at depth {depth} counted {actual} positions; the published count is {expected}.\n"
                 + $"FEN: {position.Fen}\n"
-                + $"Count per first move, in the layout of Stockfish's `position fen <FEN>` then `go perft {depth}`;\n"
-                + "diff the two to find the move whose count differs, then repeat one level down from the position after it:\n"
+                + $"Count per first move, in the layout of Stockfish's `position fen <FEN>` then `go perft {depth}`.\n"
+                + "Sort both outputs and diff them to find the move whose count differs, then repeat one level down from the position after it:\n"
                 + divideText);
         }
     }

@@ -16,19 +16,23 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
 {
     // Checking every other UCI move (20,160 candidates) costs up to about
     // 40 ms per position, against well under a millisecond for the other
-    // checks, so it runs on every tenth position and on the last one of each
-    // game. The seed shifts which positions those are, so the games between
-    // them cover every stage of a game.
+    // checks. The normal run does it on every tenth position and on the last
+    // one of each game; the seed shifts which positions those are, so the
+    // games between them cover every stage of a game. The slow tier does it
+    // at every position (EveryOtherMoveIsRefusedAtEveryPosition).
     private const int RefusalCheckInterval = 10;
 
     public static TheoryData<int> Seeds() => [.. RandomGames.Seeds];
 
     // The invariants below are only as strong as the games they run over.
     // This fails if a change to the seeds, the length limit or the engine
-    // leaves the games without some way of ending, or without castling or
-    // promotion, so that a check would quietly cover less.
+    // leaves the games without some way of ending, without castling or an
+    // under-promotion, or without a position that offers an en passant
+    // capture, so that a check would quietly cover less. Random play rarely
+    // chooses that capture when it is offered, but the listed-move check
+    // plays every listed move on a branch, so offering it is enough.
     [Fact]
-    public void TheGamesReachEveryWayAGameCanEndAndTheSpecialMoves()
+    public void TheGamesReachEveryWayAGameCanEndAndEverySpecialMove()
     {
         var all = RandomGames.Seeds.Select(seed => games[seed]).ToList();
 
@@ -44,8 +48,20 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
 
         var sans = all.SelectMany(game => game.History).Select(move => move.San).ToList();
         sans.Should().Contain(san => san.StartsWith("O-O", StringComparison.Ordinal), "some game castles");
-        sans.Should().Contain(san => san.Contains('=', StringComparison.Ordinal), "some game promotes");
+        sans.Should().Contain(san => san.Contains("=R", StringComparison.Ordinal) || san.Contains("=B", StringComparison.Ordinal)
+            || san.Contains("=N", StringComparison.Ordinal), "some game under-promotes");
+        all.Should().Contain(game => OffersEnPassant(game), "some position offers an en passant capture");
     }
+
+    // A pawn capture onto the square FEN names as the en passant target is
+    // an en passant capture: that square is always empty.
+    private static bool OffersEnPassant(RandomGame recorded) =>
+        RandomGames.Positions(recorded).Any(position =>
+        {
+            var target = position.Game.Fen.Split(' ')[3];
+            return target != "-" && position.Game.LegalMoves().Any(move =>
+                move.To.ToString() == target && move.San is [>= 'a' and <= 'h', 'x', ..]);
+        });
 
     [Theory]
     [MemberData(nameof(Seeds))]
@@ -62,8 +78,12 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
                 .And.OnlyHaveUniqueItems("in {0}", context);
         }
 
+        // RandomGames.Play stops early when the engine lists no move in an
+        // ongoing game or refuses a move it listed; this reports that here,
+        // with the seed, rather than as an error in the shared fixture.
         (recorded.Status.Value is not Ongoing || recorded.Moves.Count == RandomGames.MaxPlies)
-            .Should().BeTrue("a game stops only when it is over or reaches the length limit");
+            .Should().BeTrue("a game stops only when it is over or reaches the length limit, but {0} stopped while {1}",
+                recorded.At(recorded.Moves.Count), recorded.Status);
     }
 
     [Theory]
@@ -117,10 +137,20 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
             var isLast = ply == recorded.Moves.Count;
             if ((ply + seed) % RefusalCheckInterval == 0 || isLast)
             {
-                // On a branch, so that a candidate wrongly accepted cannot
-                // move the replayed game on and spoil every later check.
-                AssertEveryOtherMoveIsRefused(game.Branch(), legal, context);
+                AssertEveryOtherMoveIsRefused(game, legal, context);
             }
+        }
+    }
+
+    [Theory(Explicit = true)]
+    [Trait("Category", "Slow")]
+    [MemberData(nameof(Seeds))]
+    public void EveryOtherMoveIsRefusedAtEveryPosition(int seed)
+    {
+        var recorded = games[seed];
+        foreach (var (ply, game) in RandomGames.Positions(recorded))
+        {
+            AssertEveryOtherMoveIsRefused(game, game.LegalMoves(), recorded.At(ply));
         }
     }
 
@@ -161,13 +191,18 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
         mismatches.Should().BeEmpty("every listed move is played as listed in {0}", context);
     }
 
-    private static void AssertEveryOtherMoveIsRefused(IChessGame game, IReadOnlyList<LegalMove> legal, GamePosition context)
+    // The candidates are tried on a branch, so the replayed game is never
+    // moved on. A candidate wrongly played moves the branch on, so it is
+    // replaced with a fresh one, and each later candidate is still judged in
+    // the position under test.
+    private static void AssertEveryOtherMoveIsRefused(IChessGame position, IReadOnlyList<LegalMove> legal, GamePosition context)
     {
-        var fen = game.Fen;
-        var historyLength = game.History.Count;
+        var fen = position.Fen;
+        var historyLength = position.History.Count;
         var listed = legal.Select(move => move.Uci).ToHashSet(StringComparer.Ordinal);
-        var status = game.Status;
+        var status = position.Status;
 
+        var probe = position.Branch();
         var wronglyHandled = new List<string>();
         foreach (var candidate in RandomGames.EveryUciMove)
         {
@@ -177,16 +212,20 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
             }
 
             PlayResult expected = status.Value is Ongoing ? new IllegalMove(candidate) : new GameAlreadyOver(status);
-            var actual = game.TryPlay(candidate);
+            var actual = probe.TryPlay(candidate);
             if (!Equals(actual.Value, expected.Value))
             {
                 wronglyHandled.Add($"{candidate} gave {actual}");
+                if (actual is MovePlayed)
+                {
+                    probe = position.Branch();
+                }
             }
         }
 
         wronglyHandled.Should().BeEmpty("only listed moves may be played in {0}", context);
-        game.Fen.Should().Be(fen, "a refused move leaves the game unchanged");
-        game.History.Should().HaveCount(historyLength);
+        probe.Fen.Should().Be(fen, "a refused move leaves the game unchanged in {0}", context);
+        probe.History.Should().HaveCount(historyLength);
     }
 }
 
@@ -214,9 +253,15 @@ public readonly record struct GamePosition(RandomGame Game, int Ply)
 /// <summary>The seeded random games, played once for every test in <see cref="RandomGameTests"/>.</summary>
 public sealed class RandomGames
 {
+    // Long enough for a fifty-move draw (100 half-moves without a capture or
+    // pawn move) to arise late in a game, as it does in some of these.
     public const int MaxPlies = 400;
 
     // Fixed seeds, so a failure reproduces. A seed added here is a new game.
+    // Forty is about the fewest consecutive seeds whose games end in every
+    // way a game can end (TheGamesReachEveryWayAGameCanEndAndEverySpecialMove
+    // fails if they stop doing so); each costs about half a second in the
+    // normal run.
     public static readonly int[] Seeds = [.. Enumerable.Range(1, 40)];
 
     /// <summary>Every well-formed UCI move: two different squares, then optionally a promotion letter.</summary>
@@ -254,18 +299,40 @@ public sealed class RandomGames
     // on the number of legal moves and their order, which IChessGame fixes
     // (ordered by UCI text), so another engine behind the interface plays the
     // same games.
+    //
+    // A game also stops when the engine lists no move although the game is
+    // ongoing, or refuses a move it listed. Throwing here would fail every
+    // test in the class with one fixture error; stopping lets the invariant
+    // tests report it for this seed, with the moves that lead to it.
     private static RandomGame Play(int seed)
     {
         var random = new Random(seed);
         var game = Games.Rules.NewGame();
         var moves = new List<string>();
 
-        while (moves.Count < MaxPlies && game.Status.Value is Ongoing)
+        try
         {
-            var legal = game.LegalMoves();
-            var choice = legal[random.Next(legal.Count)].Uci;
-            Games.PlayOn(game, choice);
-            moves.Add(choice);
+            while (moves.Count < MaxPlies && game.Status.Value is Ongoing)
+            {
+                var legal = game.LegalMoves();
+                if (legal.Count == 0)
+                {
+                    break;
+                }
+
+                var choice = legal[random.Next(legal.Count)].Uci;
+                if (game.TryPlay(choice) is not MovePlayed)
+                {
+                    break;
+                }
+
+                moves.Add(choice);
+            }
+        }
+        catch (Exception exception)
+        {
+            throw new InvalidOperationException(
+                $"The engine threw while playing seed {seed} after {moves.Count} half-moves: {string.Join(' ', moves)}", exception);
         }
 
         return new RandomGame(seed, moves, game.Fen, game.Status, game.History);

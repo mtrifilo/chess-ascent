@@ -87,26 +87,30 @@ public sealed class GameStatusTests
             .Which.Status.Value.Should().Be(new Draw(DrawReason.ThreefoldRepetition));
     }
 
-    // Positions repeat only if the same moves are possible, so a position
-    // with castling rights is not the same as one with the same pieces and
-    // none. Here the kingside rooks step aside and back, which removes the
-    // kingside rights, then the kingside knights and then the queenside
-    // knights go out and back. The starting placement recurs without those
-    // rights at plies 8, 12 and 16; counting the start, which had them, would
-    // wrongly make ply 12 the third occurrence. (Repeating the kingside
-    // knights instead would draw at ply 14, on the third occurrence of the
-    // position with both kingside knights out.)
+    // The FIDE Laws count castling rights as part of a position: a king that
+    // could still castle with an unmoved rook stands in a different position
+    // from the same placement after that right is lost, even when castling is
+    // impossible in both because pieces stand in the way. Here the kingside
+    // rooks step aside and back, which removes the kingside rights, then the
+    // kingside knights and then the queenside knights go out and back. With
+    // the rights counted, the first third occurrence is the starting
+    // placement at ply 16 (plies 8, 12 and 16). An engine that ignored them
+    // would draw at ply 10, the third time both kingside knights stand out
+    // (plies 2, 6 and 10), and again at ply 12, the starting placement
+    // (plies 0, 8 and 12).
     [Fact]
     public void LostCastlingRightsMakeADifferentPosition()
     {
-        string[] rooksAsideAndBack = ["g1f3", "g8f6", "h1g1", "h8g8", "g1h1", "g8h8", "f3g1", "f6g8"];
+        var game = Games.Play("g1f3", "g8f6", "h1g1", "h8g8", "g1h1", "g8h8", "f3g1", "f6g8");
+        string[] laterMoves = [.. Games.KnightDance[..4], "b1c3", "b8c6", "c3b1", "c6b8"];
 
-        var game = Games.Play([.. rooksAsideAndBack, .. Games.KnightDance[..4]]);
-        game.Status.Value.Should().Be(new Ongoing(), "the position at ply 0 had castling rights that the one at ply 12 lacks");
-
-        Games.PlayOn(game, "b1c3", "b8c6", "c3b1", "c6b8");
-
-        game.Status.Value.Should().Be(new Draw(DrawReason.ThreefoldRepetition));
+        for (var index = 0; index < laterMoves.Length; index++)
+        {
+            var ply = 9 + index;
+            GameStatus expected = ply == 16 ? new Draw(DrawReason.ThreefoldRepetition) : new Ongoing();
+            game.TryPlay(laterMoves[index]).Value.Should().BeOfType<MovePlayed>("the game is not over before ply 16")
+                .Which.Status.Value.Should().Be(expected.Value, "at ply {0} (the comment above lists which plies repeat)", ply);
+        }
     }
 
     // An en passant capture that is available makes a position different
