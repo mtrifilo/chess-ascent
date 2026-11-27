@@ -32,8 +32,10 @@ export type ChessBoardProps = {
   lastMove?: BoardMove
   // The square of the king in check.
   check?: Square
+  // Arrows from square to square, in the hint arrow colour.
   arrows?: readonly BoardMove[]
-  circles?: readonly Square[]
+  // Squares filled in the hint colour.
+  hintSquares?: readonly Square[]
   // Shows the position only: nothing can be picked up.
   readOnly?: boolean
   // Called with each move the person makes, by drag or by tapping the piece
@@ -46,24 +48,23 @@ export type ChessBoardProps = {
 }
 
 const ARROW_BRUSH = 'arrow'
-const CIRCLE_BRUSH = 'circle'
 
-// A brush draws in `currentColor`, which the stylesheet sets from the hint
-// tokens. A line width of 11 (in 64ths of a square) matches the design's 14px
-// arrow shaft on an 80px square.
-const brush = (key: string) => ({
-  key,
-  color: 'currentColor',
-  opacity: 1,
-  lineWidth: 11,
-})
-
-// Chessground merges configured brushes into its own defaults, so only these
-// two are given, although its type asks for its four default colours too.
+// The arrow draws in `currentColor`, which the stylesheet sets from the hint
+// arrow token. A line width of 11 (in 64ths of a square) matches the design's
+// 14px arrow shaft on an 80px square. Chessground merges configured brushes
+// into its own defaults, so only this one is given, although its type asks
+// for its four default colours too.
 const BRUSHES = {
-  [ARROW_BRUSH]: brush(ARROW_BRUSH),
-  [CIRCLE_BRUSH]: brush(CIRCLE_BRUSH),
+  [ARROW_BRUSH]: {
+    key: ARROW_BRUSH,
+    color: 'currentColor',
+    opacity: 1,
+    lineWidth: 11,
+  },
 } as Partial<DrawBrushes> as DrawBrushes
+
+// The class chessground puts on a hinted square; the stylesheet fills it.
+const HINT_CLASS = 'hint'
 
 // The events with which chessground starts a selection or a drag.
 const POINTER_START_EVENTS = ['touchstart', 'mousedown'] as const
@@ -91,7 +92,7 @@ export function ChessBoard({
   lastMove,
   check,
   arrows,
-  circles,
+  hintSquares,
   readOnly = false,
   onMove,
 }: ChessBoardProps) {
@@ -108,7 +109,8 @@ export function ChessBoard({
   const currentMarks = useEffectEvent(() =>
     marksConfig(fen, destinations, lastMove, check, readOnly)
   )
-  const currentShapes = useEffectEvent(() => toShapes(arrows, circles))
+  const currentArrows = useEffectEvent(() => arrowShapes(arrows))
+  const currentHints = useEffectEvent(() => hintClasses(hintSquares))
   const currentOrientation = useEffectEvent(() => orientation)
 
   // Created once, with every input, so it does not animate from a default
@@ -129,7 +131,8 @@ export function ChessBoard({
         ...marks.movable,
         events: { after: (from, to) => reportMove(from, to) },
       },
-      drawable: { ...FIXED_CONFIG.drawable, autoShapes: currentShapes() },
+      drawable: { ...FIXED_CONFIG.drawable, autoShapes: currentArrows() },
+      highlight: { custom: currentHints() },
     })
     apiRef.current = api
     return () => {
@@ -197,13 +200,15 @@ export function ChessBoard({
     apiRef.current?.set({ orientation })
   }, [orientation])
 
-  const shapesKey = JSON.stringify([
-    arrows?.map(({ from, to }) => [from, to]),
-    circles,
-  ])
+  const arrowsKey = JSON.stringify(arrows?.map(({ from, to }) => [from, to]))
   useEffect(() => {
-    apiRef.current?.setAutoShapes(currentShapes())
-  }, [shapesKey])
+    apiRef.current?.setAutoShapes(currentArrows())
+  }, [arrowsKey])
+
+  const hintsKey = JSON.stringify(hintSquares)
+  useEffect(() => {
+    apiRef.current?.set({ highlight: { custom: currentHints() } })
+  }, [hintsKey])
 
   return (
     // Chessground draws nothing that assistive technology can read, so the
@@ -257,16 +262,14 @@ function checkedSide(fen: string, check: Square | undefined): Side | false {
   return piece && piece.role === 'king' ? piece.color : false
 }
 
-function toShapes(
-  arrows: readonly BoardMove[] = [],
-  circles: readonly Square[] = []
-): DrawShape[] {
-  return [
-    ...arrows.map(({ from, to }) => ({
-      orig: from,
-      dest: to,
-      brush: ARROW_BRUSH,
-    })),
-    ...circles.map(square => ({ orig: square, brush: CIRCLE_BRUSH })),
-  ]
+function arrowShapes(arrows: readonly BoardMove[] = []): DrawShape[] {
+  return arrows.map(({ from, to }) => ({
+    orig: from,
+    dest: to,
+    brush: ARROW_BRUSH,
+  }))
+}
+
+function hintClasses(squares: readonly Square[] = []): Map<Key, string> {
+  return new Map(squares.map(square => [square, HINT_CLASS]))
 }

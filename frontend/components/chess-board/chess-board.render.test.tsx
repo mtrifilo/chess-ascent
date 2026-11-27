@@ -41,6 +41,14 @@ function renderBoard(props: Partial<ChessBoardProps> = {}) {
   return wrap
 }
 
+// The squares of chessground's piece or square elements, sorted. Chessground
+// keeps each element's square in its `cgKey` property.
+function squaresOf(elements: NodeListOf<Element>) {
+  return [...elements]
+    .map(element => (element as Element & { cgKey: string }).cgKey)
+    .sort()
+}
+
 function tap(...squares: Parameters<Api['selectSquare']>[0][]) {
   for (const square of squares) created.api!.selectSquare(square)
 }
@@ -69,6 +77,44 @@ describe('ChessBoard with chessground', () => {
     const board = renderBoard({ lastMove: { from: 'd7', to: 'd6' } })
 
     expect(board.querySelectorAll('square.last-move')).toHaveLength(2)
+  })
+
+  it('fills the hinted squares, and only those', () => {
+    const board = renderBoard({ hintSquares: ['b1', 'd2'] })
+
+    expect(squaresOf(board.querySelectorAll('square.hint'))).toEqual([
+      'b1',
+      'd2',
+    ])
+  })
+
+  // Playing as Black after 1. e4: e2 is empty. The board must draw exactly
+  // the FEN's pieces after a new position and after a flip.
+  it('draws exactly the pieces of each position, in either orientation', async () => {
+    const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1'
+    const afterE5 =
+      'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2'
+    const { container, rerender } = render(
+      <ChessBoard fen={afterE4} orientation="black" />
+    )
+    const drawn = () =>
+      squaresOf(container.querySelectorAll('cg-board piece:not(.ghost)'))
+    const expectPieces = (squares: string[]) =>
+      vi.waitFor(() => expect(drawn()).toEqual([...squares].sort()))
+
+    const startSquares = [
+      ...'abcdefgh'.split('').flatMap(file => [1, 2, 7, 8].map(r => file + r)),
+    ]
+    const afterE4Squares = startSquares.filter(s => s !== 'e2').concat('e4')
+    await expectPieces(afterE4Squares)
+
+    rerender(<ChessBoard fen={afterE5} orientation="black" />)
+    await expectPieces(afterE4Squares.filter(s => s !== 'e7').concat('e5'))
+
+    rerender(<ChessBoard fen={afterE5} orientation="white" />)
+    await expectPieces(afterE4Squares.filter(s => s !== 'e7').concat('e5'))
+    expect(drawn()).toHaveLength(32)
+    expect(drawn()).not.toContain('e2')
   })
 
   it('shows Black at the bottom when oriented for Black', () => {

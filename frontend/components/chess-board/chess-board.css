@@ -52,6 +52,10 @@
   background-color: var(--board-check);
 }
 
+.chess-board cg-board square.hint {
+  background-color: var(--board-hint);
+}
+
 /* A legal destination: a dot 32.5% of the square across (26px of 80). The
  * gradient's ray is half the square, so the dot's radius is 32.5% of it. */
 .chess-board cg-board square.move-dest {
@@ -134,9 +138,9 @@
   padding-right: 3px;
 }
 
-/* Arrows and circles. Chessground's brushes name `currentColor`, so the
- * colour each shape takes comes from here. The token colours carry their
- * own transparency, so chessground's dimming of the whole layer is undone. */
+/* Arrows. Chessground's arrow brush names `currentColor`, so the colour comes
+ * from here. The token colour carries its own transparency, so chessground's
+ * dimming of the whole layer is undone. */
 .chess-board .cg-wrap .cg-shapes {
   opacity: 1;
 }
@@ -144,8 +148,4 @@
 .chess-board .cg-wrap .cg-shapes line,
 .chess-board .cg-wrap .cg-shapes marker {
   color: var(--board-hint-arrow);
-}
-
-.chess-board .cg-wrap .cg-shapes circle {
-  color: var(--board-hint);
 }

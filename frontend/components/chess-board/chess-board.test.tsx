@@ -26,7 +26,7 @@ vi.mock('@lichess-org/chessground', () => ({
 const FEN =
   'r1bqk2r/ppp2ppp/2np1n2/2b1p3/2B1P3/2PP1N2/PP3PPP/RNBQK2R w KQkq - 0 6'
 const BLACK_TO_MOVE =
-  'rnbqkbnr/pppppppp/8/8/4P3/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1'
+  'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1'
 
 // The knight on f3 is picked up in the designs.
 const DESTINATIONS = new Map<Square, Square[]>([
@@ -120,17 +120,25 @@ describe('ChessBoard', () => {
     expect(createdWith().check).toBe(false)
   })
 
-  it('draws the arrows and circles given', () => {
+  it('draws the arrows and marks the hinted squares given', () => {
     render(
       <ChessBoard
-        {...props({ arrows: [{ from: 'b1', to: 'd2' }], circles: ['b1'] })}
+        {...props({
+          arrows: [{ from: 'b1', to: 'd2' }],
+          hintSquares: ['b1', 'd2'],
+        })}
       />
     )
 
     expect(createdWith().drawable?.autoShapes).toEqual([
       { orig: 'b1', dest: 'd2', brush: 'arrow' },
-      { orig: 'b1', brush: 'circle' },
     ])
+    expect(createdWith().highlight?.custom).toEqual(
+      new Map([
+        ['b1', 'hint'],
+        ['d2', 'hint'],
+      ])
+    )
   })
 
   it('reports a move as from-square and to-square, to the latest onMove', () => {
@@ -148,7 +156,7 @@ describe('ChessBoard', () => {
   it('leaves the board alone when re-rendered with equal inputs in new objects', () => {
     const shapes = () => ({
       arrows: [{ from: 'b1', to: 'd2' }] as const,
-      circles: ['b1'] as const,
+      hintSquares: ['b1'] as const,
     })
     const { rerender } = render(<ChessBoard {...props(shapes())} />)
     api.set.mockClear()
@@ -272,15 +280,31 @@ describe('ChessBoard', () => {
     expect(Chessground).toHaveBeenCalledTimes(1)
   })
 
-  it('redraws the shapes when the arrows or circles change', () => {
+  it('redraws the arrows when they change, and nothing else', () => {
     const { rerender } = render(<ChessBoard {...props()} />)
+    api.set.mockClear()
     api.setAutoShapes.mockClear()
 
-    rerender(<ChessBoard {...props({ circles: ['b1'] })} />)
+    rerender(<ChessBoard {...props({ arrows: [{ from: 'b1', to: 'd2' }] })} />)
 
     expect(api.setAutoShapes).toHaveBeenCalledWith([
-      { orig: 'b1', brush: 'circle' },
+      { orig: 'b1', dest: 'd2', brush: 'arrow' },
     ])
+    expect(api.set).not.toHaveBeenCalled()
+  })
+
+  it('marks the hinted squares when they change, and nothing else', () => {
+    const { rerender } = render(<ChessBoard {...props()} />)
+    api.set.mockClear()
+    api.setAutoShapes.mockClear()
+
+    rerender(<ChessBoard {...props({ hintSquares: ['b1'] })} />)
+
+    expect(api.set).toHaveBeenCalledTimes(1)
+    expect(api.set).toHaveBeenCalledWith({
+      highlight: { custom: new Map([['b1', 'hint']]) },
+    })
+    expect(api.setAutoShapes).not.toHaveBeenCalled()
   })
 
   it('gives no side the move and no destinations when read-only', () => {
