@@ -258,7 +258,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // Not cancellable: a commit cancelled after the server has applied it
         // would report a save that happened as one that did not.
         await transaction.CommitAsync(CancellationToken.None);
-        return new MovesAppended(now);
+        return new MovesAppended(now, progress, result, endReason);
     }
 
     private void RefuseUnsavedChanges()
@@ -279,8 +279,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         return now.AddTicks(-(now.Ticks % TimeSpan.TicksPerMicrosecond));
     }
 
-    /// <summary>How the board's status is stored: the game's progress, result and end reason.</summary>
-    internal static (GameProgress Progress, GameResult? Result, GameEndReason? EndReason) ToStoredOutcome(
+    private static (GameProgress Progress, GameResult? Result, GameEndReason? EndReason) ToStoredOutcome(
         GameStatus boardStatus) =>
         boardStatus switch
         {

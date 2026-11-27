@@ -2,6 +2,7 @@ using ChessAscent.Api.Features.Games;
 using ChessAscent.Chess;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using AccountData = ChessAscent.Api.Tests.Features.Accounts.Accounts;
 
 namespace ChessAscent.Api.Tests.Features.Games;
@@ -34,11 +35,32 @@ internal static class GameData
         return user.Id;
     }
 
-    /// <summary>Creates a game from the standard starting position, on a store of its own.</summary>
+    /// <summary>
+    /// Creates a game, from the standard starting position unless
+    /// <paramref name="startingFen"/> names another, on a store of its own.
+    /// </summary>
     public static Task<SavedGame> CreateGameAsync(
-        this ApiFactory factory, string ownerId, Opponent? opponent = null, Side playerSide = Side.White) =>
+        this ApiFactory factory,
+        string ownerId,
+        Opponent? opponent = null,
+        Side playerSide = Side.White,
+        string startingFen = StartingFen) =>
         factory.WithStoreAsync(store => store.CreateAsync(
-            ownerId, playerSide, opponent ?? Opponent.None, StartingFen, TestContext.Current.CancellationToken));
+            ownerId, playerSide, opponent ?? Opponent.None, startingFen, TestContext.Current.CancellationToken));
+
+    /// <summary>
+    /// Runs <paramref name="sql"/> on the database directly, bypassing the
+    /// store, with <c>@id</c> bound to <paramref name="gameId"/>, and returns
+    /// the number of rows it wrote.
+    /// </summary>
+    public static async Task<int> ExecuteAsync(this PostgresFixture postgres, string sql, Guid gameId)
+    {
+        await using var connection = new NpgsqlConnection(postgres.ConnectionString);
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("id", gameId);
+        return await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+    }
 
     /// <summary>Loads a game, on a store of its own.</summary>
     public static Task<SavedGame?> LoadGameAsync(this ApiFactory factory, string ownerId, Guid gameId) =>

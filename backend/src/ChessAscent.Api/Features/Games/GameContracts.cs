@@ -35,9 +35,7 @@ public sealed record OpponentRequest([property: Required] OpponentKind? Kind);
 /// promotion the piece's letter, as in <c>e7e8q</c>. A promotion needs its
 /// letter. Castling is the king's move, such as <c>e1g1</c>.
 /// </param>
-public sealed record PlayMoveRequest([property: Required, MaxLength(GameLimits.UciLength)] string Uci);
-
-public static class GameLimits
+public sealed record PlayMoveRequest([property: Required, MaxLength(PlayMoveRequest.UciLength)] string Uci)
 {
     /// <summary>
     /// The longest move in UCI form: two squares and a promotion letter, as

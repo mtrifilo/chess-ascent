@@ -196,7 +196,7 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         var game = await factory.CreateGameAsync(owner);
         var (e4, afterE4) = GameData.Rules.NewGame().Play("e2e4");
         await factory.AppendAsync(owner, game.Id, 1, e4, afterE4);
-        await ExecuteAsync(GapAtHalfMoveTwo, game.Id);
+        await postgres.ExecuteAsync(GapAtHalfMoveTwo, game.Id);
         var before = await factory.LoadGameAsync(owner, game.Id);
 
         var outcome = await factory.AppendAsync(owner, game.Id, 3, [new PlayedMove("e7e5", "e5")], new Ongoing());
@@ -312,7 +312,7 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         tracked.Add(tracker.Entries().Count());
         var countConflict = await store.AppendMovesAsync(owner, game.Id, 1, e4, afterE4, Cancellation);
         tracked.Add(tracker.Entries().Count());
-        await ExecuteAsync(GapAtHalfMoveTwo, game.Id);
+        await postgres.ExecuteAsync(GapAtHalfMoveTwo, game.Id);
         var keyConflict = await store.AppendMovesAsync(
             owner, game.Id, 3, [new PlayedMove("e7e5", "e5")], new Ongoing(), Cancellation);
         tracked.Add(tracker.Entries().Count());
@@ -382,16 +382,6 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
             game.Id);
 
         counts.Should().Equal(0L, 0L);
-    }
-
-    // Writes to the database directly, bypassing the store.
-    private async Task ExecuteAsync(string sql, Guid gameId)
-    {
-        await using var connection = new NpgsqlConnection(postgres.ConnectionString);
-        await connection.OpenAsync(Cancellation);
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("id", gameId);
-        await command.ExecuteNonQueryAsync(Cancellation);
     }
 
     // Reads the database directly, bypassing EF Core, to see what is stored.

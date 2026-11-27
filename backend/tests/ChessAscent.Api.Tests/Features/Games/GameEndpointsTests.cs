@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Net.Http.Headers;
-using Npgsql;
 using AccountData = ChessAscent.Api.Tests.Features.Accounts.Accounts;
 
 namespace ChessAscent.Api.Tests.Features.Games;
@@ -30,7 +29,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         using var response = await client.PostGameAsync(playerSide);
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
-        var created = await response.ReadGameAsync(factory);
+        var created = await response.ReadGameAsync();
         response.Headers.Location.Should().Be(new Uri($"/games/{created.Id}", UriKind.Relative));
         created.PlayerSide.Should().Be(expected);
         created.Opponent.Should().Be(new OpponentResponse(OpponentKind.None, null));
@@ -45,7 +44,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         created.LegalMoves["g1"].Should().Equal("f3", "h3");
         created.LegalMoves.Values.Sum(squares => squares.Count).Should().Be(20);
         created.Promotions.Should().BeEmpty();
-        (await client.ReadGameAsync(factory, created.Id)).Should().BeEquivalentTo(created, InStrictOrder);
+        (await client.ReadGameAsync(created.Id)).Should().BeEquivalentTo(created, InStrictOrder);
     }
 
     // The wire format itself, which the front end's generated types describe:
@@ -54,7 +53,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
     public async Task TheGameIsWrittenWithCamelCaseNamesAndEnumerationsByName()
     {
         using var client = await SignedInClientAsync();
-        var game = await client.CreateGameAsync(factory, "black");
+        var game = await client.CreateGameAsync("black");
 
         using var response = await client.PostMoveAsync(game.Id, "e2e4");
         var body = JsonNode.Parse(await response.Content.ReadAsStringAsync(Cancellation))!.AsObject();
@@ -77,9 +76,9 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
     public async Task FoolsMateEndsTheGameWithAWinForBlackByCheckmate()
     {
         using var client = await SignedInClientAsync();
-        var game = await client.CreateGameAsync(factory);
+        var game = await client.CreateGameAsync();
 
-        var mated = await client.PlayAsync(factory, game.Id, GameRequests.FoolsMate);
+        var mated = await client.PlayAsync(game.Id, GameRequests.FoolsMate);
 
         mated.Status.Should().Be(GameProgress.Finished);
         mated.Result.Should().Be(GameResult.BlackWins);
@@ -93,19 +92,19 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
             new MoveResponse(4, "d8h4", "Qh4#"));
         mated.LegalMoves.Should().BeEmpty();
         mated.Promotions.Should().BeEmpty();
-        (await client.ReadGameAsync(factory, game.Id)).Should().BeEquivalentTo(mated, InStrictOrder);
+        (await client.ReadGameAsync(game.Id)).Should().BeEquivalentTo(mated, InStrictOrder);
     }
 
     [Fact]
     public async Task EachMoveAnswersWithTheGameAsItThenReads()
     {
         using var client = await SignedInClientAsync();
-        var game = await client.CreateGameAsync(factory);
+        var game = await client.CreateGameAsync();
 
-        var afterFirst = await client.PlayAsync(factory, game.Id, "e2e4");
-        var readAfterFirst = await client.ReadGameAsync(factory, game.Id);
-        var afterSecond = await client.PlayAsync(factory, game.Id, "c7c5");
-        var readAfterSecond = await client.ReadGameAsync(factory, game.Id);
+        var afterFirst = await client.PlayAsync(game.Id, "e2e4");
+        var readAfterFirst = await client.ReadGameAsync(game.Id);
+        var afterSecond = await client.PlayAsync(game.Id, "c7c5");
+        var readAfterSecond = await client.ReadGameAsync(game.Id);
 
         afterFirst.Should().BeEquivalentTo(readAfterFirst, InStrictOrder);
         afterFirst.SideToMove.Should().Be(Side.Black);
@@ -135,28 +134,27 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         using var client = factory.CreateClient();
         await client.RegisterNewAsync(email);
         var ownerId = await factory.AccountIdAsync(email);
-        var game = await factory.WithStoreAsync(store => store.CreateAsync(
-            ownerId, Side.White, Opponent.None, startingFen, Cancellation));
+        var game = await factory.CreateGameAsync(ownerId, startingFen: startingFen);
 
-        var drawn = await client.PlayAsync(factory, game.Id, uci);
+        var drawn = await client.PlayAsync(game.Id, uci);
 
         drawn.Status.Should().Be(GameProgress.Finished);
         drawn.Result.Should().Be(result);
         drawn.EndReason.Should().Be(endReason);
         drawn.LegalMoves.Should().BeEmpty();
-        (await client.ReadGameAsync(factory, game.Id)).Should().BeEquivalentTo(drawn, InStrictOrder);
+        (await client.ReadGameAsync(game.Id)).Should().BeEquivalentTo(drawn, InStrictOrder);
     }
 
     [Fact]
     public async Task ThreefoldRepetitionEndsTheGameAsADraw()
     {
         using var client = await SignedInClientAsync();
-        var game = await client.CreateGameAsync(factory);
+        var game = await client.CreateGameAsync();
 
         // The knights go out and back twice, so the starting position occurs
         // for the third time after the eighth half-move.
         var drawn = await client.PlayAsync(
-            factory, game.Id, "g1f3", "g8f6", "f3g1", "f6g8", "g1f3", "g8f6", "f3g1", "f6g8");
+            game.Id, "g1f3", "g8f6", "f3g1", "f6g8", "g1f3", "g8f6", "f3g1", "f6g8");
 
         drawn.Status.Should().Be(GameProgress.Finished);
         drawn.Result.Should().Be(GameResult.Draw);
@@ -171,12 +169,12 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
     public async Task APawnThatCanPromoteIsListedWithThePiecesItMayBecome()
     {
         using var client = await SignedInClientAsync();
-        var game = await client.CreateGameAsync(factory);
+        var game = await client.CreateGameAsync();
 
         var beforePromotion = await client.PlayAsync(
-            factory, game.Id, "a2a4", "b7b5", "a4b5", "a7a6", "b5a6", "c8b7", "a6b7", "b8c6");
+            game.Id, "a2a4", "b7b5", "a4b5", "a7a6", "b5a6", "c8b7", "a6b7", "b8c6");
         using var withoutPiece = await client.PostMoveAsync(game.Id, "b7a8");
-        var promoted = await client.PlayAsync(factory, game.Id, "b7a8n");
+        var promoted = await client.PlayAsync(game.Id, "b7a8n");
 
         PromotionPiece[] everyPiece = [PromotionPiece.Queen, PromotionPiece.Rook, PromotionPiece.Bishop, PromotionPiece.Knight];
         beforePromotion.LegalMoves["b7"].Should().Equal("a8", "b8");
@@ -196,13 +194,13 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
     public async Task AnIllegalMoveIsRefusedWith422AndLeavesTheGameUnchanged(string uci)
     {
         using var client = await SignedInClientAsync();
-        var game = await client.CreateGameAsync(factory);
+        var game = await client.CreateGameAsync();
 
         using var response = await client.PostMoveAsync(game.Id, uci);
 
         response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
         (await response.ReadProblemAsync()).Detail.Should().Be(GameEndpoints.IllegalMoveDetail);
-        (await client.ReadGameAsync(factory, game.Id)).Should().BeEquivalentTo(game, InStrictOrder);
+        (await client.ReadGameAsync(game.Id)).Should().BeEquivalentTo(game, InStrictOrder);
     }
 
     // Too long, which validation refuses before the chess interface reads
@@ -222,21 +220,21 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
     public async Task AMalformedMoveIsRefusedWith400UnderTheUciFieldAndLeavesTheGameUnchanged(string? uci)
     {
         using var client = await SignedInClientAsync();
-        var game = await client.CreateGameAsync(factory);
+        var game = await client.CreateGameAsync();
 
         using var response = await client.PostMoveAsync(game.Id, uci);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var problem = await response.ReadProblemAsync<HttpValidationProblemDetails>();
         problem.Errors.Keys.Should().Equal(nameof(PlayMoveRequest.Uci));
-        (await client.ReadGameAsync(factory, game.Id)).Should().BeEquivalentTo(game, InStrictOrder);
+        (await client.ReadGameAsync(game.Id)).Should().BeEquivalentTo(game, InStrictOrder);
     }
 
     [Fact]
     public async Task TextOfTheRightLengthThatIsNotAMoveGetsTheMalformedMoveMessage()
     {
         using var client = await SignedInClientAsync();
-        var game = await client.CreateGameAsync(factory);
+        var game = await client.CreateGameAsync();
 
         using var response = await client.PostMoveAsync(game.Id, "zz99");
 
@@ -253,14 +251,14 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
     public async Task AMoveAfterTheGameHasEndedIsRefusedWith409AndSavesNothing(string uci)
     {
         using var client = await SignedInClientAsync();
-        var game = await client.CreateGameAsync(factory);
-        var mated = await client.PlayAsync(factory, game.Id, GameRequests.FoolsMate);
+        var game = await client.CreateGameAsync();
+        var mated = await client.PlayAsync(game.Id, GameRequests.FoolsMate);
 
         using var response = await client.PostMoveAsync(game.Id, uci);
 
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await response.ReadProblemAsync()).Detail.Should().Be(GameEndpoints.GameFinishedDetail);
-        (await client.ReadGameAsync(factory, game.Id)).Should().BeEquivalentTo(mated, InStrictOrder);
+        (await client.ReadGameAsync(game.Id)).Should().BeEquivalentTo(mated, InStrictOrder);
     }
 
     // The second of two identical moves sent one after the other, as a
@@ -269,14 +267,14 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
     public async Task AMoveSentTwiceInARowIsSavedOnceAndRefusedOnce()
     {
         using var client = await SignedInClientAsync();
-        var game = await client.CreateGameAsync(factory);
+        var game = await client.CreateGameAsync();
 
         using var first = await client.PostMoveAsync(game.Id, "e2e4");
         using var second = await client.PostMoveAsync(game.Id, "e2e4");
 
         first.StatusCode.Should().Be(HttpStatusCode.OK);
         second.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
-        (await client.ReadGameAsync(factory, game.Id)).Moves.Should().Equal(new MoveResponse(1, "e2e4", "e4"));
+        (await client.ReadGameAsync(game.Id)).Moves.Should().Equal(new MoveResponse(1, "e2e4", "e4"));
     }
 
     // The mating move sent twice: the first ends the game, so the second is
@@ -285,8 +283,8 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
     public async Task AMatingMoveSentTwiceInARowIsSavedOnceAndTheSecondFindsTheGameOver()
     {
         using var client = await SignedInClientAsync();
-        var game = await client.CreateGameAsync(factory);
-        await client.PlayAsync(factory, game.Id, GameRequests.FoolsMate[..3]);
+        var game = await client.CreateGameAsync();
+        await client.PlayAsync(game.Id, GameRequests.FoolsMate[..3]);
 
         using var first = await client.PostMoveAsync(game.Id, "d8h4");
         using var second = await client.PostMoveAsync(game.Id, "d8h4");
@@ -294,14 +292,14 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         first.StatusCode.Should().Be(HttpStatusCode.OK);
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await second.ReadProblemAsync()).Detail.Should().Be(GameEndpoints.GameFinishedDetail);
-        (await client.ReadGameAsync(factory, game.Id)).Moves.Should().HaveCount(4);
+        (await client.ReadGameAsync(game.Id)).Moves.Should().HaveCount(4);
     }
 
     [Fact]
     public async Task AnotherPlayersGameIsNotFoundJustLikeAGameThatDoesNotExist()
     {
         using var owner = await SignedInClientAsync();
-        var game = await owner.CreateGameAsync(factory);
+        var game = await owner.CreateGameAsync();
         using var otherPlayer = await SignedInClientAsync();
         var unknownId = Guid.CreateVersion7();
 
@@ -316,9 +314,9 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
             (await response.ReadProblemAsync()).Detail.Should().Be(GameEndpoints.GameNotFoundDetail);
         }
 
-        (await ComparableBodyAsync(readOthers)).Should().Be(await ComparableBodyAsync(readUnknown));
-        (await ComparableBodyAsync(moveInOthers)).Should().Be(await ComparableBodyAsync(moveInUnknown));
-        (await owner.ReadGameAsync(factory, game.Id)).Should().BeEquivalentTo(game, InStrictOrder);
+        (await readOthers.ComparableBodyAsync()).Should().Be(await readUnknown.ComparableBodyAsync());
+        (await moveInOthers.ComparableBodyAsync()).Should().Be(await moveInUnknown.ComparableBodyAsync());
+        (await owner.ReadGameAsync(game.Id)).Should().BeEquivalentTo(game, InStrictOrder);
     }
 
     // Validation runs before the game is looked up, so a move too long to be
@@ -327,21 +325,21 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
     public async Task AnOverlongMoveGetsTheSameAnswerWhetherOrNotTheGameIsThePlayers()
     {
         using var owner = await SignedInClientAsync();
-        var game = await owner.CreateGameAsync(factory);
+        var game = await owner.CreateGameAsync();
         using var otherPlayer = await SignedInClientAsync();
 
         using var inOwnGame = await owner.PostMoveAsync(game.Id, "e2e4qq");
         using var inOthersGame = await otherPlayer.PostMoveAsync(game.Id, "e2e4qq");
 
         inOwnGame.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await ComparableBodyAsync(inOthersGame)).Should().Be(await ComparableBodyAsync(inOwnGame));
+        (await inOthersGame.ComparableBodyAsync()).Should().Be(await inOwnGame.ComparableBodyAsync());
     }
 
     [Fact]
     public async Task SignedOutRequestsAre401AndChangeNothing()
     {
         using var owner = await SignedInClientAsync();
-        var game = await owner.CreateGameAsync(factory);
+        var game = await owner.CreateGameAsync();
         using var signedOut = factory.CreateClient(new() { AllowAutoRedirect = false });
 
         using var create = await signedOut.PostGameAsync();
@@ -355,14 +353,14 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
             await response.ReadProblemAsync();
         }
 
-        (await owner.ReadGameAsync(factory, game.Id)).Should().BeEquivalentTo(game, InStrictOrder);
+        (await owner.ReadGameAsync(game.Id)).Should().BeEquivalentTo(game, InStrictOrder);
     }
 
     [Fact]
     public async Task SigningOutEndsAccessToThePlayersGames()
     {
         using var client = await SignedInClientAsync();
-        var game = await client.CreateGameAsync(factory);
+        var game = await client.CreateGameAsync();
         using (var signOut = await client.SignOutAsync())
         {
             signOut.StatusCode.Should().Be(HttpStatusCode.NoContent);
@@ -379,7 +377,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
     public async Task AMoveStartedByAnotherSiteIsRefusedAndSavesNothing()
     {
         using var client = await SignedInClientAsync();
-        var game = await client.CreateGameAsync(factory);
+        var game = await client.CreateGameAsync();
 
         using var forged = new HttpRequestMessage(HttpMethod.Post, $"/games/{game.Id}/moves")
         {
@@ -391,7 +389,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await response.ReadProblemAsync()).Detail.Should().Be(CrossSiteRequests.RefusedDetail);
-        (await client.ReadGameAsync(factory, game.Id)).Moves.Should().BeEmpty();
+        (await client.ReadGameAsync(game.Id)).Moves.Should().BeEmpty();
     }
 
     [Fact]
@@ -455,7 +453,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         using var client = logged.CreateClient();
         var email = AccountData.NewEmail();
         await client.RegisterNewAsync(email);
-        var game = await client.CreateGameAsync(factory);
+        var game = await client.CreateGameAsync();
         await SaveIllegalFirstMoveAsync(game.Id);
 
         using var read = await client.GetGameAsync(game.Id);
@@ -480,16 +478,11 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
 
     // A move the rules refuse, written straight to the table as something
     // other than the store might write it.
-    private async Task SaveIllegalFirstMoveAsync(Guid gameId)
-    {
-        await using var connection = new NpgsqlConnection(postgres.ConnectionString);
-        await connection.OpenAsync(Cancellation);
-        await using var command = new NpgsqlCommand(
+    private async Task SaveIllegalFirstMoveAsync(Guid gameId) =>
+        (await postgres.ExecuteAsync(
             """INSERT INTO "Moves" ("GameId", "HalfMoveNumber", "Uci", "San") VALUES (@id, 1, 'e2e5', 'e5')""",
-            connection);
-        command.Parameters.AddWithValue("id", gameId);
-        (await command.ExecuteNonQueryAsync(Cancellation)).Should().Be(1);
-    }
+            gameId))
+        .Should().Be(1);
 
     private async Task<HttpClient> SignedInClientAsync()
     {
@@ -499,12 +492,4 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
     }
 
     private static StringContent JsonBody(string json) => new(json, System.Text.Encoding.UTF8, "application/json");
-
-    // The trace id differs on every response; everything else must match.
-    private static async Task<string> ComparableBodyAsync(HttpResponseMessage response)
-    {
-        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync(Cancellation))!.AsObject();
-        body.Remove("traceId");
-        return body.ToJsonString();
-    }
 }

@@ -55,7 +55,11 @@ public union AppendResult(MovesAppended, GameNotFound, GameFinished, HalfMoveCon
 
 /// <summary>The moves were saved, and the game's status and update time with them.</summary>
 /// <param name="UpdatedAt">The game's new update time.</param>
-public readonly record struct MovesAppended(DateTimeOffset UpdatedAt);
+/// <param name="Status">The game's progress as saved.</param>
+/// <param name="Result">The game's result as saved; <c>null</c> while it is ongoing.</param>
+/// <param name="EndReason">Why the game ended, as saved; <c>null</c> while it is ongoing.</param>
+public readonly record struct MovesAppended(
+    DateTimeOffset UpdatedAt, GameProgress Status, GameResult? Result, GameEndReason? EndReason);
 
 /// <summary>
 /// No game with that id belongs to that player: either there is none, or it

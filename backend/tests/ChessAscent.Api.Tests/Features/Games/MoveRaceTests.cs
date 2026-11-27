@@ -31,7 +31,7 @@ public sealed class MoveRaceTests(ApiFactory factory) : IClassFixture<ApiFactory
             services.ConfigureDbContext<AppDbContext>(options => options.AddInterceptors(hold))));
         using var client = held.CreateClient();
         await client.RegisterNewAsync(AccountData.NewEmail());
-        var game = await client.CreateGameAsync(factory);
+        var game = await client.CreateGameAsync();
 
         var first = client.PostMoveAsync(game.Id, "e2e4");
         await hold.FirstUpdated.WaitAsync(Patience, Cancellation);
@@ -44,7 +44,7 @@ public sealed class MoveRaceTests(ApiFactory factory) : IClassFixture<ApiFactory
         firstResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         secondResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await secondResponse.ReadProblemAsync()).Detail.Should().Be(GameEndpoints.MoveConflictDetail);
-        (await client.ReadGameAsync(factory, game.Id)).Moves.Should().Equal(new MoveResponse(1, "e2e4", "e4"));
+        (await client.ReadGameAsync(game.Id)).Moves.Should().Equal(new MoveResponse(1, "e2e4", "e4"));
     }
 
     // Holds the first update of a game once it has run, which is when its

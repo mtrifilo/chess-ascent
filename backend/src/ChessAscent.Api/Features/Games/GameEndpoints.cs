@@ -14,7 +14,7 @@ namespace ChessAscent.Api.Features.Games;
 /// The answers a move can get, so the game screen can react to each:
 /// 200 with the game after the move; 400 with a validation problem under
 /// <c>Uci</c> when the text is missing, longer than
-/// <see cref="GameLimits.UciLength"/> or not a UCI move; 404 when the
+/// <see cref="PlayMoveRequest.UciLength"/> or not a UCI move; 404 when the
 /// player has no game with that id; 409 with <see cref="GameFinishedDetail"/>
 /// when the game is over; 409 with <see cref="MoveConflictDetail"/> when
 /// another request saved a move first; 422 when the move is not legal in the
@@ -118,10 +118,7 @@ public static class GameEndpoints
     {
         if (request.Opponent.Kind is not OpponentKind.None)
         {
-            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-            {
-                [OpponentKindField] = [UnofferedOpponentMessage],
-            });
+            return FieldProblem(OpponentKindField, UnofferedOpponentMessage);
         }
 
         var board = rules.NewGame();
@@ -175,10 +172,7 @@ public static class GameEndpoints
         return board.TryPlay(request.Uci) switch
         {
             MovePlayed played => await SaveAsync(store, playerId, game, board, played, cancellationToken),
-            MalformedMove => TypedResults.ValidationProblem(new Dictionary<string, string[]>
-            {
-                [UciField] = [MalformedMoveMessage],
-            }),
+            MalformedMove => FieldProblem(UciField, MalformedMoveMessage),
             IllegalMove => TypedResults.Problem(IllegalMoveDetail, statusCode: StatusCodes.Status422UnprocessableEntity),
             GameAlreadyOver => FinishedProblem(),
         };
@@ -207,20 +201,16 @@ public static class GameEndpoints
         };
     }
 
-    // The game as the store has just saved it: with the move, and with the
-    // status the move led to, stored the way the store stores it.
-    private static SavedGame WithMove(SavedGame game, MovePlayed played, MovesAppended saved)
-    {
-        var (progress, result, endReason) = GameStore.ToStoredOutcome(played.Status);
-        return game with
+    // The game as the store has just saved it.
+    private static SavedGame WithMove(SavedGame game, MovePlayed played, MovesAppended saved) =>
+        game with
         {
-            Status = progress,
-            Result = result,
-            EndReason = endReason,
+            Status = saved.Status,
+            Result = saved.Result,
+            EndReason = saved.EndReason,
             UpdatedAt = saved.UpdatedAt,
             Moves = [.. game.Moves, played.Move],
         };
-    }
 
     // Load replays every saved move through the same checks as live play, so
     // a refusal means the stored game is broken. The stored text is left
@@ -248,6 +238,11 @@ public static class GameEndpoints
     private static string PlayerId(ClaimsPrincipal principal, UserManager<IdentityUser> users) =>
         users.GetUserId(principal)
         ?? throw new InvalidOperationException("The signed-in player's session carries no account id.");
+
+    // A validation problem in the shape AddValidation gives its own: one
+    // message under one field.
+    private static ValidationProblem FieldProblem(string field, string message) =>
+        TypedResults.ValidationProblem(new Dictionary<string, string[]> { [field] = [message] });
 
     private static ProblemHttpResult NotFoundProblem() =>
         TypedResults.Problem(GameNotFoundDetail, statusCode: StatusCodes.Status404NotFound);

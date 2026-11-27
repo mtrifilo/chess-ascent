@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using ChessAscent.Api.Features.Games;
+using ChessAscent.Api.Json;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -19,6 +20,13 @@ internal static class GameRequests
     // Fool's mate: Black mates on the fourth half-move.
     public static readonly string[] FoolsMate = ["f2f3", "e7e5", "g2g4", "d8h4"];
 
+    // The serializer settings the API reads and writes bodies with, built by
+    // the API's own registration.
+    private static readonly JsonSerializerOptions ApiJson = new ServiceCollection()
+        .AddJsonConventions()
+        .BuildServiceProvider()
+        .GetRequiredService<IOptions<HttpJsonOptions>>().Value.SerializerOptions;
+
     private static CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     public static Task<HttpResponseMessage> PostGameAsync(this HttpClient client, object body) =>
@@ -34,40 +42,40 @@ internal static class GameRequests
         client.PostAsJsonAsync($"/games/{gameId}/moves", new { uci }, Cancellation);
 
     /// <summary>Creates a game, checking that it answered 201, and returns it.</summary>
-    public static async Task<GameResponse> CreateGameAsync(this HttpClient client, ApiFactory factory, string playerSide = "white")
+    public static async Task<GameResponse> CreateGameAsync(this HttpClient client, string playerSide = "white")
     {
         using var response = await client.PostGameAsync(playerSide);
         response.StatusCode.Should().Be(HttpStatusCode.Created);
-        return await response.ReadGameAsync(factory);
+        return await response.ReadGameAsync();
     }
 
     /// <summary>Reads a game, checking that it answered 200.</summary>
-    public static async Task<GameResponse> ReadGameAsync(this HttpClient client, ApiFactory factory, Guid gameId)
+    public static async Task<GameResponse> ReadGameAsync(this HttpClient client, Guid gameId)
     {
         using var response = await client.GetGameAsync(gameId);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        return await response.ReadGameAsync(factory);
+        return await response.ReadGameAsync();
     }
 
     /// <summary>Plays each move in turn, checking that each answered 200, and returns the game after the last.</summary>
-    public static async Task<GameResponse> PlayAsync(this HttpClient client, ApiFactory factory, Guid gameId, params string[] uciMoves)
+    public static async Task<GameResponse> PlayAsync(this HttpClient client, Guid gameId, params string[] uciMoves)
     {
         GameResponse? game = null;
         foreach (var uci in uciMoves)
         {
             using var response = await client.PostMoveAsync(gameId, uci);
             response.StatusCode.Should().Be(HttpStatusCode.OK, $"{uci} is legal here");
-            game = await response.ReadGameAsync(factory);
+            game = await response.ReadGameAsync();
         }
 
         return game ?? throw new ArgumentException("No moves to play.", nameof(uciMoves));
     }
 
     /// <summary>Reads a game body with the serializer settings the API writes it with.</summary>
-    public static async Task<GameResponse> ReadGameAsync(this HttpResponseMessage response, ApiFactory factory)
+    public static async Task<GameResponse> ReadGameAsync(this HttpResponseMessage response)
     {
         response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
-        var game = await response.Content.ReadFromJsonAsync<GameResponse>(factory.JsonOptions(), Cancellation);
+        var game = await response.Content.ReadFromJsonAsync<GameResponse>(ApiJson, Cancellation);
         return game!;
     }
 
@@ -78,7 +86,4 @@ internal static class GameRequests
         var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
         return (await users.FindByEmailAsync(email))!.Id;
     }
-
-    private static JsonSerializerOptions JsonOptions(this ApiFactory factory) =>
-        factory.Services.GetRequiredService<IOptions<HttpJsonOptions>>().Value.SerializerOptions;
 }
