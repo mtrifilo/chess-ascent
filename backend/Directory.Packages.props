@@ -31,6 +31,10 @@
     <PackageVersion Include="Scalar.AspNetCore" Version="3.3.0" />
   </ItemGroup>
 
+  <ItemGroup Label="Accounts">
+    <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="11.0.0" />
+  </ItemGroup>
+
   <ItemGroup Label="Database">
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="11.0.0" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="11.0.0" />

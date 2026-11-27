@@ -41,8 +41,15 @@ public static class StartupMigrations
         var database = scope.ServiceProvider.GetRequiredService<AppDbContext>().Database;
 
         // MigrateAsync locks the history table before reading it (on
-        // PostgreSQL, LOCK TABLE ... IN ACCESS EXCLUSIVE MODE), so two
-        // instances starting together apply each migration once.
+        // PostgreSQL, LOCK TABLE ... IN ACCESS EXCLUSIVE MODE), but that lock
+        // lasts only until the transaction commits, and EF Core commits after
+        // each migration while working from the list of pending migrations it
+        // read at the start. So with more than one migration pending, two
+        // instances starting together can both apply the same later
+        // migration, and one of them fails at start-up. Each migration
+        // runs in its own transaction, so the failed one is rolled back, and
+        // that instance finds nothing pending when it starts again. Until
+        // migrations move to a separate step, start one instance at a time.
         await database.MigrateAsync();
     }
 }

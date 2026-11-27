@@ -41,6 +41,53 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
         PlainTextValues(responses["503"]!).Should().Equal("Unhealthy");
     }
 
+    // Exactly the API's own operations: in particular the four account
+    // endpoints, and none of Identity's ready-made ones.
+    [Fact]
+    public async Task DocumentListsExactlyTheApisOperations()
+    {
+        var document = await GetDocumentAsync();
+
+        var operations = document["paths"]!.AsObject()
+            .SelectMany(path => path.Value!.AsObject().Select(operation => $"{operation.Key} {path.Key}"));
+        operations.Should().BeEquivalentTo(
+            "post /auth/register", "post /auth/sign-in", "post /auth/sign-out", "get /auth/me",
+            "get /health/ready", "get /version");
+    }
+
+    // Every response the account endpoints can give, including those that
+    // come from validation and from the refusal of cross-site requests.
+    [Theory]
+    [InlineData("/auth/register", "post", new[] { "200", "400", "403", "409" })]
+    [InlineData("/auth/sign-in", "post", new[] { "200", "400", "401", "403" })]
+    [InlineData("/auth/sign-out", "post", new[] { "204", "403" })]
+    [InlineData("/auth/me", "get", new[] { "200", "401" })]
+    public async Task DocumentListsEveryResponseOfTheAccountEndpoints(string path, string method, string[] statuses)
+    {
+        var document = await GetDocumentAsync();
+
+        document["paths"]![path]![method]!["responses"]!.AsObject().Select(response => response.Key)
+            .Should().BeEquivalentTo(statuses);
+    }
+
+    // The cross-site refusal (Security/CrossSiteRequests.cs) applies to every
+    // method but the safe ones, so every such operation must declare its 403.
+    [Fact]
+    public async Task EveryOperationThatCanChangeStateListsTheCrossSiteRefusal()
+    {
+        var document = await GetDocumentAsync();
+        string[] safe = ["get", "head", "options", "trace", "query"];
+
+        var unsafeOperations = document["paths"]!.AsObject()
+            .SelectMany(path => path.Value!.AsObject())
+            .Where(operation => !safe.Contains(operation.Key))
+            .ToList();
+
+        unsafeOperations.Should().NotBeEmpty();
+        unsafeOperations.Should().AllSatisfy(operation =>
+            operation.Value!["responses"]!.AsObject().ContainsKey("403").Should().BeTrue());
+    }
+
     [Fact]
     public async Task ExplorerIsServedInDevelopment()
     {

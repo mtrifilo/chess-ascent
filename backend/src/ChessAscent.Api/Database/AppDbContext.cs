@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace ChessAscent.Api.Database;
@@ -21,8 +23,20 @@ namespace ChessAscent.Api.Database;
 // the Development environment the DI container refuses to build if a
 // Singleton depends on a Scoped service.
 //
-// Tables arrive as DbSet<T> properties when the first entities do. The
+// The application's own tables arrive as DbSet<T> properties when its first
+// entities do; Identity's come from the base class (below). The
 // constructor takes the options AddDbContext built (provider and connection
 // string), the way an EntityManagerFactory is configured outside the
 // EntityManager.
-public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options);
+//
+// LEARN: Deriving from IdentityUserContext<IdentityUser> instead of plain
+// DbContext adds ASP.NET Core Identity's entities to this model: users
+// (AspNetUsers) and their claims, external logins and tokens. Its
+// OnModelCreating maps them, which is how a library contributes tables to an
+// application's own context; with JPA the library would ship @Entity classes
+// for the persistence unit to scan. Because they are part of the model,
+// `dotnet ef migrations add` generates their tables like any other change,
+// and the start-up migration creates them. IdentityDbContext would add role
+// tables as well; the API has no roles.
+public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
+    : IdentityUserContext<IdentityUser>(options);
