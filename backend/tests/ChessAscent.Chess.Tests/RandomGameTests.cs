@@ -29,8 +29,9 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
     // leaves the games without some way of ending, without castling or an
     // under-promotion, or without a position that offers an en passant
     // capture, so that a check would quietly cover less. Random play rarely
-    // chooses that capture when it is offered, but the listed-move check
-    // plays every listed move on a branch, so offering it is enough.
+    // chooses that capture when it is offered, so these games check that an
+    // offered capture is listed and can be played as listed (on a branch),
+    // but no position after one; EnPassantTests and perft cover that.
     [Fact]
     public void TheGamesReachEveryWayAGameCanEndAndEverySpecialMove()
     {
@@ -124,7 +125,7 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
 
     [Theory]
     [MemberData(nameof(Seeds))]
-    public void EveryListedMoveIsPlayedAndEveryOtherMoveIsRefused(int seed)
+    public void EveryListedMoveIsPlayedAndOtherMovesAreRefusedAtSampledPositions(int seed)
     {
         var recorded = games[seed];
         foreach (var (ply, game) in RandomGames.Positions(recorded))
@@ -156,7 +157,9 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
 
     // These two helpers compare plainly, collect the mismatches and make one
     // assertion per position, because an assertion per move would cost more
-    // than playing the move.
+    // than playing the move. An exception from the engine is recorded as a
+    // mismatch too, so the failure still names the position and the move:
+    // IChessGame promises that no member throws for bad input.
     private static void AssertEveryListedMoveIsPlayedAsListed(IChessGame game, IReadOnlyList<LegalMove> legal, GamePosition context)
     {
         var historyLength = game.History.Count;
@@ -164,7 +167,17 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
         foreach (var move in legal)
         {
             var branch = game.Branch();
-            var result = branch.TryPlay(move.Uci);
+            PlayResult result;
+            try
+            {
+                result = branch.TryPlay(move.Uci);
+            }
+            catch (Exception exception)
+            {
+                mismatches.Add($"{move.Uci} threw {exception.GetType().Name}: {exception.Message}");
+                continue;
+            }
+
             if (result is not MovePlayed played)
             {
                 mismatches.Add($"{move.Uci} is listed but gave {result}");
@@ -192,9 +205,11 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
     }
 
     // The candidates are tried on a branch, so the replayed game is never
-    // moved on. A candidate wrongly played moves the branch on, so it is
-    // replaced with a fresh one, and each later candidate is still judged in
-    // the position under test.
+    // moved on. After any wrong answer the branch is replaced with a fresh
+    // one, so each later candidate is still judged in the position under
+    // test, and the report says when the branch had changed: that is the
+    // sign of a move refused but applied anyway, rather than of the
+    // candidate named.
     private static void AssertEveryOtherMoveIsRefused(IChessGame position, IReadOnlyList<LegalMove> legal, GamePosition context)
     {
         var fen = position.Fen;
@@ -212,14 +227,23 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
             }
 
             PlayResult expected = status.Value is Ongoing ? new IllegalMove(candidate) : new GameAlreadyOver(status);
-            var actual = probe.TryPlay(candidate);
-            if (!Equals(actual.Value, expected.Value))
+            string? wrong;
+            try
             {
-                wronglyHandled.Add($"{candidate} gave {actual}");
-                if (actual is MovePlayed)
-                {
-                    probe = position.Branch();
-                }
+                var actual = probe.TryPlay(candidate);
+                wrong = Equals(actual.Value, expected.Value) ? null : $"gave {actual}";
+            }
+            catch (Exception exception)
+            {
+                wrong = $"threw {exception.GetType().Name}: {exception.Message}";
+            }
+
+            if (wrong is not null)
+            {
+                var now = probe.Fen;
+                var changed = now == fen ? "" : $" (the position had changed to {now})";
+                wronglyHandled.Add($"{candidate} {wrong}{changed}");
+                probe = position.Branch();
             }
         }
 
@@ -258,10 +282,11 @@ public sealed class RandomGames
     public const int MaxPlies = 400;
 
     // Fixed seeds, so a failure reproduces. A seed added here is a new game.
-    // Forty is about the fewest consecutive seeds whose games end in every
-    // way a game can end (TheGamesReachEveryWayAGameCanEndAndEverySpecialMove
-    // fails if they stop doing so); each costs about half a second in the
-    // normal run.
+    // The rarest ending, threefold repetition, first comes at seed 29, so
+    // the first 29 seeds are the fewest that end in every way a game can end
+    // (TheGamesReachEveryWayAGameCanEndAndEverySpecialMove fails if they stop
+    // doing so). Forty gives some margin over that; each seed costs about
+    // half a second in the normal run.
     public static readonly int[] Seeds = [.. Enumerable.Range(1, 40)];
 
     /// <summary>Every well-formed UCI move: two different squares, then optionally a promotion letter.</summary>

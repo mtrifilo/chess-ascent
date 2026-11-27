@@ -96,8 +96,7 @@ public sealed class GameStatusTests
     // the rights counted, the first third occurrence is the starting
     // placement at ply 16 (plies 8, 12 and 16). An engine that ignored them
     // would draw at ply 10, the third time both kingside knights stand out
-    // (plies 2, 6 and 10), and again at ply 12, the starting placement
-    // (plies 0, 8 and 12).
+    // (plies 2, 6 and 10).
     [Fact]
     public void LostCastlingRightsMakeADifferentPosition()
     {
