@@ -1,7 +1,6 @@
 using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ChessAscent.Api.Tests;
@@ -19,7 +18,7 @@ public sealed class ProblemDetailsTests(ApiFactory factory) : IClassFixture<ApiF
         using var response = await client.GetAsync("/no-such-path", TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        await ShouldBeProblemDetailsAsync(response, 404);
+        await response.ReadProblemAsync();
     }
 
     [Fact]
@@ -33,19 +32,9 @@ public sealed class ProblemDetailsTests(ApiFactory factory) : IClassFixture<ApiF
         using var response = await client.GetAsync(ThrowingPath, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
-        await ShouldBeProblemDetailsAsync(response, 500);
+        await response.ReadProblemAsync();
         var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().NotContain(ExceptionMessage);
-    }
-
-    private static async Task ShouldBeProblemDetailsAsync(HttpResponseMessage response, int status)
-    {
-        response.Content.Headers.ContentType.Should().NotBeNull();
-        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
-        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>(
-            TestContext.Current.CancellationToken);
-        problem.Should().NotBeNull();
-        problem!.Status.Should().Be(status);
     }
 
     // Adds a path that throws, behind the application's own middleware, so the

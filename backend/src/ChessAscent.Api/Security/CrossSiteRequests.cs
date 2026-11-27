@@ -43,16 +43,21 @@ public static class CrossSiteRequests
     /// Answers 403 to a request that could change state when the browser
     /// reports that a page from another origin started it.
     /// </summary>
-    public static IApplicationBuilder UseCrossSiteRequestRefusal(this IApplicationBuilder app) =>
+    public static IApplicationBuilder UseCrossSiteRequestRefusal(this IApplicationBuilder app)
+    {
+        // The default host registers ICsrfProtection as a Singleton, so it is
+        // resolved once, while the pipeline is built, rather than per request.
+        var protection = app.ApplicationServices.GetRequiredService<ICsrfProtection>();
+
         // LEARN: app.Use with a lambda adds a middleware without writing a
         // class: it receives the request and `next`, the rest of the pipeline,
         // and either calls it or answers by itself, like a servlet Filter's
-        // doFilter that may skip chain.doFilter. Services come from
-        // context.RequestServices, the request's DI scope, because a lambda
-        // has no constructor to inject them through.
-        app.Use(async (context, next) =>
+        // doFilter that may skip chain.doFilter. A Singleton it needs can be
+        // taken from app.ApplicationServices once, as above; a Scoped service
+        // would have to come from context.RequestServices, the request's own
+        // DI scope, on every request.
+        return app.Use(async (context, next) =>
         {
-            var protection = context.RequestServices.GetRequiredService<ICsrfProtection>();
             var verdict = await protection.ValidateAsync(context);
             if (!verdict.IsAllowed)
             {
@@ -64,4 +69,5 @@ public static class CrossSiteRequests
 
             await next(context);
         });
+    }
 }

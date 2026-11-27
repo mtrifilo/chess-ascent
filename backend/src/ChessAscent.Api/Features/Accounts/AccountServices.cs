@@ -86,6 +86,10 @@ public static class AccountServices
             .AddApplicationCookie()
             .Configure<IHostEnvironment>((options, environment) =>
             {
+                // Already the cookie handler's defaults; written out because
+                // the session's safety depends on them: the page's script
+                // cannot read the cookie, and browsers hold it back from
+                // most requests that other sites start.
                 options.Cookie.HttpOnly = true;
                 options.Cookie.SameSite = SameSiteMode.Lax;
 

@@ -2,7 +2,6 @@ using System.Net;
 using ChessAscent.Api.Features.Accounts;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Net.Http.Headers;
 
 namespace ChessAscent.Api.Tests.Features.Accounts;
@@ -42,6 +41,18 @@ internal static class Accounts
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    /// <summary>
+    /// Registers a new account from a browser of its own, which is then
+    /// closed, so the caller's client is not signed in. Returns its email.
+    /// </summary>
+    public static async Task<string> RegisterAccountAsync(this ApiFactory factory)
+    {
+        var email = NewEmail();
+        using var client = factory.CreateClient();
+        await client.RegisterNewAsync(email);
+        return email;
+    }
+
     /// <summary>Reads the email that <c>GET /auth/me</c> reports, checking that it answered 200.</summary>
     public static async Task<string> GetSignedInEmailAsync(this HttpClient client)
     {
@@ -50,21 +61,6 @@ internal static class Accounts
         var body = await response.Content.ReadFromJsonAsync<CurrentUserResponse>(TestContext.Current.CancellationToken);
         return body!.Email;
     }
-
-    /// <summary>Reads a problem-details body, checking its media type and status.</summary>
-    public static async Task<T> ReadProblemAsync<T>(this HttpResponseMessage response)
-        where T : ProblemDetails
-    {
-        response.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
-        var problem = await response.Content.ReadFromJsonAsync<T>(TestContext.Current.CancellationToken);
-        problem.Should().NotBeNull();
-        problem!.Status.Should().Be((int)response.StatusCode);
-        return problem;
-    }
-
-    /// <inheritdoc cref="ReadProblemAsync{T}"/>
-    public static Task<ProblemDetails> ReadProblemAsync(this HttpResponseMessage response) =>
-        response.ReadProblemAsync<ProblemDetails>();
 
     /// <summary>The session cookie's Set-Cookie header on a response, if it set one.</summary>
     public static string? SessionCookieHeader(this HttpResponseMessage response) =>

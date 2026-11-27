@@ -16,47 +16,28 @@ public sealed class SessionCookieTests(ApiFactory factory) : IClassFixture<ApiFa
     // from the latest renewal.
     private static readonly TimeSpan SessionLifetime = TimeSpan.FromDays(14);
 
+    // Development serves plain HTTP, so the cookie is not marked Secure there.
     [Fact]
-    public async Task RegisteringSetsAPersistentHttpOnlyLaxHostOnlyCookie()
+    public async Task RegisteringSetsTheSessionCookie()
     {
         using var client = factory.CreateClient();
 
         using var response = await client.RegisterAsync(Accounts.NewEmail());
 
         var cookie = ParseSessionCookie(response);
-        cookie.HttpOnly.Should().BeTrue();
-        cookie.SameSite.Should().Be(SameSiteMode.Lax);
-        cookie.Domain.HasValue.Should().BeFalse();
-        cookie.Path.Value.Should().Be("/");
-        cookie.Expires.Should().BeCloseTo(DateTimeOffset.UtcNow + SessionLifetime, TimeSpan.FromMinutes(1));
+        ShouldBeTheSessionCookie(cookie);
+        cookie.Secure.Should().BeFalse();
     }
 
     [Fact]
-    public async Task SigningInSetsTheSamePersistentCookie()
+    public async Task SigningInSetsTheSessionCookie()
     {
-        var email = Accounts.NewEmail();
-        using (var registering = factory.CreateClient())
-        {
-            await registering.RegisterNewAsync(email);
-        }
+        var email = await factory.RegisterAccountAsync();
 
         using var client = factory.CreateClient();
         using var response = await client.SignInAsync(email);
 
-        var cookie = ParseSessionCookie(response);
-        cookie.HttpOnly.Should().BeTrue();
-        cookie.SameSite.Should().Be(SameSiteMode.Lax);
-        cookie.Expires.Should().BeCloseTo(DateTimeOffset.UtcNow + SessionLifetime, TimeSpan.FromMinutes(1));
-    }
-
-    [Fact]
-    public async Task TheCookieIsNotSecureInDevelopment()
-    {
-        using var client = factory.CreateClient();
-
-        using var response = await client.RegisterAsync(Accounts.NewEmail());
-
-        ParseSessionCookie(response).Secure.Should().BeFalse();
+        ShouldBeTheSessionCookie(ParseSessionCookie(response));
     }
 
     [Fact]
@@ -99,6 +80,18 @@ public sealed class SessionCookieTests(ApiFactory factory) : IClassFixture<ApiFa
         response.StatusCode.Should().Be(expected);
         response.Headers.Location.Should().BeNull();
         await response.ReadProblemAsync();
+    }
+
+    // Persistent (it has an expiry, so the browser keeps it across restarts),
+    // out of reach of the page's script, held back from most cross-site
+    // requests, and sent only to the host that set it.
+    private static void ShouldBeTheSessionCookie(SetCookieHeaderValue cookie)
+    {
+        cookie.Expires.Should().BeCloseTo(DateTimeOffset.UtcNow + SessionLifetime, TimeSpan.FromMinutes(1));
+        cookie.HttpOnly.Should().BeTrue();
+        cookie.SameSite.Should().Be(SameSiteMode.Lax);
+        cookie.Domain.HasValue.Should().BeFalse();
+        cookie.Path.Value.Should().Be("/");
     }
 
     private static SetCookieHeaderValue ParseSessionCookie(HttpResponseMessage response)

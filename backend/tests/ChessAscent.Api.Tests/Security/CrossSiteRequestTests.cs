@@ -1,5 +1,6 @@
 using System.Net;
 using ChessAscent.Api.Tests.Features.Accounts;
+using Microsoft.Net.Http.Headers;
 
 namespace ChessAscent.Api.Tests.Security;
 
@@ -20,7 +21,7 @@ public sealed class CrossSiteRequestTests(ApiFactory factory) : IClassFixture<Ap
         var email = Accounts.NewEmail();
         await client.RegisterNewAsync(email);
 
-        using var forged = ForgedFormPost("/auth/sign-out", secFetchSite, AttackerOrigin);
+        using var forged = Post("/auth/sign-out", secFetchSite, AttackerOrigin, EmptyForm());
         using var response = await client.SendAsync(forged, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
@@ -37,7 +38,7 @@ public sealed class CrossSiteRequestTests(ApiFactory factory) : IClassFixture<Ap
         var email = Accounts.NewEmail();
         await client.RegisterNewAsync(email);
 
-        using var forged = ForgedFormPost("/auth/sign-out", secFetchSite: null, AttackerOrigin);
+        using var forged = Post("/auth/sign-out", secFetchSite: null, AttackerOrigin, EmptyForm());
         using var response = await client.SendAsync(forged, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
@@ -48,19 +49,11 @@ public sealed class CrossSiteRequestTests(ApiFactory factory) : IClassFixture<Ap
     [Fact]
     public async Task ASignInStartedByAnotherSiteIsRefused()
     {
-        var email = Accounts.NewEmail();
-        using (var registering = factory.CreateClient())
-        {
-            await registering.RegisterNewAsync(email);
-        }
+        var email = await factory.RegisterAccountAsync();
 
         using var client = factory.CreateClient();
-        using var forged = new HttpRequestMessage(HttpMethod.Post, "/auth/sign-in")
-        {
-            Content = JsonContent.Create(new { email, password = Accounts.Password }),
-        };
-        forged.Headers.Add("Sec-Fetch-Site", "cross-site");
-        forged.Headers.Add("Origin", AttackerOrigin);
+        using var forged = Post(
+            "/auth/sign-in", "cross-site", AttackerOrigin, JsonContent.Create(new { email, password = Accounts.Password }));
         using var response = await client.SendAsync(forged, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
@@ -73,9 +66,7 @@ public sealed class CrossSiteRequestTests(ApiFactory factory) : IClassFixture<Ap
         using var client = factory.CreateClient();
         await client.RegisterNewAsync(Accounts.NewEmail());
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/auth/sign-out");
-        request.Headers.Add("Sec-Fetch-Site", "same-origin");
-        request.Headers.Add("Origin", "http://localhost");
+        using var request = Post("/auth/sign-out", "same-origin", "http://localhost");
         using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
@@ -90,25 +81,28 @@ public sealed class CrossSiteRequestTests(ApiFactory factory) : IClassFixture<Ap
         var email = Accounts.NewEmail();
         await client.RegisterNewAsync(email);
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/auth/me");
-        request.Headers.Add("Sec-Fetch-Site", "cross-site");
+        using var request = WithBrowserHeaders(
+            new HttpRequestMessage(HttpMethod.Get, "/auth/me"), "cross-site", AttackerOrigin);
         using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
-    private static HttpRequestMessage ForgedFormPost(string path, string? secFetchSite, string origin)
+    private static HttpRequestMessage Post(string path, string? secFetchSite, string origin, HttpContent? content = null) =>
+        WithBrowserHeaders(new HttpRequestMessage(HttpMethod.Post, path) { Content = content }, secFetchSite, origin);
+
+    // The headers a browser adds to a request, which the page that started
+    // it cannot set. No header constant exists for Sec-Fetch-Site.
+    private static HttpRequestMessage WithBrowserHeaders(HttpRequestMessage request, string? secFetchSite, string origin)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, path)
-        {
-            Content = new FormUrlEncodedContent([]),
-        };
         if (secFetchSite is not null)
         {
             request.Headers.Add("Sec-Fetch-Site", secFetchSite);
         }
 
-        request.Headers.Add("Origin", origin);
+        request.Headers.Add(HeaderNames.Origin, origin);
         return request;
     }
+
+    private static FormUrlEncodedContent EmptyForm() => new([]);
 }

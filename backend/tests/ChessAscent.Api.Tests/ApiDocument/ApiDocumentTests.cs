@@ -41,25 +41,18 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
         PlainTextValues(responses["503"]!).Should().Equal("Unhealthy");
     }
 
+    // Exactly the API's own operations: in particular the four account
+    // endpoints, and none of Identity's ready-made ones.
     [Fact]
-    public async Task DocumentListsExactlyTheFourAccountEndpoints()
+    public async Task DocumentListsExactlyTheApisOperations()
     {
         var document = await GetDocumentAsync();
 
         var operations = document["paths"]!.AsObject()
-            .Where(path => path.Key.StartsWith("/auth", StringComparison.Ordinal))
             .SelectMany(path => path.Value!.AsObject().Select(operation => $"{operation.Key} {path.Key}"));
         operations.Should().BeEquivalentTo(
-            "post /auth/register", "post /auth/sign-in", "post /auth/sign-out", "get /auth/me");
-    }
-
-    [Fact]
-    public async Task DocumentListsNoOtherPathsThanTheApisOwn()
-    {
-        var document = await GetDocumentAsync();
-
-        document["paths"]!.AsObject().Select(path => path.Key).Should().BeEquivalentTo(
-            "/auth/register", "/auth/sign-in", "/auth/sign-out", "/auth/me", "/health/ready", "/version");
+            "post /auth/register", "post /auth/sign-in", "post /auth/sign-out", "get /auth/me",
+            "get /health/ready", "get /version");
     }
 
     [Fact]

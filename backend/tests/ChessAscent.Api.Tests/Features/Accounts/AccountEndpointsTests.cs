@@ -26,11 +26,7 @@ public sealed class AccountEndpointsTests(ApiFactory factory) : IClassFixture<Ap
     [Fact]
     public async Task RegisterRefusesAnEmailThatAlreadyHasAnAccountWhateverItsCase()
     {
-        var email = Accounts.NewEmail();
-        using (var first = factory.CreateClient())
-        {
-            await first.RegisterNewAsync(email);
-        }
+        var email = await factory.RegisterAccountAsync();
 
         using var second = factory.CreateClient();
         using var response = await second.RegisterAsync(email.ToUpperInvariant());
@@ -86,11 +82,7 @@ public sealed class AccountEndpointsTests(ApiFactory factory) : IClassFixture<Ap
     [Fact]
     public async Task SignInWithTheRightPasswordSignsInWhateverTheEmailsCase()
     {
-        var email = Accounts.NewEmail();
-        using (var registering = factory.CreateClient())
-        {
-            await registering.RegisterNewAsync(email);
-        }
+        var email = await factory.RegisterAccountAsync();
 
         using var client = factory.CreateClient();
         using var response = await client.SignInAsync(email.ToUpperInvariant());
@@ -104,11 +96,7 @@ public sealed class AccountEndpointsTests(ApiFactory factory) : IClassFixture<Ap
     [Fact]
     public async Task SignInWithAWrongPasswordAnswers401AndDoesNotSignIn()
     {
-        var email = Accounts.NewEmail();
-        using (var registering = factory.CreateClient())
-        {
-            await registering.RegisterNewAsync(email);
-        }
+        var email = await factory.RegisterAccountAsync();
 
         using var client = factory.CreateClient();
         using var response = await client.SignInAsync(email, password: Accounts.Password + "x");
@@ -141,11 +129,7 @@ public sealed class AccountEndpointsTests(ApiFactory factory) : IClassFixture<Ap
     [Fact]
     public async Task ALockedOutAccountGetsTheSameAnswerAsAWrongPassword()
     {
-        var email = Accounts.NewEmail();
-        using (var registering = factory.CreateClient())
-        {
-            await registering.RegisterNewAsync(email);
-        }
+        var email = await factory.RegisterAccountAsync();
 
         using var client = factory.CreateClient();
         string? wrongPasswordBody = null;
@@ -201,21 +185,21 @@ public sealed class AccountEndpointsTests(ApiFactory factory) : IClassFixture<Ap
 
     // The routes Identity's ready-made endpoints (MapIdentityApi) would add,
     // with and without this API's prefix. None of them may answer.
+    // POST /auth/register is this API's own, so it is checked bare only.
+    private static readonly string[] IdentityApiPostAndGetRoutes =
+    [
+        "/register", "/login", "/refresh", "/resendConfirmationEmail",
+        "/forgotPassword", "/resetPassword", "/manage/2fa", "/manage/info",
+    ];
+
+    public static TheoryData<string> IdentityApiRoutes() =>
+    [
+        .. IdentityApiPostAndGetRoutes,
+        .. IdentityApiPostAndGetRoutes.Where(route => route != "/register").Select(route => "/auth" + route),
+    ];
+
     [Theory]
-    [InlineData("/register")]
-    [InlineData("/login")]
-    [InlineData("/refresh")]
-    [InlineData("/resendConfirmationEmail")]
-    [InlineData("/forgotPassword")]
-    [InlineData("/resetPassword")]
-    [InlineData("/manage/2fa")]
-    [InlineData("/manage/info")]
-    [InlineData("/auth/login")]
-    [InlineData("/auth/refresh")]
-    [InlineData("/auth/forgotPassword")]
-    [InlineData("/auth/resetPassword")]
-    [InlineData("/auth/manage/2fa")]
-    [InlineData("/auth/manage/info")]
+    [MemberData(nameof(IdentityApiRoutes))]
     public async Task IdentitysOtherEndpointsAreNotMapped(string path)
     {
         using var client = factory.CreateClient();

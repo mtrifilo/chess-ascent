@@ -63,11 +63,11 @@ public sealed class AccountSecretsTests(ApiFactory factory) : IClassFixture<ApiF
         var email = Accounts.NewEmail();
         await client.RegisterNewAsync(email);
 
+        var user = await FindUserAsync(factory, email);
+
         await using var scope = factory.Services.CreateAsyncScope();
         var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
-        var user = await users.FindByEmailAsync(email);
-
-        user!.PasswordHash.Should().NotBeNullOrEmpty().And.NotContain(Accounts.Password);
+        user.PasswordHash.Should().NotBeNullOrEmpty().And.NotContain(Accounts.Password);
         users.PasswordHasher.VerifyHashedPassword(user, user.PasswordHash!, Accounts.Password)
             .Should().Be(PasswordVerificationResult.Success);
     }
