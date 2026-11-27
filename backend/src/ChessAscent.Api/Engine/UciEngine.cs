@@ -208,6 +208,13 @@ public sealed partial class UciEngine : IAsyncDisposable
     /// </summary>
     public bool IsUsable => !_lifetime.IsCancellationRequested && !HasEnded && _fault is null;
 
+    /// <summary>
+    /// Completes once the process has exited, at most the exit timeout after
+    /// it does, or once disposal has begun. It never fails. An owner can wait
+    /// on it to replace an engine that dies while nobody is using it.
+    /// </summary>
+    public Task Ended => _exitWatcher;
+
     private bool HasEnded => _end is not null || _outputClosed;
 
     /// <summary>
@@ -337,6 +344,26 @@ public sealed partial class UciEngine : IAsyncDisposable
             },
             cancellationToken);
     }
+
+    /// <summary>
+    /// Sends <c>isready</c> and waits, within the ready timeout, for
+    /// <c>readyok</c>: a check that the engine is still answering.
+    /// </summary>
+    /// <param name="cancellationToken">
+    /// Ends the call. If it is cancelled once <c>isready</c> has been sent,
+    /// the <c>readyok</c> is still read, within the stop timeout, before the
+    /// call ends; if it does not come, the engine becomes unusable.
+    /// </param>
+    public Task PingAsync(CancellationToken cancellationToken) =>
+        ExchangeAsync(
+            _options.ReadyTimeout,
+            async exchange =>
+            {
+                await exchange.SendAsync("isready");
+                await exchange.ReadReplyAsync("readyok");
+                return true;
+            },
+            cancellationToken);
 
     /// <summary>Sends the position, searches it to the limit and returns the engine's answer.</summary>
     /// <remarks>

@@ -36,7 +36,7 @@ dotnet run --project src/ChessAscent.Api     # apply migrations, then serve the 
 
 The API applies any pending database migrations before it starts serving, so it needs the database at start-up: if it cannot reach it, it exits with the connection error instead of starting. Once it is running, losing the database fails `/health/ready` but not `/health`.
 
-With the API running, `curl http://localhost:5100/health` answers `Healthy`, `curl http://localhost:5100/health/ready` answers `Healthy` while the database is reachable and `Unhealthy` with status 503 when it does not accept a connection within 3 seconds, and `curl http://localhost:5100/version` returns the version and the git commit it was built from.
+With the API running, `curl http://localhost:5100/health` answers `Healthy`, `curl http://localhost:5100/health/ready` answers `Healthy` while the database is reachable and `Unhealthy` with status 503 when it does not accept a connection within 3 seconds (or while a configured chess engine has no working process), and `curl http://localhost:5100/version` returns the version and the git commit it was built from.
 
 Accounts are under `/auth`. `POST /auth/register` and `POST /auth/sign-in` take a JSON body with `email` and `password` and set the session cookie, `POST /auth/sign-out` clears it, and `GET /auth/me` returns the signed-in account's email, or 401 when nobody is signed in. A request that changes something (any method but GET, HEAD, OPTIONS, TRACE and QUERY) is refused with 403 when the browser reports that a page on another origin started it, a sibling subdomain included; curl sends no such report, so it can call the API directly:
 

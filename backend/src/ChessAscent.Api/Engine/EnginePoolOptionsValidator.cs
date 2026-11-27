@@ -1,0 +1,95 @@
+using Microsoft.Extensions.Options;
+
+namespace ChessAscent.Api.Engine;
+
+// LEARN: IValidateOptions<T> is the options pattern's validation hook: the
+// counterpart of putting @Validated on a @ConfigurationProperties class,
+// except that the rules are code rather than annotations. Validate returns
+// every failure at once instead of throwing at the first. ValidateOnStart()
+// in EngineServices makes the host run it while it starts, before any hosted
+// service, so a bad value stops the application at start-up with an
+// OptionsValidationException that lists the failures; without it, validation
+// would wait until something first read IOptions<T>.Value.
+/// <summary>
+/// Checks the engine pool's options, naming each failing setting by its
+/// configuration key, such as <c>EnginePool:Kinds:example:Processes</c>.
+/// </summary>
+internal sealed class EnginePoolOptionsValidator(IOptions<HostOptions> host) : IValidateOptions<EnginePoolOptions>
+{
+    public ValidateOptionsResult Validate(string? name, EnginePoolOptions options)
+    {
+        var failures = new List<string>();
+        foreach (var (kind, engine) in options.Kinds)
+        {
+            ValidateKind(ConfigurationPath.Combine(EnginePoolOptions.SectionName, nameof(options.Kinds), kind), engine, failures);
+        }
+
+        return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
+    }
+
+    private void ValidateKind(string path, EngineKindOptions? engine, List<string> failures)
+    {
+        // A kind given an empty value in configuration binds to null.
+        if (engine is null)
+        {
+            failures.Add($"{path} has no settings.");
+            return;
+        }
+
+        string Key(string setting) => ConfigurationPath.Combine(path, setting);
+
+        if (string.IsNullOrWhiteSpace(engine.ExecutablePath))
+        {
+            failures.Add($"{Key(nameof(engine.ExecutablePath))} is required.");
+        }
+
+        if (engine.Processes < 1)
+        {
+            failures.Add($"{Key(nameof(engine.Processes))} must be at least 1.");
+        }
+
+        if (engine.StartAttempts is null)
+        {
+            failures.Add($"{Key(nameof(engine.StartAttempts))} is required.");
+        }
+        else if (engine.StartAttempts < 1)
+        {
+            failures.Add($"{Key(nameof(engine.StartAttempts))} must be at least 1.");
+        }
+
+        ValidateWait(engine.HandshakeTimeout, Key(nameof(engine.HandshakeTimeout)), failures);
+        ValidateWait(engine.ReadyTimeout, Key(nameof(engine.ReadyTimeout)), failures);
+        ValidateWait(engine.SearchTimeout, Key(nameof(engine.SearchTimeout)), failures);
+        ValidateWait(engine.StopTimeout, Key(nameof(engine.StopTimeout)), failures);
+        ValidateWait(engine.ExitTimeout, Key(nameof(engine.ExitTimeout)), failures);
+        ValidateWait(engine.CheckOutTimeout, Key(nameof(engine.CheckOutTimeout)), failures);
+        ValidateWait(engine.RestartDelay, Key(nameof(engine.RestartDelay)), failures);
+
+        // Stopping an engine takes at most the stop timeout plus five times
+        // the exit timeout (see UciEngine.DisposeAsync), and the pool stops
+        // all of them at once. For every process to be gone before the host
+        // gives up on shutting down, that has to fit in the host's time.
+        if (engine.StopTimeout > TimeSpan.Zero && engine.ExitTimeout > TimeSpan.Zero)
+        {
+            var longestStop = engine.StopTimeout.Value + (5 * engine.ExitTimeout.Value);
+            if (longestStop >= host.Value.ShutdownTimeout)
+            {
+                failures.Add(
+                    $"{Key(nameof(engine.StopTimeout))} plus five times {Key(nameof(engine.ExitTimeout))} is {longestStop}, "
+                    + $"which must be less than the host's shutdown timeout of {host.Value.ShutdownTimeout}.");
+            }
+        }
+    }
+
+    private static void ValidateWait(TimeSpan? wait, string key, List<string> failures)
+    {
+        if (wait is null)
+        {
+            failures.Add($"{key} is required.");
+        }
+        else if (wait <= TimeSpan.Zero || wait > UciEngineOptions.LongestWait)
+        {
+            failures.Add($"{key} is {wait}; it must be greater than zero and at most {UciEngineOptions.LongestWait}.");
+        }
+    }
+}

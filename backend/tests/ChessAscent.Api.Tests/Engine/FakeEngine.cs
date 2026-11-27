@@ -10,8 +10,8 @@ namespace ChessAscent.Api.Tests.Engine;
 /// </summary>
 internal sealed class FakeEngine : IDisposable
 {
-    private static readonly string DotnetHost = FindDotnetHost();
-    private static readonly string Program = Path.Combine(AppContext.BaseDirectory, "ChessAscent.FakeUciEngine.dll");
+    public static readonly string DotnetHost = FindDotnetHost();
+    public static readonly string Program = Path.Combine(AppContext.BaseDirectory, "ChessAscent.FakeUciEngine.dll");
 
     private readonly string _directory = Directory.CreateTempSubdirectory("fake-uci-").FullName;
 

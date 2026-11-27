@@ -17,6 +17,9 @@ namespace ChessAscent.Api.Engine;
 // `options with { SearchTimeout = TimeSpan.FromSeconds(5) }`.
 public sealed record UciEngineOptions
 {
+    /// <summary>The longest wait accepted: <see cref="int.MaxValue"/> milliseconds.</summary>
+    internal static readonly TimeSpan LongestWait = TimeSpan.FromMilliseconds(int.MaxValue);
+
     /// <summary>The engine program.</summary>
     public required string ExecutablePath { get; init; }
 
@@ -75,6 +78,6 @@ public sealed record UciEngineOptions
     private static void ValidateWait(TimeSpan wait, string name)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(wait, TimeSpan.Zero, name);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(wait, TimeSpan.FromMilliseconds(int.MaxValue), name);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(wait, LongestWait, name);
     }
 }

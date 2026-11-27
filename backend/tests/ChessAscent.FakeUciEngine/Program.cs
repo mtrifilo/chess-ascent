@@ -25,6 +25,8 @@ using ChessAscent.FakeUciEngine;
 //   --stderr-on <command> <text>  write the line to standard error when the command arrives; repeatable
 //   --transcript <path>        append every command received to this file
 //   --pid-file <path>          write this process's id to the file
+//   --pid-dir <path>           create a file in the directory named by this process's id, so
+//                              that several processes started with the same arguments can be told apart
 //   --child-pid-file <path>    start a child process that sleeps, and write its id to the file
 //   --sleep                    do nothing but sleep (the child's mode)
 var settings = Settings.Parse(args);
@@ -38,6 +40,11 @@ if (settings.Sleep)
 if (settings.PidFile is { } pidFile)
 {
     await File.WriteAllTextAsync(pidFile, Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
+}
+
+if (settings.PidDirectory is { } pidDirectory)
+{
+    await File.WriteAllTextAsync(Path.Combine(pidDirectory, Environment.ProcessId.ToString(CultureInfo.InvariantCulture)), "");
 }
 
 if (settings.ChildPidFile is { } childPidFile)

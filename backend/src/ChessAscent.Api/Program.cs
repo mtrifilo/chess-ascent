@@ -1,5 +1,6 @@
 using ChessAscent.Api.ApiDocument;
 using ChessAscent.Api.Database;
+using ChessAscent.Api.Engine;
 using ChessAscent.Api.Features.Accounts;
 using ChessAscent.Api.Features.AppVersion;
 using ChessAscent.Api.Features.Games;
@@ -34,15 +35,19 @@ var builder = WebApplication.CreateBuilder(args);
 // AddProblemDetails makes errors use the RFC 9457 "problem details" JSON
 // shape. AddHealthChecks registers the service that runs health checks.
 // AddDatabase registers the EF Core context for PostgreSQL and the readiness
-// check that the database answers. AddApiDocument registers the OpenAPI
-// document that describes the endpoints below. AddValidation checks request
-// bodies against their validation attributes (see AccountContracts).
-// AddAccounts registers ASP.NET Core Identity, the session cookie and
-// authorization. AddGames registers the store that saves and loads games.
+// check that the database answers. AddEnginePool registers the pool of chess
+// engine processes, the hosted service that starts and stops them, and the
+// readiness check that every configured kind has a working process.
+// AddApiDocument registers the OpenAPI document that describes the endpoints
+// below. AddValidation checks request bodies against their validation
+// attributes (see AccountContracts). AddAccounts registers ASP.NET Core
+// Identity, the session cookie and authorization. AddGames registers the
+// store that saves and loads games.
 builder.Services.AddProblemDetails();
 builder.Services.AddValidation();
 builder.Services.AddHealthChecks();
 builder.Services.AddDatabase();
+builder.Services.AddEnginePool();
 builder.Services.AddApiDocument();
 builder.Services.AddAccounts();
 builder.Services.AddGames();
