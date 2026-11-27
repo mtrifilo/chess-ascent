@@ -304,6 +304,8 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         Side.Black => GameResult.BlackWins,
     };
 
+    // Each draw reason is stored as the end reason of the same name, which a
+    // test checks for every member.
     private static GameEndReason ToEndReason(DrawReason reason) => reason switch
     {
         DrawReason.ThreefoldRepetition => GameEndReason.ThreefoldRepetition,

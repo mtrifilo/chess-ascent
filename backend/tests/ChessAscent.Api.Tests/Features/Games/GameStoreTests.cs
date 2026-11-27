@@ -97,8 +97,9 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
     }
 
     // Every status the chess interface reports is stored as the matching
-    // result and reason. The store does not check the moves against the
-    // status, so one move serves for all of them.
+    // result and reason; draws are covered by the next test, one per reason.
+    // The store does not check the moves against the status, so one move
+    // serves for all of them.
     [Theory]
     [MemberData(nameof(BoardStatuses))]
     public async Task AppendStoresEachStatusTheChessInterfaceReports(
@@ -121,14 +122,13 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         { "white mates", GameProgress.Finished, GameResult.WhiteWins, GameEndReason.Checkmate },
         { "black mates", GameProgress.Finished, GameResult.BlackWins, GameEndReason.Checkmate },
         { "stalemate", GameProgress.Finished, GameResult.Draw, GameEndReason.Stalemate },
-        { "threefold repetition", GameProgress.Finished, GameResult.Draw, GameEndReason.ThreefoldRepetition },
-        { "fifty-move rule", GameProgress.Finished, GameResult.Draw, GameEndReason.FiftyMoveRule },
-        { "dead position", GameProgress.Finished, GameResult.Draw, GameEndReason.DeadPosition },
     };
 
     // The compiler makes the mapping handle every DrawReason; this checks
-    // that each is stored as the reason of the same name, so a member added
-    // later is covered without being listed here.
+    // that each is stored as the end reason of the same name, so a member
+    // added later is covered without being listed here. A member meant to be
+    // stored under another name fails here, and the rule in
+    // GameStore.ToEndReason has to change with it.
     [Theory]
     [MemberData(nameof(DrawReasons))]
     public async Task AppendStoresEachDrawReasonAsTheEndReasonOfTheSameName(DrawReason reason)
@@ -139,8 +139,11 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         await factory.AppendAsync(owner, game.Id, 1, [new PlayedMove("e2e4", "e4")], new Draw(reason));
         var loaded = await factory.LoadGameAsync(owner, game.Id);
 
-        loaded!.Result.Should().Be(GameResult.Draw);
-        loaded.EndReason.Should().Be(Enum.Parse<GameEndReason>(reason.ToString()));
+        loaded!.Status.Should().Be(GameProgress.Finished);
+        loaded.Result.Should().Be(GameResult.Draw);
+        Enum.TryParse<GameEndReason>(reason.ToString(), out var sameName)
+            .Should().BeTrue($"GameEndReason needs a member named {reason}");
+        loaded.EndReason.Should().Be(sameName);
     }
 
     public static TheoryData<DrawReason> DrawReasons => new(Enum.GetValues<DrawReason>());
@@ -411,9 +414,6 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         "white mates" => new Checkmate(Side.White),
         "black mates" => new Checkmate(Side.Black),
         "stalemate" => new Stalemate(),
-        "threefold repetition" => new Draw(DrawReason.ThreefoldRepetition),
-        "fifty-move rule" => new Draw(DrawReason.FiftyMoveRule),
-        "dead position" => new Draw(DrawReason.DeadPosition),
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "No such status in this test."),
     };
 }
