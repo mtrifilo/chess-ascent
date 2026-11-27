@@ -1,6 +1,5 @@
 using System.Net;
 using ChessAscent.Api.Engine;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -166,16 +165,35 @@ public sealed class EnginePoolHostingTests(PostgresFixture postgres)
             },
             "readiness to answer 200");
 
-    /// <summary>The API, as <see cref="ApiFactory"/> runs it, with engine settings of its own.</summary>
-    private sealed class EngineApi(PostgresFixture postgres, IReadOnlyDictionary<string, string?> settings) : WebApplicationFactory<Program>
+    /// <summary>
+    /// The API as <see cref="ApiFactory"/> runs it, which also makes it wait
+    /// its turn to start, with engine settings of its own.
+    /// </summary>
+    private sealed class EngineApi(PostgresFixture postgres, IReadOnlyDictionary<string, string?> settings) : IAsyncDisposable
     {
-        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        private readonly ApiFactory _factory = new(postgres);
+        private WebApplicationFactory<Program>? _withSettings;
+
+        public IServiceProvider Services => WithSettings.Services;
+
+        private WebApplicationFactory<Program> WithSettings => _withSettings ??= _factory.WithWebHostBuilder(host =>
         {
-            builder.UseSetting(ApiFactory.ConnectionStringKey, postgres.ConnectionString);
             foreach (var (key, value) in settings)
             {
-                builder.UseSetting(key, value);
+                host.UseSetting(key, value);
             }
+        });
+
+        public HttpClient CreateClient() => WithSettings.CreateClient();
+
+        public async ValueTask DisposeAsync()
+        {
+            if (_withSettings is not null)
+            {
+                await _withSettings.DisposeAsync();
+            }
+
+            await _factory.DisposeAsync();
         }
     }
 }
