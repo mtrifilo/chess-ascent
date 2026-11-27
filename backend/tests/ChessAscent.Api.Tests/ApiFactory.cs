@@ -2,6 +2,7 @@ using ChessAscent.Api.Database;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 
 namespace ChessAscent.Api.Tests;
 
@@ -28,8 +29,26 @@ public sealed class ApiFactory(PostgresFixture postgres) : WebApplicationFactory
     public static readonly string ConnectionStringKey =
         ConfigurationPath.Combine("ConnectionStrings", DatabaseServices.ConnectionStringName);
 
+    // Test classes run in parallel, so without this their applications would
+    // start, and run their start-up migrations, at the same moment against
+    // one database. That is not safe on PostgreSQL once more than one
+    // migration is pending: see StartupMigrations. CreateHost returns once
+    // Program.cs has migrated and the host has started, so holding a lock
+    // around it lets the first application migrate while the others wait,
+    // and then find nothing to do. WithWebHostBuilder's factories start
+    // through this method too.
+    private static readonly Lock StartUpLock = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder) =>
         // A setting given here outranks every configuration file the
         // application loads, so the API cannot reach the development database.
         builder.UseSetting(ConnectionStringKey, postgres.ConnectionString);
+
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        lock (StartUpLock)
+        {
+            return base.CreateHost(builder);
+        }
+    }
 }

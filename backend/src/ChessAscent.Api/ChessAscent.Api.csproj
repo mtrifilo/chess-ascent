@@ -39,6 +39,7 @@
     </PackageReference>
     <PackageReference Include="Scalar.AspNetCore" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
     <!--
       The design-time services that `dotnet ef` loads to create migrations.
       PrivateAssets keeps them out of the published application and out of

@@ -1,7 +1,9 @@
 using ChessAscent.Api.ApiDocument;
 using ChessAscent.Api.Database;
+using ChessAscent.Api.Features.Accounts;
 using ChessAscent.Api.Features.AppVersion;
 using ChessAscent.Api.Features.Health;
+using ChessAscent.Api.Security;
 
 // LEARN: This file has no class and no `static void Main`. C# allows one file
 // per application to hold "top-level statements": the compiler wraps them in
@@ -32,11 +34,16 @@ var builder = WebApplication.CreateBuilder(args);
 // shape. AddHealthChecks registers the service that runs health checks.
 // AddDatabase registers the EF Core context for PostgreSQL and the readiness
 // check that the database answers. AddApiDocument registers the OpenAPI
-// document that describes the endpoints below.
+// document that describes the endpoints below. AddValidation checks request
+// bodies against their validation attributes (see AccountContracts).
+// AddAccounts registers ASP.NET Core Identity, the session cookie and
+// authorization.
 builder.Services.AddProblemDetails();
+builder.Services.AddValidation();
 builder.Services.AddHealthChecks();
 builder.Services.AddDatabase();
 builder.Services.AddApiDocument();
+builder.Services.AddAccounts();
 
 // LEARN: Build() freezes the container: no services can be added after this
 // line. What comes next configures how requests are handled.
@@ -67,8 +74,31 @@ app.UseExceptionHandler();
 
 // A response that leaves the pipeline with an error status and no body, such
 // as the 404 for an unknown path, gets a problem-details body here, so every
-// error the API returns has the same shape.
+// error the API returns has the same shape. The steps below rely on it for
+// their 401 and 403 answers.
 app.UseStatusCodePages();
+
+// A state-changing request that a page on another site started is refused
+// before anything reads its cookie (see CrossSiteRequests).
+app.UseCrossSiteRequestRefusal();
+
+// LEARN: Authentication and authorization are two middleware steps, and they
+// do different jobs. Authentication reads the request's credentials (here,
+// the session cookie) and sets HttpContext.User to the signed-in user, or to
+// an anonymous user if there is no valid cookie. It never refuses a request.
+// Authorization then reads the policy on the endpoint that routing matched
+// (RequireAuthorization, in AccountEndpoints) and, if HttpContext.User does
+// not satisfy it, stops the request: a challenge (401) for an anonymous user,
+// a forbid (403) for a signed-in user who lacks the permission. Spring
+// Security does both inside its one filter chain, in an order it fixes for
+// you; here each is a line in the pipeline, so the order is yours. Swapped,
+// authorization would see every caller as anonymous. Both must also come
+// after routing, which WebApplication runs before the first step above.
+// Leaving the two lines out does not leave them out: WebApplication then adds
+// both by itself, ahead of the exception handler, where a 401 would get no
+// problem-details body.
+app.UseAuthentication();
+app.UseAuthorization();
 
 // LEARN: Endpoints. WebApplication adds routing to the pipeline itself: it
 // matches the route before the middleware above runs, and calls the matched
@@ -78,6 +108,7 @@ app.UseStatusCodePages();
 // table of contents rather than a list of handlers.
 app.MapHealthEndpoints();
 app.MapAppVersionEndpoints();
+app.MapAccountEndpoints();
 app.MapApiDocumentInDevelopment();
 
 await app.RunAsync();

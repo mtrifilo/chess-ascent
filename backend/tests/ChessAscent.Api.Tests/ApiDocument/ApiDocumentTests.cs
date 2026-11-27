@@ -42,6 +42,27 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
+    public async Task DocumentListsExactlyTheFourAccountEndpoints()
+    {
+        var document = await GetDocumentAsync();
+
+        var operations = document["paths"]!.AsObject()
+            .Where(path => path.Key.StartsWith("/auth", StringComparison.Ordinal))
+            .SelectMany(path => path.Value!.AsObject().Select(operation => $"{operation.Key} {path.Key}"));
+        operations.Should().BeEquivalentTo(
+            "post /auth/register", "post /auth/sign-in", "post /auth/sign-out", "get /auth/me");
+    }
+
+    [Fact]
+    public async Task DocumentListsNoOtherPathsThanTheApisOwn()
+    {
+        var document = await GetDocumentAsync();
+
+        document["paths"]!.AsObject().Select(path => path.Key).Should().BeEquivalentTo(
+            "/auth/register", "/auth/sign-in", "/auth/sign-out", "/auth/me", "/health/ready", "/version");
+    }
+
+    [Fact]
     public async Task ExplorerIsServedInDevelopment()
     {
         using var client = factory.CreateClient();
