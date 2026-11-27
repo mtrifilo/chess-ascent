@@ -102,15 +102,32 @@ public sealed class CrossSiteRequestTests(ApiFactory factory) : IClassFixture<Ap
 
     // The refusal logs the headers it was given, and any client can choose
     // them: a host that Uri accepts but cannot turn into ASCII, a terminal
-    // escape sequence, the "null" that sandboxed pages send, and a header far
-    // longer than the log keeps. Each is still refused with a 403, and the log
-    // holds only printable ASCII.
+    // escape sequence, and quotes that would imitate the log's own. Each is
+    // still refused with a 403, and logged exactly as sent, escaped.
     [Theory]
-    [InlineData("http://canada.c\u2100.microsoft.com")]
-    [InlineData("https://attacker.example\u001b[2K\u001b[1A")]
-    [InlineData("null")]
-    [InlineData("https://attacker.example/padding-padding-padding-padding-padding-padding-padding-padding-padding-padding-padding")]
-    public async Task ARefusalOfAnyOriginIsA403AndLogsItInPrintableAscii(string origin)
+    [InlineData("http://canada.c\u2100.microsoft.com", "http://canada.c\\u2100.microsoft.com")]
+    [InlineData("https://attacker.example\u001b[2K\u001b[1A", "https://attacker.example\\u001b[2K\\u001b[1A")]
+    [InlineData("x', Origin 'https://app.example", "x\\u0027, Origin \\u0027https://app.example")]
+    [InlineData("a\\u001b", "a\\u005cu001b")]
+    public async Task ARefusalOfAnyOriginIsA403AndLogsItEscaped(string origin, string logged)
+    {
+        var refusal = await RefuseAndReadLogAsync(origin);
+
+        refusal.Should().Be($"Refused POST /auth/sign-out: Sec-Fetch-Site 'cross-site', Origin '{logged}'.");
+    }
+
+    // Kept to its first 100 characters, each of which here becomes six.
+    [Fact]
+    public async Task ARefusalLogsOnlyTheStartOfALongOrigin()
+    {
+        var refusal = await RefuseAndReadLogAsync(new string('\u00e9', 150));
+
+        refusal.Should().Be(
+            "Refused POST /auth/sign-out: Sec-Fetch-Site 'cross-site', Origin '"
+            + string.Concat(Enumerable.Repeat("\\u00e9", 100)) + "...'.");
+    }
+
+    private async Task<string> RefuseAndReadLogAsync(string origin)
     {
         var logs = new CapturingLoggerProvider();
         using var logged = factory.WithWebHostBuilder(host => host.ConfigureLogging(logging => logging
@@ -124,10 +141,10 @@ public sealed class CrossSiteRequestTests(ApiFactory factory) : IClassFixture<Ap
         using var response = await client.SendAsync(forged, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        var refusal = logs.Messages.Should().ContainSingle(message => message.StartsWith("Refused POST /auth/sign-out", StringComparison.Ordinal))
-            .Subject;
-        refusal.Should().MatchRegex("^[ -~]*$");
-        refusal.Length.Should().BeLessThan(300);
+        var refusal = logs.Messages.Should()
+            .ContainSingle(message => message.StartsWith("Refused POST /auth/sign-out", StringComparison.Ordinal)).Subject;
+        refusal.Should().MatchRegex(@"^[ -~]*\z");
+        return refusal;
     }
 
     // A browser without Fetch Metadata, behind the same rewrite, has only an

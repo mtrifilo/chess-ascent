@@ -118,20 +118,18 @@ public static partial class CrossSiteRequests
     // character but CR, LF and NUL, including the escape sequences that can
     // rewrite a terminal's display of the log. So each is logged as it was
     // sent, cut to LoggedHeaderLength characters, with every character
-    // outside printable ASCII written as \uXXXX. Nothing here parses the
-    // value, so no value can make logging throw.
+    // outside printable ASCII written as \uXXXX. So are the backslash, which
+    // would otherwise make a literal "\u001b" look like an escaped one, and
+    // the quote that the log message puts around each value. A missing
+    // header is logged as nothing between the quotes. Nothing here parses
+    // the value, so no value can make logging throw.
     private static string Printable(string value)
     {
-        if (value.Length == 0)
-        {
-            return "(none)";
-        }
-
         var kept = value.AsSpan(0, Math.Min(value.Length, LoggedHeaderLength));
         var printable = new StringBuilder(kept.Length + 3);
         foreach (var character in kept)
         {
-            if (character is >= ' ' and <= '~')
+            if (character is >= ' ' and <= '~' and not '\\' and not '\'')
             {
                 printable.Append(character);
             }
