@@ -103,6 +103,7 @@ public sealed class MaiaOpponentTests : IDisposable
     [Theory]
     [InlineData("e7e5", "e7e5")]
     [InlineData("0000", "(no move)")]
+    [InlineData("", "(bestmove with no move)")]
     [InlineData("e2e4\u001b[31m", "e2e4?[31m")]
     [InlineData("a1a2a3a4a5a6a7a8a9", "a1a2a3a4a5a6a7a8...")]
     public async Task ReplyThatIsNotALegalMoveIsAnEngineFault(string reply, string logged)
@@ -133,6 +134,20 @@ public sealed class MaiaOpponentTests : IDisposable
         reply.Value.Should().BeOfType<OpponentFailed>()
             .Which.Reason.Should().Contain("\"maia\"").And.Contain("stopped trying");
         maia.OpponentLog.Entries.Should().ContainSingle(entry => entry.Level == LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task PoolWithoutTheMaiaKindGivesAFailureNotAnException()
+    {
+        var pool = new EnginePool(Options.Create(new EnginePoolOptions()), new ListLogger<EnginePool>(), new ListLogger<UciEngine>());
+        await using (pool)
+        {
+            var opponent = new MaiaOpponent(pool, new ChessRules(), new ListLogger<MaiaOpponent>());
+
+            var reply = await opponent.ChooseMoveAsync([], 800, Token);
+
+            reply.Value.Should().BeOfType<OpponentFailed>().Which.Reason.Should().Contain("\"maia\"");
+        }
     }
 
     [Fact]

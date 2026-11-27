@@ -1,5 +1,6 @@
 # The exact version of every Python package scripts/setup-maia.sh installs,
-# as pip constraints: pip may install only these versions. They are what
+# as pip constraints: pip may install only these versions. The versions are
+# pinned, not the files: pip does not check them against a hash. They are what
 # Maia-3's own requirements (torch, numpy, python-chess, huggingface-hub)
 # resolved to on 2026-11-26. Each is listed with its licence in
 # THIRD-PARTY-NOTICES.md; change both together.

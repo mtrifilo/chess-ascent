@@ -32,6 +32,7 @@ public static class MaiaInstallation
     /// defaults that every other configuration source overrides.
     /// </summary>
     /// <param name="configuration">The application's configuration, which already holds the environment variables.</param>
+    /// <exception cref="InvalidOperationException"><see cref="EnginesDirectorySetting"/> is set to a relative path.</exception>
     /// <param name="contentRootPath">
     /// The API's content root. When <see cref="EnginesDirectorySetting"/> is
     /// not set, the engines directory is <c>engines/</c> three levels above
@@ -54,10 +55,22 @@ public static class MaiaInstallation
     }
 
     /// <summary>The engines directory, as a full path: the one given, or <c>engines/</c> three levels above the content root.</summary>
-    internal static string EnginesDirectory(string? given, string contentRootPath) =>
-        Path.GetFullPath(string.IsNullOrWhiteSpace(given)
-            ? Path.Combine(contentRootPath, "..", "..", "..", "engines")
-            : given);
+    /// <exception cref="InvalidOperationException">
+    /// The path given is relative. The set-up script would read it against
+    /// the shell's directory and the API against its own, which differ, so
+    /// both refuse it.
+    /// </exception>
+    internal static string EnginesDirectory(string? given, string contentRootPath)
+    {
+        if (string.IsNullOrWhiteSpace(given))
+        {
+            return Path.GetFullPath(Path.Combine(contentRootPath, "..", "..", "..", "engines"));
+        }
+
+        return Path.IsPathFullyQualified(given)
+            ? Path.GetFullPath(given)
+            : throw new InvalidOperationException($"{EnginesDirectorySetting} must be a full path, not {given}.");
+    }
 
     /// <summary>The pool settings that depend on where Maia is installed, by configuration key.</summary>
     internal static Dictionary<string, string?> PoolSettings(string enginesDirectory)

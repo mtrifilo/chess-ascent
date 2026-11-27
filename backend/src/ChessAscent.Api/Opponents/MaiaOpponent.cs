@@ -73,6 +73,13 @@ public sealed partial class MaiaOpponent(EnginePool pool, IChessRules rules, ILo
             return new GameAlreadyOver(game.Status);
         }
 
+        // Configuration that leaves the kind out, as the API tests do, is a
+        // failure to report, like any other reason Maia cannot answer.
+        if (!pool.IsConfigured(EngineKind))
+        {
+            return new OpponentFailed($"No engine kind named \"{EngineKind}\" is configured.");
+        }
+
         try
         {
             return await pool.RunAsync(EngineKind, lease => AskAsync(lease, game, moves, strength, cancellationToken), cancellationToken);
@@ -110,7 +117,7 @@ public sealed partial class MaiaOpponent(EnginePool pool, IChessRules rules, ILo
         }
         catch (UciProtocolException)
         {
-            return Fault(lease, "(no move)");
+            return Fault(lease, "(bestmove with no move)");
         }
 
         // LEARN: A `when` clause on a switch arm is a case guard, like a
@@ -121,7 +128,7 @@ public sealed partial class MaiaOpponent(EnginePool pool, IChessRules rules, ILo
         return answer switch
         {
             BestMove { Move: var move } when IsLegal(game, move) => new OpponentMove(move),
-            BestMove { Move: var move } => Fault(lease, move),
+            BestMove { Move: var move } => Fault(lease, ForLog(move)),
             NoLegalMove => Fault(lease, "(no move)"),
         };
     }
@@ -129,10 +136,15 @@ public sealed partial class MaiaOpponent(EnginePool pool, IChessRules rules, ILo
     private static bool IsLegal(IChessGame game, string move) =>
         game.LegalMoves().Any(legal => legal.Uci == move);
 
+    // What the engine wrote, made safe to log and cut short.
+    private static string ForLog(string reply) =>
+        UciText.ForLog(reply.Length > LoggedReplyLength ? reply[..LoggedReplyLength] + "..." : reply);
+
+    // `reply` is what to log: the engine's own text through ForLog, or a
+    // description in parentheses when it wrote no move.
     private OpponentFailed Fault(EngineLease lease, string reply)
     {
-        var shown = UciText.ForLog(reply.Length > LoggedReplyLength ? reply[..LoggedReplyLength] + "..." : reply);
-        LogFault(logger, lease.Engine.ProcessId, shown);
+        LogFault(logger, lease.Engine.ProcessId, reply);
         lease.ReportBroken();
         return new OpponentFailed("The opponent answered with something that is not a legal move in the position.");
     }

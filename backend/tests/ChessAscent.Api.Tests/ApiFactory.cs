@@ -46,8 +46,10 @@ public sealed class ApiFactory(PostgresFixture postgres) : WebApplicationFactory
     /// Whether the application keeps the Maia engine kind that its
     /// configuration describes. Off unless set: on a machine where the set-up
     /// script has run, every test class's application would otherwise start
-    /// a Maia process, and where it has not, readiness would fail. Tests of
-    /// the opponent use the fake engine instead.
+    /// a Maia process, and where it has not, readiness would fail. Without
+    /// the kind, the application's IOpponent answers every request with
+    /// OpponentFailed. The opponent's own tests build an engine pool around
+    /// the fake engine (see MaiaOpponentTests).
     /// </summary>
     public bool KeepsMaia { get; init; }
 

@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using ChessAscent.Api.Engine;
 using ChessAscent.Api.Opponents;
 using Microsoft.Extensions.Configuration;
@@ -23,6 +24,34 @@ public sealed class MaiaInstallationTests
         MaiaInstallation.EnginesDirectory(null, contentRoot).Should().Be(Path.Combine(Engines, "repo", "engines"));
         MaiaInstallation.EnginesDirectory(" ", contentRoot).Should().Be(Path.Combine(Engines, "repo", "engines"));
         MaiaInstallation.EnginesDirectory(Engines, contentRoot).Should().Be(Engines);
+    }
+
+    [Fact]
+    public void ARelativeEnginesDirectoryIsRefused()
+    {
+        var relative = () => MaiaInstallation.EnginesDirectory("engines", Engines);
+
+        relative.Should().Throw<InvalidOperationException>().WithMessage($"{MaiaInstallation.EnginesDirectorySetting} must be a full path*");
+    }
+
+    [Fact]
+    public void TheSetUpScriptChecksTheEngineWithTheSameCommandLineAndEnvironment()
+    {
+        // backend/tests/ChessAscent.Api.Tests/bin/<configuration>/<framework>/ is six levels below the repository root.
+        var script = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "scripts", "setup-maia.sh"));
+        var maia = Kind(BaseConfiguration());
+        var revision = maia.Arguments[maia.Arguments.IndexOf("--revision") + 1];
+
+        script.Should().Contain($"WEIGHTS_REVISION={revision}\n");
+        foreach (var argument in maia.Arguments.Where(argument => argument != revision))
+        {
+            script.Should().MatchRegex($@"\s{Regex.Escape(argument)}\s", "the script's handshake passes {0} too", argument);
+        }
+
+        foreach (var (name, value) in maia.SetEnvironment.Where(variable => variable.Key != "HF_HOME"))
+        {
+            script.Should().Contain($" {name}={value}", "the script's handshake sets {0} too", name);
+        }
     }
 
     [Fact]
