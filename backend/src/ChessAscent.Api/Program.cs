@@ -2,6 +2,7 @@ using ChessAscent.Api.ApiDocument;
 using ChessAscent.Api.Database;
 using ChessAscent.Api.Features.Accounts;
 using ChessAscent.Api.Features.AppVersion;
+using ChessAscent.Api.Features.Games;
 using ChessAscent.Api.Features.Health;
 using ChessAscent.Api.Security;
 
@@ -37,13 +38,14 @@ var builder = WebApplication.CreateBuilder(args);
 // document that describes the endpoints below. AddValidation checks request
 // bodies against their validation attributes (see AccountContracts).
 // AddAccounts registers ASP.NET Core Identity, the session cookie and
-// authorization.
+// authorization. AddGames registers the store that saves and loads games.
 builder.Services.AddProblemDetails();
 builder.Services.AddValidation();
 builder.Services.AddHealthChecks();
 builder.Services.AddDatabase();
 builder.Services.AddApiDocument();
 builder.Services.AddAccounts();
+builder.Services.AddGames();
 
 // LEARN: Build() freezes the container: no services can be added after this
 // line. What comes next configures how requests are handled.

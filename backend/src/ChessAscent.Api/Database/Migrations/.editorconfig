@@ -4,3 +4,9 @@
 # because a migration is sometimes edited by hand.
 [*.cs]
 dotnet_diagnostic.CA1707.severity = none
+
+# The tool also writes the columns of a multi-column index as array literals
+# (columns: new[] { ... }). CA1861 asks for static fields so a method called
+# repeatedly does not allocate each time; a migration's Up and Down run once
+# per database.
+dotnet_diagnostic.CA1861.severity = none

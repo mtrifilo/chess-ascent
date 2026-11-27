@@ -16,7 +16,7 @@ partial class AppDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261127005320_AddIdentitySchema";
+    public override string LastMigrationId => "20261127021200_AddGamesAndMoves";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -26,6 +26,77 @@ partial class AppDbContextModelSnapshot : ModelSnapshot
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
         NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+        modelBuilder.Entity("ChessAscent.Api.Features.Games.Game", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid");
+
+                b.Property<DateTimeOffset>("CreatedAt")
+                    .HasColumnType("timestamp with time zone");
+
+                b.Property<string>("EndReason")
+                    .HasColumnType("text");
+
+                b.Property<string>("OpponentKind")
+                    .IsRequired()
+                    .HasColumnType("text");
+
+                b.Property<int?>("OpponentStrength")
+                    .HasColumnType("integer");
+
+                b.Property<string>("OwnerId")
+                    .IsRequired()
+                    .HasColumnType("text");
+
+                b.Property<string>("PlayerSide")
+                    .IsRequired()
+                    .HasColumnType("text");
+
+                b.Property<string>("Result")
+                    .HasColumnType("text");
+
+                b.Property<string>("StartingFen")
+                    .IsRequired()
+                    .HasColumnType("text");
+
+                b.Property<string>("Status")
+                    .IsRequired()
+                    .HasColumnType("text");
+
+                b.Property<DateTimeOffset>("UpdatedAt")
+                    .HasColumnType("timestamp with time zone");
+
+                b.HasKey("Id");
+
+                b.HasIndex("OwnerId", "UpdatedAt")
+                    .IsDescending(false, true)
+                    .HasDatabaseName("IX_Games_OwnerId_UpdatedAt");
+
+                b.ToTable("Games");
+            });
+
+        modelBuilder.Entity("ChessAscent.Api.Features.Games.Move", b =>
+            {
+                b.Property<Guid>("GameId")
+                    .HasColumnType("uuid");
+
+                b.Property<int>("HalfMoveNumber")
+                    .HasColumnType("integer");
+
+                b.Property<string>("San")
+                    .IsRequired()
+                    .HasColumnType("text");
+
+                b.Property<string>("Uci")
+                    .IsRequired()
+                    .HasColumnType("text");
+
+                b.HasKey("GameId", "HalfMoveNumber")
+                    .HasName("PK_Moves");
+
+                b.ToTable("Moves");
+            });
 
         modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUser", b =>
             {
@@ -157,6 +228,24 @@ partial class AppDbContextModelSnapshot : ModelSnapshot
                 b.ToTable("AspNetUserTokens");
             });
 
+        modelBuilder.Entity("ChessAscent.Api.Features.Games.Game", b =>
+            {
+                b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", null)
+                    .WithMany()
+                    .HasForeignKey("OwnerId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
+            });
+
+        modelBuilder.Entity("ChessAscent.Api.Features.Games.Move", b =>
+            {
+                b.HasOne("ChessAscent.Api.Features.Games.Game", null)
+                    .WithMany("Moves")
+                    .HasForeignKey("GameId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
+            });
+
         modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<string>", b =>
             {
                 b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", null)
@@ -182,6 +271,11 @@ partial class AppDbContextModelSnapshot : ModelSnapshot
                     .HasForeignKey("UserId")
                     .OnDelete(DeleteBehavior.Cascade)
                     .IsRequired();
+            });
+
+        modelBuilder.Entity("ChessAscent.Api.Features.Games.Game", b =>
+            {
+                b.Navigation("Moves");
             });
 #pragma warning restore 612, 618
     }

@@ -51,6 +51,14 @@
     </PackageReference>
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      Our chess interface. The rules library behind it stays out of this
+      project's compiler references (see ChessAscent.Chess.csproj).
+    -->
+    <ProjectReference Include="..\ChessAscent.Chess\ChessAscent.Chess.csproj" />
+  </ItemGroup>
+
   <!--
     Writes the version and the git commit into the assembly as two named
     [AssemblyMetadata] attributes, which GET /version reads back. The SDK
