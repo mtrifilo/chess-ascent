@@ -41,6 +41,61 @@ public sealed class UciEngineConversationTests
     }
 
     [Fact]
+    public async Task WhatTheEnginePrintsIsLoggedOnlyAtDebug()
+    {
+        using var fake = new FakeEngine("--stderr", "engine says hello", "--long-line", "20000");
+
+        await using (var engine = await fake.StartAsync())
+        {
+            await engine.SearchAsync(UciPosition.StartingPosition(["e2e4"]), SearchLimit.Depth(1), Token);
+        }
+
+        fake.Logger.Entries.Should().Contain(entry => entry.Message.Contains("engine says hello", StringComparison.Ordinal));
+        fake.Logger.Entries.Should().Contain(entry => entry.Message.Contains("xxxx", StringComparison.Ordinal));
+        fake.Logger.Entries.Where(entry => entry.Level >= LogLevel.Information).Should().NotContain(entry =>
+            entry.Message.Contains("engine says hello", StringComparison.Ordinal)
+            || entry.Message.Contains("xxxx", StringComparison.Ordinal)
+            || entry.Message.Contains("e2e4", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task TheProcessStartsWithExactlyTheGivenEnvironment()
+    {
+        // Present in this process, so a child that inherited would have it.
+        var inherited = "CHA17_CLIENT_TEST_" + Guid.NewGuid().ToString("N");
+        Environment.SetEnvironmentVariable(inherited, "should not reach the engine");
+        using var dump = new EnvironmentDump();
+        try
+        {
+            using var fake = new FakeEngine(dump.Arguments);
+            fake.Options = fake.Options with { Environment = new Dictionary<string, string> { ["ONLY_THIS"] = "1" } };
+
+            await using (await fake.StartAsync())
+            {
+            }
+
+            (await dump.ReadAsync("ONLY_THIS")).Should().Equal(new Dictionary<string, string> { ["ONLY_THIS"] = "1" });
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(inherited, null);
+        }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("NAME=VALUE")]
+    public async Task AMalformedEnvironmentNameIsRefusedWithoutEchoingIt(string name)
+    {
+        using var fake = new FakeEngine();
+        fake.Options = fake.Options with { Environment = new Dictionary<string, string> { [name] = "secret-value" } };
+
+        var start = fake.StartAsync;
+
+        (await start.Should().ThrowExactlyAsync<ArgumentException>()).Which.Message.Should().NotContain("secret-value");
+    }
+
+    [Fact]
     public async Task SetOptionSendsTheOptionAndWaitsForReadyok()
     {
         using var fake = new FakeEngine();

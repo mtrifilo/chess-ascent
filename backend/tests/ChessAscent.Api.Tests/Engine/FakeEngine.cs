@@ -10,8 +10,8 @@ namespace ChessAscent.Api.Tests.Engine;
 /// </summary>
 internal sealed class FakeEngine : IDisposable
 {
-    private static readonly string DotnetHost = FindDotnetHost();
-    private static readonly string Program = Path.Combine(AppContext.BaseDirectory, "ChessAscent.FakeUciEngine.dll");
+    public static readonly string DotnetHost = FindDotnetHost();
+    public static readonly string Program = Path.Combine(AppContext.BaseDirectory, "ChessAscent.FakeUciEngine.dll");
 
     private readonly string _directory = Directory.CreateTempSubdirectory("fake-uci-").FullName;
 
@@ -27,6 +27,7 @@ internal sealed class FakeEngine : IDisposable
         {
             ExecutablePath = DotnetHost,
             Arguments = ["exec", Program, "--transcript", TranscriptPath, "--pid-file", PidPath, .. child, .. behaviour],
+            Environment = new Dictionary<string, string>(),
             // Generous, because a test machine may be slow to start a .NET
             // program; the tests of timeouts set their own, shorter, waits.
             HandshakeTimeout = TimeSpan.FromSeconds(20),
@@ -91,6 +92,13 @@ internal sealed class FakeEngine : IDisposable
         }
 
         return false;
+    }
+
+    /// <summary>Kills a process from outside, as a crash or the operating system would.</summary>
+    public static void Kill(int processId)
+    {
+        using var process = Process.GetProcessById(processId);
+        process.Kill();
     }
 
     // A child that outlived its engine cannot be reached by disposing the

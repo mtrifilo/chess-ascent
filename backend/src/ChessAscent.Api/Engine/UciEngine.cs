@@ -155,6 +155,9 @@ public sealed partial class UciEngine : IAsyncDisposable
     private readonly Task _exitWatcher;
     private Task? _disposal;
 
+    // Completed when the engine ends or disposal begins; see Ended.
+    private readonly TaskCompletionSource _ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     // How the process ended, once it has: set once, by whichever notices
     // first (the exit watcher, the output reader, or a failed write).
     //
@@ -208,6 +211,14 @@ public sealed partial class UciEngine : IAsyncDisposable
     /// </summary>
     public bool IsUsable => !_lifetime.IsCancellationRequested && !HasEnded && _fault is null;
 
+    /// <summary>
+    /// Completes as soon as the process is seen to have exited or closed its
+    /// output, which is when <see cref="IsUsable"/> turns false for that
+    /// reason, or once disposal has begun. It never fails. An owner can wait
+    /// on it to replace an engine that dies while nobody is using it.
+    /// </summary>
+    public Task Ended => _ended.Task;
+
     private bool HasEnded => _end is not null || _outputClosed;
 
     /// <summary>
@@ -217,8 +228,9 @@ public sealed partial class UciEngine : IAsyncDisposable
     /// <remarks>
     /// If the handshake fails, the process is stopped before the exception
     /// reaches the caller, without waiting for a reply the engine still owed
-    /// (unlike other calls, which read on to it). The engine inherits the
-    /// application's environment variables.
+    /// (unlike other calls, which read on to it). The process gets exactly
+    /// the environment variables in <see cref="UciEngineOptions.Environment"/>,
+    /// and none of the application's.
     /// </remarks>
     /// <exception cref="Win32Exception">The program could not be started, for example because it does not exist.</exception>
     // LEARN: There is no `.ConfigureAwait(false)` after any `await` in this
@@ -257,6 +269,23 @@ public sealed partial class UciEngine : IAsyncDisposable
         foreach (var argument in options.Arguments)
         {
             startInfo.ArgumentList.Add(argument);
+        }
+
+        // LEARN: ProcessStartInfo.Environment works like Java's
+        // ProcessBuilder.environment(): reading it gives a mutable copy of
+        // this process's environment, and the child starts with whatever the
+        // copy holds at Process.Start. So, as in Java, leaving it alone means
+        // the child inherits everything, which here would include the
+        // database connection string. Clearing the copy and adding the
+        // chosen variables gives the child those and nothing else. The
+        // differences are small: it is a property rather than a method, the
+        // copy is an IDictionary<string, string?> rather than a
+        // Map<String, String>, and it is taken when the property is first
+        // read, where Java takes it when the ProcessBuilder is created.
+        startInfo.Environment.Clear();
+        foreach (var (name, value) in options.Environment)
+        {
+            startInfo.Environment[name] = value;
         }
 
         var process = Process.Start(startInfo)
@@ -338,6 +367,26 @@ public sealed partial class UciEngine : IAsyncDisposable
             cancellationToken);
     }
 
+    /// <summary>
+    /// Sends <c>isready</c> and waits, within the ready timeout, for
+    /// <c>readyok</c>: a check that the engine is still answering.
+    /// </summary>
+    /// <param name="cancellationToken">
+    /// Ends the call. If it is cancelled once <c>isready</c> has been sent,
+    /// the <c>readyok</c> is still read, within the stop timeout, before the
+    /// call ends; if it does not come, the engine becomes unusable.
+    /// </param>
+    public Task PingAsync(CancellationToken cancellationToken) =>
+        ExchangeAsync(
+            _options.ReadyTimeout,
+            async exchange =>
+            {
+                await exchange.SendAsync("isready");
+                await exchange.ReadReplyAsync("readyok");
+                return true;
+            },
+            cancellationToken);
+
     /// <summary>Sends the position, searches it to the limit and returns the engine's answer.</summary>
     /// <remarks>
     /// <para>
@@ -380,7 +429,8 @@ public sealed partial class UciEngine : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// It takes at most the stop timeout plus five times the exit timeout:
+    /// It takes at most the stop timeout plus five times the exit timeout
+    /// (<see cref="UciEngineOptions.LongestDisposal"/>):
     /// waiting for a call in progress to finish; for <c>quit</c> to be written
     /// and the process to exit (two waits if the write finds the input
     /// closed); for the process to go after it is killed; for its output to
@@ -420,6 +470,7 @@ public sealed partial class UciEngine : IAsyncDisposable
         // Calls in progress stop waiting, and read the reply they owe, which
         // takes at most the stop timeout.
         await _lifetime.CancelAsync();
+        _ended.TrySetResult();
         var entered = await _gate.WaitAsync(_options.StopTimeout);
         try
         {
@@ -553,8 +604,11 @@ public sealed partial class UciEngine : IAsyncDisposable
         }
     }
 
-    private void RecordEnd(int? exitCode) =>
+    private void RecordEnd(int? exitCode)
+    {
         Interlocked.CompareExchange(ref _end, new ProcessEnd(exitCode), null);
+        _ended.TrySetResult();
+    }
 
     // Waits up to the exit timeout for the process to exit; false if it has not.
     private async Task<bool> WaitForExitAsync()
@@ -827,6 +881,7 @@ public sealed partial class UciEngine : IAsyncDisposable
             }
 
             _outputClosed = true;
+            _ended.TrySetResult();
             exitCode = await WaitForExitAsync() ? _process.ExitCode : null;
         }
         catch (Exception e) when (e is IOException or ObjectDisposedException or ChannelClosedException)
@@ -848,12 +903,19 @@ public sealed partial class UciEngine : IAsyncDisposable
         if (budget.TryTake(out var suppressed))
         {
             LogSuppressed(_logger, ProcessId, "over-long output", suppressed);
-            var text = UciText.ForLog(start);
-            LogLineTooLong(_logger, ProcessId, MaxLineLength, text);
+            LogLineTooLong(_logger, ProcessId, MaxLineLength);
+
+            // What the engine prints is logged only at Debug.
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                var text = UciText.ForLog(start);
+                LogLineTooLongStart(_logger, ProcessId, text);
+            }
         }
     }
 
-    // Standard error is for people: it goes to the log and is never parsed.
+    // Standard error is for people: it goes to the log, at Debug like
+    // everything else the engine prints, and is never parsed.
     private async Task ReadStandardErrorAsync()
     {
         var budget = new LogBudget(LogEntriesPerWindow, LogWindow);
@@ -862,7 +924,7 @@ public sealed partial class UciEngine : IAsyncDisposable
             var reader = new BoundedLineReader(_process.StandardError, MaxLineLength);
             while (await reader.ReadLineAsync(CancellationToken.None) is { } line)
             {
-                if (budget.TryTake(out var suppressed) && _logger.IsEnabled(LogLevel.Information))
+                if (budget.TryTake(out var suppressed) && _logger.IsEnabled(LogLevel.Debug))
                 {
                     LogSuppressed(_logger, ProcessId, "standard error", suppressed);
                     var text = UciText.ForLog(line.Text);
@@ -925,10 +987,13 @@ public sealed partial class UciEngine : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Debug, Message = "Engine {ProcessId} info string: {Line}")]
     private static partial void LogInfoString(ILogger logger, int processId, string line);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Engine {ProcessId} printed a line longer than {MaxLength} characters, which was skipped. It began: {Start}")]
-    private static partial void LogLineTooLong(ILogger logger, int processId, int maxLength, string start);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Engine {ProcessId} printed a line longer than {MaxLength} characters, which was skipped")]
+    private static partial void LogLineTooLong(ILogger logger, int processId, int maxLength);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Engine {ProcessId} stderr: {Line} (truncated: {IsTruncated})")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Engine {ProcessId}: the skipped line began: {Start}")]
+    private static partial void LogLineTooLongStart(ILogger logger, int processId, string start);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Engine {ProcessId} stderr: {Line} (truncated: {IsTruncated})")]
     private static partial void LogStandardError(ILogger logger, int processId, string line, bool isTruncated);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Engine {ProcessId}: {Count} lines of {Stream} were not logged")]

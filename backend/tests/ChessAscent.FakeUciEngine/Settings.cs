@@ -39,6 +39,10 @@ internal sealed class Settings
 
     public string? PidFile { get; private set; }
 
+    public string? PidDirectory { get; private set; }
+
+    public string? EnvironmentDump { get; private set; }
+
     public string? ChildPidFile { get; private set; }
 
     public bool Sleep { get; private set; }
@@ -73,6 +77,8 @@ internal sealed class Settings
                 case "--stderr-on": settings.StandardErrorOn.Add((Next(), Next())); break;
                 case "--transcript": settings.Transcript = Next(); break;
                 case "--pid-file": settings.PidFile = Next(); break;
+                case "--pid-dir": settings.PidDirectory = Next(); break;
+                case "--env-dump": settings.EnvironmentDump = Next(); break;
                 case "--child-pid-file": settings.ChildPidFile = Next(); break;
                 case "--sleep": settings.Sleep = true; break;
                 default: throw new ArgumentException($"Unknown option {name}.", nameof(args));

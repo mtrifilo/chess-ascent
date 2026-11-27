@@ -17,7 +17,14 @@ namespace ChessAscent.Api.Engine;
 // `options with { SearchTimeout = TimeSpan.FromSeconds(5) }`.
 public sealed record UciEngineOptions
 {
-    /// <summary>The engine program.</summary>
+    /// <summary>The longest wait accepted: <see cref="int.MaxValue"/> milliseconds.</summary>
+    internal static readonly TimeSpan LongestWait = TimeSpan.FromMilliseconds(int.MaxValue);
+
+    /// <summary>
+    /// The engine program. A bare name or a relative path is looked up with
+    /// the application's own <c>PATH</c> and directories, not with
+    /// <see cref="Environment"/>, so give a full path.
+    /// </summary>
     public required string ExecutablePath { get; init; }
 
     /// <summary>Command-line arguments, passed to the program as given, without a shell.</summary>
@@ -25,6 +32,13 @@ public sealed record UciEngineOptions
 
     /// <summary>The engine's working directory; the application's own when null.</summary>
     public string? WorkingDirectory { get; init; }
+
+    /// <summary>
+    /// The engine's environment variables, by name: the process starts with
+    /// exactly these, and inherits none of the application's. An empty
+    /// dictionary gives it an empty environment. Values are never logged.
+    /// </summary>
+    public required IReadOnlyDictionary<string, string> Environment { get; init; }
 
     /// <summary>From start-up until the engine has answered <c>uci</c> with <c>uciok</c> and <c>isready</c> with <c>readyok</c>.</summary>
     public required TimeSpan HandshakeTimeout { get; init; }
@@ -65,6 +79,19 @@ public sealed record UciEngineOptions
             ArgumentNullException.ThrowIfNull(argument, nameof(Arguments));
         }
 
+        ArgumentNullException.ThrowIfNull(Environment);
+        foreach (var (name, value) in Environment)
+        {
+            // The message names neither the variable's value nor, since it
+            // may be malformed, the name itself.
+            if (!IsValidEnvironmentName(name) || !IsValidEnvironmentValue(value))
+            {
+                throw new ArgumentException(
+                    "An environment variable name must be non-empty with no '=' or NUL character, and its value must be non-null with no NUL character.",
+                    nameof(Environment));
+            }
+        }
+
         ValidateWait(HandshakeTimeout, nameof(HandshakeTimeout));
         ValidateWait(ReadyTimeout, nameof(ReadyTimeout));
         ValidateWait(SearchTimeout, nameof(SearchTimeout));
@@ -72,9 +99,34 @@ public sealed record UciEngineOptions
         ValidateWait(ExitTimeout, nameof(ExitTimeout));
     }
 
+    /// <summary>
+    /// Whether an environment variable name can be passed to a process: not
+    /// empty, and with no <c>=</c> (which separates name from value) and no
+    /// NUL character (which ends the string the operating system receives).
+    /// </summary>
+    internal static bool IsValidEnvironmentName(string? name) =>
+        !string.IsNullOrEmpty(name) && !name.Contains('=', StringComparison.Ordinal) && !name.Contains('\0', StringComparison.Ordinal);
+
+    /// <summary>Whether an environment variable value can be passed to a process: not null, with no NUL character. Empty is allowed.</summary>
+    internal static bool IsValidEnvironmentValue(string? value) =>
+        value is not null && !value.Contains('\0', StringComparison.Ordinal);
+
+    /// <summary>Whether a wait is one this client accepts: greater than zero and at most <see cref="LongestWait"/>.</summary>
+    internal static bool IsValidWait(TimeSpan wait) => wait > TimeSpan.Zero && wait <= LongestWait;
+
+    /// <summary>
+    /// The longest <see cref="UciEngine.DisposeAsync"/> can take with these
+    /// waits: the stop timeout, for a call in progress, plus five exit
+    /// timeouts, one for each wait around the process's end that disposal
+    /// makes in turn.
+    /// </summary>
+    internal static TimeSpan LongestDisposal(TimeSpan stopTimeout, TimeSpan exitTimeout) => stopTimeout + (5 * exitTimeout);
+
     private static void ValidateWait(TimeSpan wait, string name)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(wait, TimeSpan.Zero, name);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(wait, TimeSpan.FromMilliseconds(int.MaxValue), name);
+        if (!IsValidWait(wait))
+        {
+            throw new ArgumentOutOfRangeException(name, wait, $"A wait must be greater than zero and at most {LongestWait}.");
+        }
     }
 }
