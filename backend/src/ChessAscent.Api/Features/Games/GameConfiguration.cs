@@ -14,9 +14,6 @@ namespace ChessAscent.Api.Features.Games;
 // through a new migration.
 internal sealed class GameConfiguration : IEntityTypeConfiguration<Game>
 {
-    /// <summary>The index that serves a player's games, most recent activity first.</summary>
-    public const string OwnerRecentGamesIndex = "IX_Games_OwnerId_UpdatedAt";
-
     public void Configure(EntityTypeBuilder<Game> game)
     {
         game.ToTable("Games");
@@ -82,8 +79,6 @@ internal sealed class GameConfiguration : IEntityTypeConfiguration<Game>
         // and a page of it reads only the rows it returns. It also serves
         // the owner foreign key, which a cascading delete of an account
         // looks rows up by.
-        game.HasIndex(g => new { g.OwnerId, g.UpdatedAt })
-            .HasDatabaseName(OwnerRecentGamesIndex)
-            .IsDescending(false, true);
+        game.HasIndex(g => new { g.OwnerId, g.UpdatedAt }).IsDescending(false, true);
     }
 }

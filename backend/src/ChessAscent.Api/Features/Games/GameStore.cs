@@ -1,7 +1,6 @@
 using ChessAscent.Api.Database;
 using ChessAscent.Chess;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 
 namespace ChessAscent.Api.Features.Games;
 
@@ -191,13 +190,16 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         {
             await database.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException exception) when (IsHalfMoveTaken(exception))
+        catch (DbUpdateException exception) when (DatabaseErrors.IsUniqueViolation(exception, MoveConfiguration.KeyName))
         {
+            // The key of Moves is (game, half-move number), so this is a
+            // half-move that is already saved.
+            //
             // Inside a transaction the caller began, SaveChanges sets a
             // savepoint and rolls back only to it on failure, so the update
             // above is still in effect here. Returning without committing
             // is what discards it.
-            return new HalfMoveConflict(firstHalfMoveNumber);
+            return new HalfMoveConflict();
         }
         finally
         {
@@ -210,15 +212,6 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         await transaction.CommitAsync(cancellationToken);
         return new MovesAppended(now);
     }
-
-    // The primary key of Moves is (game, half-move number), so a unique
-    // violation on it means the half-move is already saved.
-    private static bool IsHalfMoveTaken(DbUpdateException exception) =>
-        exception.InnerException is PostgresException
-        {
-            SqlState: PostgresErrorCodes.UniqueViolation,
-            ConstraintName: MoveConfiguration.KeyName,
-        };
 
     // PostgreSQL keeps timestamps to the microsecond and .NET to a tenth of
     // one, so the time is cut to what the database stores. A time this class

@@ -50,9 +50,8 @@ public readonly record struct MovesAppended(DateTimeOffset UpdatedAt);
 public readonly record struct GameNotFound;
 
 /// <summary>
-/// The game already has a move with this half-move number, so it has changed
-/// since the caller loaded it: another request saved a move first, or this
-/// one was submitted twice. Nothing was saved.
+/// The game already has a move at one of these half-move numbers, so it has
+/// changed since the caller loaded it: another request saved a move first, or
+/// this one was submitted twice. Nothing was saved.
 /// </summary>
-/// <param name="FirstHalfMoveNumber">The half-move number the refused moves would have started at.</param>
-public readonly record struct HalfMoveConflict(int FirstHalfMoveNumber);
+public readonly record struct HalfMoveConflict;

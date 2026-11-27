@@ -27,11 +27,33 @@ internal static class GameData
         var email = AccountData.NewEmail();
         var user = new IdentityUser { UserName = email, Email = email };
 
-        var created = await users.CreateAsync(user, AccountData.Password);
+        // No password: the owners never sign in, and hashing one is slow.
+        var created = await users.CreateAsync(user);
 
         created.Succeeded.Should().BeTrue();
         return user.Id;
     }
+
+    /// <summary>Creates a game from the standard starting position, on a store of its own.</summary>
+    public static Task<SavedGame> CreateGameAsync(
+        this ApiFactory factory, string ownerId, Opponent? opponent = null, Side playerSide = Side.White) =>
+        factory.WithStoreAsync(store => store.CreateAsync(
+            ownerId, playerSide, opponent ?? Opponent.None, StartingFen, TestContext.Current.CancellationToken));
+
+    /// <summary>Loads a game, on a store of its own.</summary>
+    public static Task<SavedGame?> LoadGameAsync(this ApiFactory factory, string ownerId, Guid gameId) =>
+        factory.WithStoreAsync(store => store.LoadAsync(ownerId, gameId, TestContext.Current.CancellationToken));
+
+    /// <summary>Appends moves to a game, on a store of its own.</summary>
+    public static Task<AppendResult> AppendAsync(
+        this ApiFactory factory,
+        string ownerId,
+        Guid gameId,
+        int firstHalfMoveNumber,
+        IReadOnlyList<PlayedMove> moves,
+        GameStatus statusAfter) =>
+        factory.WithStoreAsync(store => store.AppendMovesAsync(
+            ownerId, gameId, firstHalfMoveNumber, moves, statusAfter, TestContext.Current.CancellationToken));
 
     /// <summary>Runs <paramref name="action"/> on a store of its own, as one request would.</summary>
     public static async Task<T> WithStoreAsync<T>(this ApiFactory factory, Func<GameStore, Task<T>> action)

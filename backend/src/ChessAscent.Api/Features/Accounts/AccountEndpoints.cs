@@ -1,8 +1,8 @@
 using System.Security.Claims;
+using ChessAscent.Api.Database;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 
 namespace ChessAscent.Api.Features.Accounts;
 
@@ -77,7 +77,7 @@ public static class AccountEndpoints
         {
             created = await userManager.CreateAsync(user, request.Password);
         }
-        catch (DbUpdateException exception) when (IsUniqueUserNameViolation(exception))
+        catch (DbUpdateException exception) when (DatabaseErrors.IsUniqueViolation(exception, UniqueUserNameIndex))
         {
             // LEARN: `catch ... when (condition)` is an exception filter: the
             // block runs only if the condition holds, and otherwise the
@@ -161,15 +161,6 @@ public static class AccountEndpoints
             ? TypedResults.Ok(new CurrentUserResponse(email))
             : TypedResults.Unauthorized();
     }
-
-    // The pattern checks the inner exception's type and two of its properties
-    // in one expression.
-    private static bool IsUniqueUserNameViolation(DbUpdateException exception) =>
-        exception.InnerException is PostgresException
-        {
-            SqlState: PostgresErrorCodes.UniqueViolation,
-            ConstraintName: UniqueUserNameIndex,
-        };
 
     private static ProblemHttpResult DuplicateEmail() =>
         TypedResults.Problem(DuplicateEmailDetail, statusCode: StatusCodes.Status409Conflict);
