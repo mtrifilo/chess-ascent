@@ -141,6 +141,68 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task AppendPastTheEndOfTheMovesIsAConflictAndSavesNothing()
+    {
+        var owner = await factory.CreateOwnerAsync();
+        var game = await factory.CreateGameAsync(owner);
+        var board = GameData.Rules.NewGame();
+        var (e4, afterE4) = board.Play("e2e4");
+        await factory.AppendAsync(owner, game.Id, 1, e4, afterE4);
+        var before = await factory.LoadGameAsync(owner, game.Id);
+        var (e5, afterE5) = board.Play("e7e5");
+
+        var outcome = await factory.AppendAsync(owner, game.Id, before!.NextHalfMoveNumber + 1, e5, afterE5);
+        var after = await factory.LoadGameAsync(owner, game.Id);
+
+        outcome.Value.Should().Be(new HalfMoveConflict());
+        after.Should().BeEquivalentTo(before);
+    }
+
+    // The count of saved moves is checked first; the key on (game, half-move
+    // number) still refuses a duplicate when the numbers already have a gap
+    // that something other than the store wrote.
+    [Fact]
+    public async Task AppendOntoAHalfMoveNumberTakenAfterAGapIsStillAConflict()
+    {
+        var owner = await factory.CreateOwnerAsync();
+        var game = await factory.CreateGameAsync(owner);
+        var (e4, afterE4) = GameData.Rules.NewGame().Play("e2e4");
+        await factory.AppendAsync(owner, game.Id, 1, e4, afterE4);
+        await ExecuteAsync("""INSERT INTO "Moves" VALUES (@id, 3, 'g1f3', 'Nf3')""", game.Id);
+        var before = await factory.LoadGameAsync(owner, game.Id);
+
+        var outcome = await factory.AppendAsync(owner, game.Id, 3, [new PlayedMove("e7e5", "e5")], new Ongoing());
+        var after = await factory.LoadGameAsync(owner, game.Id);
+
+        before!.Moves.Should().HaveCount(2);
+        outcome.Value.Should().Be(new HalfMoveConflict());
+        after.Should().BeEquivalentTo(before);
+    }
+
+    [Fact]
+    public async Task AppendToAFinishedGameIsRefusedAndTheResultStands()
+    {
+        var owner = await factory.CreateOwnerAsync();
+        var otherPlayer = await factory.CreateOwnerAsync();
+        var game = await factory.CreateGameAsync(owner);
+        var (foolsMate, afterMate) = GameData.Rules.NewGame().Play("f2f3", "e7e5", "g2g4", "d8h4");
+        await factory.AppendAsync(owner, game.Id, 1, foolsMate, afterMate);
+        var finished = await factory.LoadGameAsync(owner, game.Id);
+
+        // As a stale request would send it: a move the board it had loaded
+        // allowed, with that board's status.
+        var outcome = await factory.AppendAsync(
+            owner, game.Id, finished!.NextHalfMoveNumber, [new PlayedMove("a2a3", "a3")], new Ongoing());
+        var asOtherPlayer = await factory.AppendAsync(
+            otherPlayer, game.Id, finished.NextHalfMoveNumber, [new PlayedMove("a2a3", "a3")], new Ongoing());
+        var after = await factory.LoadGameAsync(owner, game.Id);
+
+        outcome.Value.Should().Be(new GameFinished());
+        asOtherPlayer.Value.Should().Be(new GameNotFound(), "another player's finished game is not revealed either");
+        after.Should().BeEquivalentTo(finished);
+    }
+
+    [Fact]
     public async Task AppendToAnotherPlayersGameIsNotFoundJustAsForAGameThatDoesNotExistAndSavesNothing()
     {
         var owner = await factory.CreateOwnerAsync();
@@ -220,6 +282,20 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         row.Should().Equal("White", "Computer", 1400, "Finished", "BlackWins", "Checkmate");
     }
 
+    // The stored text is each member's name, so these lists are the values
+    // rows already hold. A member renamed here would leave those rows
+    // unreadable, so a change to a list needs a migration that rewrites them.
+    [Fact]
+    public void TheStoredEnumerationNamesAreTheOnesRowsHold()
+    {
+        Enum.GetNames<Side>().Should().Equal("White", "Black");
+        Enum.GetNames<OpponentKind>().Should().Equal("None", "Computer");
+        Enum.GetNames<GameProgress>().Should().Equal("Ongoing", "Finished");
+        Enum.GetNames<GameResult>().Should().Equal("WhiteWins", "BlackWins", "Draw");
+        Enum.GetNames<GameEndReason>().Should().Equal(
+            "Checkmate", "Stalemate", "ThreefoldRepetition", "FiftyMoveRule", "DeadPosition", "Resignation");
+    }
+
     [Fact]
     public async Task DeletingAnAccountDeletesItsGamesAndTheirMoves()
     {
@@ -243,6 +319,16 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
             game.Id);
 
         counts.Should().Equal(0L, 0L);
+    }
+
+    // Writes to the database directly, bypassing the store.
+    private async Task ExecuteAsync(string sql, Guid gameId)
+    {
+        await using var connection = new NpgsqlConnection(postgres.ConnectionString);
+        await connection.OpenAsync(Cancellation);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("id", gameId);
+        await command.ExecuteNonQueryAsync(Cancellation);
     }
 
     // Reads the database directly, bypassing EF Core, to see what is stored.

@@ -33,19 +33,23 @@ internal sealed class GameConfiguration : IEntityTypeConfiguration<Game>
         // code does not own) has no list of games, yet the database still
         // gets a real foreign key constraint.
         //
-        // OnDelete sets the constraint's ON DELETE action, which runs in the
-        // database, not in EF Core, so it holds for any delete of an account
-        // row, whoever issues it. Cascade is the choice because a game has no
-        // meaning without its player (no other account takes part in it), and
-        // it matches Identity's own tables, whose claims, logins and tokens
-        // rows cascade the same way. UserManager.DeleteAsync can therefore
-        // delete an account with its games and their moves; with Restrict,
-        // any future account deletion would first have to delete the games
-        // itself, and would fail if it forgot. JPA's cascade = REMOVE is not
-        // the counterpart: Hibernate carries it out by loading and deleting
-        // the children itself, so a delete made outside Hibernate skips it.
-        // Hibernate's @OnDelete(action = CASCADE) is, since it too writes ON
-        // DELETE CASCADE into the schema.
+        // OnDelete(DeleteBehavior.Cascade) works at two levels. EF Core marks
+        // as deleted any dependents the context is tracking when their
+        // principal is deleted, like JPA's cascade = REMOVE; and the
+        // migration writes ON DELETE CASCADE into the foreign key, like
+        // Hibernate's @OnDelete(action = CASCADE), so the database removes the
+        // rows EF Core never loaded, and does so for a delete issued by any
+        // code. Here the games are never tracked when an account is deleted,
+        // so it is the database's half that acts. (ClientCascade keeps only
+        // EF Core's half.)
+        //
+        // Cascade is the choice because a game has no meaning without its
+        // player (no other account takes part in it), and it matches
+        // Identity's own tables, whose claims, logins and tokens rows cascade
+        // the same way. UserManager.DeleteAsync can therefore delete an
+        // account with its games and their moves; with Restrict, any future
+        // account deletion would first have to delete the games itself, and
+        // would fail if it forgot.
         game.HasOne<IdentityUser>()
             .WithMany()
             .HasForeignKey(g => g.OwnerId)

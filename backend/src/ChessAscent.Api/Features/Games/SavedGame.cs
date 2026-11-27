@@ -30,10 +30,18 @@ public sealed record SavedGame(
     GameEndReason? EndReason,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    IReadOnlyList<PlayedMove> Moves);
+    IReadOnlyList<PlayedMove> Moves)
+{
+    /// <summary>
+    /// The half-move number the next move will have, which is what
+    /// <see cref="GameStore.AppendMovesAsync"/> expects as its first half-move
+    /// number.
+    /// </summary>
+    public int NextHalfMoveNumber => Moves.Count + 1;
+}
 
 /// <summary>The outcome of <see cref="GameStore.AppendMovesAsync"/>.</summary>
-public union AppendResult(MovesAppended, GameNotFound, HalfMoveConflict)
+public union AppendResult(MovesAppended, GameNotFound, GameFinished, HalfMoveConflict)
 {
     public override string ToString() => Value?.ToString() ?? "(no case)";
 }
@@ -50,8 +58,19 @@ public readonly record struct MovesAppended(DateTimeOffset UpdatedAt);
 public readonly record struct GameNotFound;
 
 /// <summary>
-/// The game already has a move at one of these half-move numbers, so it has
-/// changed since the caller loaded it: another request saved a move first, or
-/// this one was submitted twice. Nothing was saved.
+/// The game is over, so no move can be added and its result stands. Nothing
+/// was saved.
+/// </summary>
+/// <remarks>
+/// Not named GameAlreadyOver, which is the chess interface's own case for a
+/// move played on a finished board.
+/// </remarks>
+public readonly record struct GameFinished;
+
+/// <summary>
+/// The game does not have exactly one move fewer than the first half-move
+/// number given, so it is not the game the caller played the moves on:
+/// another request saved a move first, or this one was submitted twice.
+/// Nothing was saved. Load the game again to see where it stands.
 /// </summary>
 public readonly record struct HalfMoveConflict;

@@ -44,10 +44,14 @@ public sealed class AppendRaceTests(ApiFactory factory, PostgresFixture postgres
 
         transactions.BothBegan.Should().BeTrue("the two appends must have raced");
         var values = outcomes.Select(outcome => outcome.Value).ToList();
-        values.OfType<HalfMoveConflict>().Should().ContainSingle();
         var appended = values.OfType<MovesAppended>().Should().ContainSingle().Subject;
-
         var mateWon = values[0] is MovesAppended;
+
+        // The loser waits for the winner's row lock and then finds the game
+        // changed: still being played but with more moves, or over.
+        var lost = values.Single(value => value is not MovesAppended);
+        lost.Should().Be(mateWon ? (object)new GameFinished() : new HalfMoveConflict());
+
         var (winningMoves, winningStatus) = mateWon ? (mate, afterMate) : (quiet, afterQuiet);
         saved!.Moves.Should().Equal([.. opening, .. winningMoves]);
         saved.Rebuild().Status.Should().Be(winningStatus);

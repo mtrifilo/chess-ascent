@@ -7,9 +7,13 @@ namespace ChessAscent.Api.Features.Games;
 // conventions (a property named Id is the key; a property of a type it
 // maps becomes a column) plus a configuration class (GameConfiguration),
 // the role orm.xml plays for JPA when the annotations are left out. Two
-// differences from a Hibernate entity: no proxy subclass is ever made, so
-// the class can be sealed, and there is no lazy loading unless it is
-// switched on, so Moves holds only what a query asked for with Include.
+// differences from a Hibernate entity. EF Core makes no proxy subclass
+// unless lazy-loading or change-tracking proxies are switched on (a separate
+// package, Microsoft.EntityFrameworkCore.Proxies, which needs unsealed
+// classes and virtual members); this project uses neither, so the class can
+// be sealed. And without those proxies there is no lazy loading: Moves holds
+// what the query loaded with Include, or on a tracking context whatever
+// moves that context has already loaded, and is otherwise simply empty.
 //
 // It is internal: only GameStore reads and writes it, and what leaves
 // GameStore is a SavedGame, so the rest of the API never holds a mutable

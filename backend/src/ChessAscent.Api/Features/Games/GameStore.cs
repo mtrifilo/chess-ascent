@@ -13,9 +13,9 @@ namespace ChessAscent.Api.Features.Games;
 /// </para>
 /// <para>
 /// It records what it is given and does not check moves against the rules.
-/// The caller plays them through <see cref="IChessGame"/> first, on the game
-/// rebuilt from <see cref="LoadAsync"/>, and saves the moves and status that
-/// produced.
+/// The caller rebuilds the game from what <see cref="LoadAsync"/> returns,
+/// with <see cref="IChessRules.Load"/>, plays the moves on it through
+/// <see cref="IChessGame"/>, and saves the moves and status that produced.
 /// </para>
 /// <para>
 /// Scoped, like the <see cref="AppDbContext"/> it uses, and like it not safe
@@ -111,18 +111,24 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
     /// <param name="ownerId">The id of the account the game belongs to.</param>
     /// <param name="gameId">The game.</param>
     /// <param name="firstHalfMoveNumber">
-    /// The half-move number of the first move: one more than the number of
-    /// moves in the game the caller loaded and played them on.
+    /// The half-move number of the first move: the
+    /// <see cref="SavedGame.NextHalfMoveNumber"/> of the game the caller loaded
+    /// and played them on.
     /// </param>
     /// <param name="moves">The moves in the order they were played, such as the player's move and the computer's reply.</param>
     /// <param name="statusAfter">The game's status after the last move, as the chess interface reported it.</param>
-    /// <param name="cancellationToken">Cancels the save; nothing is saved.</param>
+    /// <param name="cancellationToken">
+    /// Cancels the save, which then saves nothing. Once the commit has been
+    /// sent it is no longer cancelled, so a save that has happened is always
+    /// reported as one.
+    /// </param>
     /// <returns>
     /// <see cref="MovesAppended"/>; <see cref="GameNotFound"/> when no game
     /// with <paramref name="gameId"/> belongs to <paramref name="ownerId"/>;
-    /// or <see cref="HalfMoveConflict"/> when the game already has a move
-    /// at one of those half-move numbers. In the last two cases nothing is
-    /// saved.
+    /// <see cref="GameFinished"/> when the game is over;
+    /// or <see cref="HalfMoveConflict"/> when the game does not have exactly
+    /// <c><paramref name="firstHalfMoveNumber"/> - 1</c> moves. In the last
+    /// three cases nothing is saved.
     /// </returns>
     public async Task<AppendResult> AppendMovesAsync(
         string ownerId,
@@ -141,15 +147,6 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
 
         var (status, result, endReason) = ToStoredOutcome(statusAfter);
         var now = Now();
-        var rows = moves
-            .Select((move, index) => new Move
-            {
-                GameId = gameId,
-                HalfMoveNumber = firstHalfMoveNumber + index,
-                Uci = move.Uci,
-                San = move.San,
-            })
-            .ToList();
 
         // LEARN: An explicit transaction. Spring's @Transactional opens and
         // commits one around a method through a proxy; EF Core has no
@@ -158,21 +155,22 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // disposing a transaction that was never committed rolls it back, so
         // every early return below, and any exception, undoes whatever ran
         // inside it. A lone SaveChangesAsync is already atomic (it opens a
-        // transaction of its own); one is needed here because the work is two
-        // round trips, the update and then the insert.
+        // transaction of its own); one is needed here because the work is
+        // several round trips: the update, the count and the insert.
         await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
 
         // LEARN: ExecuteUpdateAsync sends one UPDATE ... WHERE straight to
         // the database, like a JPQL bulk update with executeUpdate(): it loads
         // nothing, bypasses the change tracker, and returns the number of rows
-        // it changed. Here that number is the ownership check.
+        // it changed. Here that number checks ownership and that the game is
+        // still being played; a finished game is never reopened.
         //
-        // The update also locks the game's row until the transaction ends.
-        // A second append to the same game waits at this statement until
-        // this one commits or rolls back, and if it then goes on, its insert
-        // meets this one's moves and is refused below.
+        // The update also locks the game's row until the transaction ends,
+        // so appends to one game run one at a time from here on: a second
+        // append waits at this statement until this one commits or rolls
+        // back, and the count below then sees the moves this one saved.
         var updated = await database.Games
-            .Where(g => g.Id == gameId && g.OwnerId == ownerId)
+            .Where(g => g.Id == gameId && g.OwnerId == ownerId && g.Status == GameProgress.Ongoing)
             .ExecuteUpdateAsync(
                 game => game
                     .SetProperty(g => g.Status, status)
@@ -182,9 +180,32 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
                 cancellationToken);
         if (updated == 0)
         {
-            return new GameNotFound();
+            // Only a game the player owns is reported as finished, so this
+            // says nothing about anyone else's games.
+            var owned = await database.Games.AnyAsync(g => g.Id == gameId && g.OwnerId == ownerId, cancellationToken);
+            return owned ? new GameFinished() : new GameNotFound();
         }
 
+        // The new moves must follow the saved ones with no gap: a gap would
+        // break the rule that the move at index i is half-move i + 1, and
+        // every later append would then be refused. Counting under the row
+        // lock also answers a move submitted twice before it reaches the
+        // insert.
+        var saved = await database.Moves.CountAsync(m => m.GameId == gameId, cancellationToken);
+        if (saved != firstHalfMoveNumber - 1)
+        {
+            return new HalfMoveConflict();
+        }
+
+        var rows = moves
+            .Select((move, index) => new Move
+            {
+                GameId = gameId,
+                HalfMoveNumber = firstHalfMoveNumber + index,
+                Uci = move.Uci,
+                San = move.San,
+            })
+            .ToList();
         database.Moves.AddRange(rows);
         try
         {
@@ -192,8 +213,10 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         }
         catch (DbUpdateException exception) when (DatabaseErrors.IsUniqueViolation(exception, MoveConfiguration.KeyName))
         {
-            // The key of Moves is (game, half-move number), so this is a
-            // half-move that is already saved.
+            // The key of Moves is (game, half-move number), so a row already
+            // holds one of these numbers even though the count matched: the
+            // saved numbers have a gap that this store did not write. The
+            // key still refuses the duplicate.
             //
             // Inside a transaction the caller began, SaveChanges sets a
             // savepoint and rolls back only to it on failure, so the update
@@ -209,7 +232,9 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
             }
         }
 
-        await transaction.CommitAsync(cancellationToken);
+        // Not cancellable: a commit cancelled after the server has applied it
+        // would report a save that happened as one that did not.
+        await transaction.CommitAsync(CancellationToken.None);
         return new MovesAppended(now);
     }
 
