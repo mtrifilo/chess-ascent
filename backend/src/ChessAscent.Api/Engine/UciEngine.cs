@@ -169,6 +169,11 @@ public sealed partial class UciEngine : IAsyncDisposable
     // 1 once the error about another process holding the output is logged.
     private int _outputHeldOpenReported;
 
+    // Set by the output reader the moment the output reaches its end, before
+    // it waits for the exit code, so that a call that gives up meanwhile
+    // reports the engine as gone rather than as slow.
+    private volatile bool _outputClosed;
+
     private UciEngine(Process process, UciEngineOptions options, ILogger logger)
     {
         _process = process;
@@ -199,7 +204,9 @@ public sealed partial class UciEngine : IAsyncDisposable
     /// step, or disposal has begun. An unusable engine stays unusable: dispose
     /// it and start another.
     /// </summary>
-    public bool IsUsable => !_lifetime.IsCancellationRequested && _end is null && _fault is null;
+    public bool IsUsable => !_lifetime.IsCancellationRequested && !HasEnded && _fault is null;
+
+    private bool HasEnded => _end is not null || _outputClosed;
 
     /// <summary>
     /// Starts the engine and completes the handshake: <c>uci</c> until
@@ -266,7 +273,10 @@ public sealed partial class UciEngine : IAsyncDisposable
                     await exchange.ReadReplyAsync("readyok");
                     return true;
                 },
-                cancellationToken);
+                cancellationToken,
+                // A failed handshake disposes the engine, so a reply it owes
+                // is not worth waiting for.
+                collectOwedReply: false);
             return engine;
         }
         catch
@@ -379,8 +389,9 @@ public sealed partial class UciEngine : IAsyncDisposable
     /// A process the engine started and left running when it exited is not
     /// killed: once its parent has gone, it is no longer part of the engine's
     /// process tree, and .NET offers no portable way to find it. If it holds
-    /// the engine's output open, disposal logs an error and closes this side of
-    /// the pipes; if it does not, nothing here can notice it. Start engines
+    /// the engine's output open, this is normally noticed, logged as an error,
+    /// and this side of the pipes is closed; if it does not, nothing here can
+    /// notice it. Start engines
     /// directly, or from a wrapper script that runs the engine with
     /// <c>exec</c>, so that no such process exists.
     /// </para>
@@ -578,11 +589,13 @@ public sealed partial class UciEngine : IAsyncDisposable
 
     // Runs one exchange with the engine, holding the gate. If the exchange
     // ends early while a reply is owed, that reply would later be mistaken
-    // for the reply to another command, so it is collected first.
+    // for the reply to another command, so it is collected first, or, when
+    // that is not wanted, the conversation is marked out of step.
     private async Task<T> ExchangeAsync<T>(
         TimeSpan timeout,
         Func<Exchange, Task<T>> conversation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool collectOwedReply = true)
     {
         await EnterAsync(cancellationToken);
         try
@@ -598,9 +611,16 @@ public sealed partial class UciEngine : IAsyncDisposable
             }
             catch (OperationCanceledException) when (reply.IsCancellationRequested)
             {
-                if (_end is null && exchange.Awaiting is { } owed)
+                if (!HasEnded && exchange.Awaiting is { } owed)
                 {
-                    await CollectOwedReplyAsync(owed);
+                    if (collectOwedReply)
+                    {
+                        await CollectOwedReplyAsync(owed);
+                    }
+                    else
+                    {
+                        _fault ??= $"it stopped waiting for {owed}";
+                    }
                 }
 
                 throw Interrupted(exchange.Awaiting, timeout, cancellationToken);
@@ -655,9 +675,9 @@ public sealed partial class UciEngine : IAsyncDisposable
     // caller's own cancellation; then disposal; and otherwise the timeout.
     private Exception Interrupted(string? awaited, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        if (_end is { } end)
+        if (HasEnded)
         {
-            return UciEngineExitedException.Exited(end.ExitCode);
+            return EndedException();
         }
 
         if (cancellationToken.IsCancellationRequested)
@@ -673,9 +693,9 @@ public sealed partial class UciEngine : IAsyncDisposable
     private void ThrowIfUnusable()
     {
         ObjectDisposedException.ThrowIf(_lifetime.IsCancellationRequested, this);
-        if (_end is { } end)
+        if (HasEnded)
         {
-            throw UciEngineExitedException.Exited(end.ExitCode);
+            throw EndedException();
         }
 
         if (_fault is { } fault)
@@ -684,8 +704,14 @@ public sealed partial class UciEngine : IAsyncDisposable
         }
     }
 
+    private UciEngineExitedException EndedException() =>
+        _end is { } end ? UciEngineExitedException.Exited(end.ExitCode) : UciEngineExitedException.ClosedOutput();
+
     private async Task SendAsync(string command, CancellationToken cancellationToken)
     {
+        // Time that ran out before anything was written leaves the
+        // conversation in step, so it is not treated as a cut-off write.
+        cancellationToken.ThrowIfCancellationRequested();
         LogSent(_logger, ProcessId, command);
         try
         {
@@ -729,7 +755,7 @@ public sealed partial class UciEngine : IAsyncDisposable
             catch (ChannelClosedException)
             {
                 // The output closed, or the exit watcher gave up on it.
-                throw _end is { } end ? UciEngineExitedException.Exited(end.ExitCode) : UciEngineExitedException.ClosedOutput();
+                throw EndedException();
             }
 
             var tokens = UciText.Tokens(line);
@@ -784,6 +810,7 @@ public sealed partial class UciEngine : IAsyncDisposable
                 await _lines.Writer.WriteAsync(line.Text);
             }
 
+            _outputClosed = true;
             exitCode = await WaitForExitAsync() ? _process.ExitCode : null;
         }
         catch (Exception e) when (e is IOException or ObjectDisposedException or ChannelClosedException)

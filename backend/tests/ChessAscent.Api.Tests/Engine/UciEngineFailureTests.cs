@@ -167,6 +167,48 @@ public sealed class UciEngineFailureTests
     }
 
     [Fact]
+    public async Task TheReadyokACancelledCallWasOwedIsNotTakenByTheNextCall()
+    {
+        // The cancelled call's readyok comes at 1,000 ms. The next call's
+        // comes 600 ms after it is asked. Had the first readyok been left
+        // unread, the next call would take it and return at once.
+        using var fake = new FakeEngine("--ready-ms", "0,1000,600");
+        await using var engine = await fake.StartAsync();
+        using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+        var cancelled = () => engine.SetOptionAsync("Skill Level", "1", cancel.Token);
+        await cancelled.Should().ThrowAsync<OperationCanceledException>();
+        await Task.Delay(1000, Token);
+        var clock = Stopwatch.StartNew();
+
+        await engine.SetOptionAsync("Skill Level", "2", Token);
+
+        clock.Elapsed.Should().BeGreaterThan(TimeSpan.FromMilliseconds(450));
+    }
+
+    [Fact]
+    public async Task EngineThatClosesItsOutputButRunsOnIsReportedAsExited()
+    {
+        // The engine closes its output and keeps running, so its exit code
+        // never comes; the call gives up long before the exit timeout.
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Needs /bin/sh.");
+        using var fake = new FakeEngine();
+        fake.Options = fake.Options with
+        {
+            ExecutablePath = "/bin/sh",
+            Arguments = ["-c", "read l; echo uciok; read l; echo readyok; read l; read l; exec 1>&-; exec sleep 30"],
+            ReadyTimeout = TimeSpan.FromMilliseconds(1000),
+            StopTimeout = TimeSpan.FromMilliseconds(300),
+            ExitTimeout = TimeSpan.FromSeconds(5),
+        };
+        await using var engine = await fake.StartAsync();
+
+        var setOption = () => engine.SetOptionAsync("Skill Level", "1", Token);
+
+        (await setOption.Should().ThrowExactlyAsync<UciEngineExitedException>()).Which.Message.Should().Contain("closed its output");
+        engine.IsUsable.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task CancellingASearchThatIgnoresStopMakesTheEngineUnusable()
     {
         using var fake = new FakeEngine("--silent-on", "go");

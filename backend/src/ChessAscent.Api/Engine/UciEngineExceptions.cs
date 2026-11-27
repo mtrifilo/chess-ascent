@@ -49,7 +49,7 @@ public sealed class UciEngineTimeoutException : UciEngineException
 {
     internal UciEngineTimeoutException(string? awaited, TimeSpan timeout)
         : base(awaited is null
-            ? $"The engine did not read a command within {timeout.TotalMilliseconds:0} ms."
+            ? $"The call ran out of its {timeout.TotalMilliseconds:0} ms while a command was being sent."
             : $"The engine did not answer with {awaited} within {timeout.TotalMilliseconds:0} ms.")
     {
         Awaited = awaited;
@@ -58,8 +58,8 @@ public sealed class UciEngineTimeoutException : UciEngineException
 
     /// <summary>
     /// The reply the client was waiting for: <c>uciok</c>, <c>readyok</c> or
-    /// <c>bestmove</c>. Null when the time ran out while a command was still
-    /// being written, because the engine was not reading its input.
+    /// <c>bestmove</c>. Null when the time ran out while a command was being
+    /// sent, which happens when the engine stops reading its input.
     /// </summary>
     public string? Awaited { get; }
 
