@@ -126,6 +126,25 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         { "dead position", GameProgress.Finished, GameResult.Draw, GameEndReason.DeadPosition },
     };
 
+    // The compiler makes the mapping handle every DrawReason; this checks
+    // that each is stored as the reason of the same name, so a member added
+    // later is covered without being listed here.
+    [Theory]
+    [MemberData(nameof(DrawReasons))]
+    public async Task AppendStoresEachDrawReasonAsTheEndReasonOfTheSameName(DrawReason reason)
+    {
+        var owner = await factory.CreateOwnerAsync();
+        var game = await factory.CreateGameAsync(owner);
+
+        await factory.AppendAsync(owner, game.Id, 1, [new PlayedMove("e2e4", "e4")], new Draw(reason));
+        var loaded = await factory.LoadGameAsync(owner, game.Id);
+
+        loaded!.Result.Should().Be(GameResult.Draw);
+        loaded.EndReason.Should().Be(Enum.Parse<GameEndReason>(reason.ToString()));
+    }
+
+    public static TheoryData<DrawReason> DrawReasons => new(Enum.GetValues<DrawReason>());
+
     [Fact]
     public async Task AppendAtAHalfMoveNumberAlreadySavedIsAConflictAndSavesNothing()
     {

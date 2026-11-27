@@ -296,8 +296,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
     // mapped. Covering every named member but no unnamed number is CS8524.
     // A discard arm (`_ => ...`) would silence both, and with them the first
     // check, so CS8524 alone is switched off here: an unnamed number, which
-    // Enum.IsDefined and the chess interface never let through, throws
-    // SwitchExpressionException.
+    // the chess interface never produces, throws SwitchExpressionException.
 #pragma warning disable CS8524
     private static GameResult WinFor(Side winner) => winner switch
     {
