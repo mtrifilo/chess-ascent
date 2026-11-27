@@ -21,6 +21,12 @@
   height: 100%;
 }
 
+/* Chessground shows a pointer over any board it listens to; a read-only
+ * board still listens, but nothing on it can be picked up. */
+.chess-board.read-only .cg-wrap cg-board {
+  cursor: default;
+}
+
 /* A light square sits top-left in either orientation (a8 with White at the
  * bottom, h1 with Black), so one checkerboard serves both. Each 25% tile is
  * two squares by two. */

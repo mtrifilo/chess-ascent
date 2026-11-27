@@ -37,8 +37,11 @@ export type ChessBoardProps = {
   // Shows the position only: nothing can be picked up.
   readOnly?: boolean
   // Called with each move the person makes, by drag or by tapping the piece
-  // and then the square. The board shows the move at once and keeps showing
-  // it until its inputs change.
+  // and then the square. The board shows the move at once and lets nothing
+  // more move until new destinations arrive. It draws the position in `fen`
+  // again only when `fen` changes, so the other inputs can change while the
+  // move is being sent without undoing it. To undo a move without a new
+  // `fen`, mount a new board by changing its React `key`.
   onMove?: (move: BoardMove) => void
 }
 
@@ -98,56 +101,73 @@ export function ChessBoard({
   const reportMove = useEffectEvent((from: Key, to: Key) => {
     onMove?.({ from: from as Square, to: to as Square })
   })
-  const currentPosition = useEffectEvent(() =>
-    positionConfig(fen, destinations, lastMove, check)
+  const currentFen = useEffectEvent(() => fen)
+  const currentMarks = useEffectEvent(() =>
+    marksConfig(fen, destinations, lastMove, check, readOnly)
   )
   const currentShapes = useEffectEvent(() => toShapes(arrows, circles))
   const currentOrientation = useEffectEvent(() => orientation)
 
-  // Created with every input at once, so it does not animate from a default
-  // position. Read-only is fixed at creation, because chessground binds its
-  // pointer listeners then, so a change to it creates the board again.
+  // Created once, with every input, so it does not animate from a default
+  // position. Read-only is applied through `movable` below rather than
+  // chessground's `viewOnly`, which is fixed at creation.
   useEffect(() => {
     const element = elementRef.current
     if (!element) return
-    const position = currentPosition()
+    const marks = currentMarks()
     const api = Chessground(element, {
       ...FIXED_CONFIG,
-      ...position,
+      ...marks,
+      fen: currentFen(),
       orientation: currentOrientation(),
-      viewOnly: readOnly,
       movable: {
         ...FIXED_CONFIG.movable,
-        ...position.movable,
+        ...marks.movable,
         events: { after: (from, to) => reportMove(from, to) },
       },
       drawable: { ...FIXED_CONFIG.drawable, autoShapes: currentShapes() },
     })
     apiRef.current = api
     return () => {
+      // A piece still held when the board goes away would keep chessground's
+      // drag loop running, since destroy() does not end it.
+      api.cancelMove()
       api.destroy()
       apiRef.current = null
     }
-  }, [readOnly])
+  }, [])
 
-  // Each effect below passes one group of inputs on when its value changes.
-  // The keys compare by value, so a parent that builds a new Map or array on
-  // every render does not undo a move the person has just made.
-  const positionKey = JSON.stringify([
-    fen,
+  // Each effect below passes a group of inputs on when its value changes.
+  // The keys compare by value, holding only the fields used, so a parent
+  // that builds new objects on every render leaves the board alone.
+
+  // The pieces are redrawn from `fen` only when it changes, together with
+  // everything that depends on the position.
+  useEffect(() => {
+    apiRef.current?.set({ fen, ...currentMarks() })
+  }, [fen])
+
+  // The rest never resets the pieces, so changing it while a move is being
+  // sent does not undo the move. A Map has no JSON form of its own, so its
+  // entries are listed.
+  const marksKey = JSON.stringify([
     destinations ? [...destinations] : [],
-    lastMove,
+    lastMove && [lastMove.from, lastMove.to],
     check,
+    readOnly,
   ])
   useEffect(() => {
-    apiRef.current?.set(currentPosition())
-  }, [positionKey])
+    apiRef.current?.set(currentMarks())
+  }, [marksKey])
 
   useEffect(() => {
     apiRef.current?.set({ orientation })
   }, [orientation])
 
-  const shapesKey = JSON.stringify([arrows, circles])
+  const shapesKey = JSON.stringify([
+    arrows?.map(({ from, to }) => [from, to]),
+    circles,
+  ])
   useEffect(() => {
     apiRef.current?.setAutoShapes(currentShapes())
   }, [shapesKey])
@@ -155,28 +175,37 @@ export function ChessBoard({
   return (
     // Chessground draws nothing that assistive technology can read, so the
     // board is presented as one named image.
-    <div role="img" aria-label="Chess board" className="chess-board">
+    <div
+      role="img"
+      aria-label="Chess board"
+      className={readOnly ? 'chess-board read-only' : 'chess-board'}
+    >
       <div ref={elementRef} />
     </div>
   )
 }
 
-function positionConfig(
+// Everything chessground shows besides the pieces: whose turn it is, what may
+// move where, the last move and check. Read-only gives no side the move and
+// no destinations, so nothing can be picked up.
+function marksConfig(
   fen: string,
   destinations: ChessBoardProps['destinations'],
   lastMove: BoardMove | undefined,
-  check: Square | undefined
+  check: Square | undefined,
+  readOnly: boolean
 ) {
   const side: Side = fen.split(' ')[1] === 'b' ? 'black' : 'white'
   return {
-    fen,
     turnColor: side,
     lastMove: lastMove ? [lastMove.from, lastMove.to] : undefined,
     check: checkedSide(fen, check),
     movable: {
-      color: side,
+      color: readOnly ? undefined : side,
       dests: new Map(
-        [...(destinations ?? [])].map(([from, to]) => [from, [...to]])
+        readOnly
+          ? []
+          : [...(destinations ?? [])].map(([from, to]) => [from, [...to]])
       ),
     },
   } satisfies Config

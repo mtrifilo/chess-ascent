@@ -11,6 +11,7 @@ import { ChessBoard, type ChessBoardProps, type Square } from './chess-board'
 const api = vi.hoisted(() => ({
   set: vi.fn(),
   setAutoShapes: vi.fn(),
+  cancelMove: vi.fn(),
   destroy: vi.fn(),
 }))
 
@@ -61,7 +62,6 @@ describe('ChessBoard', () => {
     expect(config.orientation).toBe('white')
     expect(config.turnColor).toBe('white')
     expect(config.lastMove).toEqual(['d7', 'd6'])
-    expect(config.viewOnly).toBe(false)
     expect(config.movable?.color).toBe('white')
     expect(config.movable?.dests).toEqual(DESTINATIONS)
   })
@@ -141,19 +141,42 @@ describe('ChessBoard', () => {
     expect(latest).toHaveBeenCalledWith({ from: 'f3', to: 'g5' })
   })
 
-  it('leaves the board alone when re-rendered with equal inputs', () => {
-    const { rerender } = render(<ChessBoard {...props()} />)
+  it('leaves the board alone when re-rendered with equal inputs in new objects', () => {
+    const shapes = () => ({
+      arrows: [{ from: 'b1', to: 'd2' }] as const,
+      circles: ['b1'] as const,
+    })
+    const { rerender } = render(<ChessBoard {...props(shapes())} />)
     api.set.mockClear()
     api.setAutoShapes.mockClear()
 
-    rerender(<ChessBoard {...props({ onMove: vi.fn() })} />)
+    rerender(
+      <ChessBoard
+        {...props({
+          ...shapes(),
+          destinations: new Map(DESTINATIONS),
+          lastMove: { from: 'd7', to: 'd6' },
+          onMove: vi.fn(),
+        })}
+      />
+    )
 
     expect(Chessground).toHaveBeenCalledTimes(1)
     expect(api.set).not.toHaveBeenCalled()
     expect(api.setAutoShapes).not.toHaveBeenCalled()
   })
 
-  it('passes a new position on with its legal moves and last move', () => {
+  it('ignores fields of the last move that it does not use', () => {
+    const { rerender } = render(<ChessBoard {...props()} />)
+    api.set.mockClear()
+    const fromServer = { from: 'd7', to: 'd6', at: 1 } as const
+
+    rerender(<ChessBoard {...props({ lastMove: fromServer })} />)
+
+    expect(api.set).not.toHaveBeenCalled()
+  })
+
+  it('redraws the pieces for a new position, with its legal moves and last move', () => {
     const { rerender } = render(<ChessBoard {...props()} />)
     api.set.mockClear()
 
@@ -165,7 +188,6 @@ describe('ChessBoard', () => {
       />
     )
 
-    expect(api.set).toHaveBeenCalledTimes(1)
     expect(api.set).toHaveBeenCalledWith({
       fen: BLACK_TO_MOVE,
       turnColor: 'black',
@@ -174,6 +196,25 @@ describe('ChessBoard', () => {
       movable: { color: 'black', dests: new Map([['e7', ['e6', 'e5']]]) },
     })
   })
+
+  // After a move, chessground already shows it; resending the old FEN would
+  // put the piece back while the move is being sent.
+  it.each([
+    ['the destinations', { destinations: new Map() }],
+    ['the last move', { lastMove: { from: 'f3', to: 'g5' } }],
+    ['read-only', { readOnly: true }],
+  ] as const)(
+    'passes a change to %s on without redrawing the pieces',
+    (_, change) => {
+      const { rerender } = render(<ChessBoard {...props()} />)
+      api.set.mockClear()
+
+      rerender(<ChessBoard {...props(change)} />)
+
+      expect(api.set).toHaveBeenCalledTimes(1)
+      expect(api.set.mock.calls[0][0]).not.toHaveProperty('fen')
+    }
+  )
 
   it('clears the last move when it is no longer given', () => {
     const { rerender } = render(<ChessBoard {...props()} />)
@@ -207,22 +248,38 @@ describe('ChessBoard', () => {
     ])
   })
 
-  it('creates the board again, read-only, when read-only is turned on', () => {
-    const { rerender } = render(<ChessBoard {...props()} />)
+  it('gives no side the move and no destinations when read-only', () => {
+    render(<ChessBoard {...props({ readOnly: true })} />)
 
-    rerender(<ChessBoard {...props({ readOnly: true })} />)
-
-    expect(api.destroy).toHaveBeenCalledTimes(1)
-    expect(Chessground).toHaveBeenCalledTimes(2)
-    expect(createdWith().viewOnly).toBe(true)
-    expect(createdWith().fen).toBe(FEN)
+    expect(createdWith().movable?.color).toBeUndefined()
+    expect(createdWith().movable?.dests).toEqual(new Map())
   })
 
-  it('destroys the board on unmount', () => {
+  it('turns read-only on and off without creating the board again', () => {
+    const { rerender } = render(<ChessBoard {...props()} />)
+    api.set.mockClear()
+
+    rerender(<ChessBoard {...props({ readOnly: true })} />)
+    rerender(<ChessBoard {...props()} />)
+
+    expect(Chessground).toHaveBeenCalledTimes(1)
+    expect(api.destroy).not.toHaveBeenCalled()
+    expect(api.set).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        movable: { color: 'white', dests: DESTINATIONS },
+      })
+    )
+  })
+
+  it('ends any move in progress, then destroys the board, on unmount', () => {
     const { unmount } = render(<ChessBoard {...props()} />)
 
     unmount()
 
+    expect(api.cancelMove).toHaveBeenCalledTimes(1)
     expect(api.destroy).toHaveBeenCalledTimes(1)
+    expect(api.cancelMove.mock.invocationCallOrder[0]).toBeLessThan(
+      api.destroy.mock.invocationCallOrder[0]
+    )
   })
 })
