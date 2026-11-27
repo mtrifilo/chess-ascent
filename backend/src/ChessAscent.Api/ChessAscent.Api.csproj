@@ -14,7 +14,30 @@
 -->
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <!--
+    Build-time OpenAPI generation (Microsoft.Extensions.ApiDescription.Server)
+    runs only when scripts/gen-api-types.sh asks for it, so an ordinary build
+    never starts the application. The script copies the document to
+    backend/openapi/ChessAscent.Api.json, which is committed: a change to the
+    API contract shows in review as a change to that file.
+
+    The generator takes its OpenAPI version from its own command line, not
+    from the OpenApiVersion set in ApiDocumentServices (which the document
+    served at run time uses), so 3.1 is pinned in both places.
+  -->
+  <PropertyGroup>
+    <OpenApiGenerateDocumentsOnBuild>false</OpenApiGenerateDocumentsOnBuild>
+    <OpenApiGenerateDocumentsOptions>--openapi-version OpenApi3_1</OpenApiGenerateDocumentsOptions>
+  </PropertyGroup>
+
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <!-- A build tool only: nothing from it ships with the application. -->
+    <PackageReference Include="Microsoft.Extensions.ApiDescription.Server">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Scalar.AspNetCore" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <!--
       The design-time services that `dotnet ef` loads to create migrations.

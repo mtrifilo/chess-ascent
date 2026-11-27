@@ -38,6 +38,8 @@ The API applies any pending database migrations before it starts serving, so it 
 
 With the API running, `curl http://localhost:5100/health` answers `Healthy`, `curl http://localhost:5100/health/ready` answers `Healthy` while the database is reachable and `Unhealthy` with status 503 when it does not accept a connection within 3 seconds, and `curl http://localhost:5100/version` returns the version and the git commit it was built from.
 
+In Development, `http://localhost:5100/scalar` is an API explorer (Scalar) for the API's endpoints, and `http://localhost:5100/openapi/v1.json` is the OpenAPI document it reads. Scalar's page and script are served by the API itself, and its telemetry, AI chat, MCP integration and developer toolbar (whose buttons would upload the document to Scalar) are turned off.
+
 Migrations use the `dotnet-ef` tool, pinned in `backend/dotnet-tools.json`. Run `dotnet tool restore` once, then `dotnet ef migrations add <Name> --project src/ChessAscent.Api --output-dir Database/Migrations` to add one.
 
 The `dotnet` CLI and the test runner send usage telemetry to Microsoft. Set `DOTNET_CLI_TELEMETRY_OPTOUT=1` to turn it off.
@@ -63,6 +65,26 @@ Nothing about the project is sent to outside services by default:
 One request cannot be turned off in Next.js 16.4: when a browser first connects to `bun run dev`, the dev server fetches the public list of Next.js release tags from the npm registry, to show whether the installed version is out of date. It sends no project data.
 
 `bun run build` and `bun run dev` also download the app's three fonts (Hanken Grotesk, Schibsted Grotesk and Golos Text) from Google Fonts. The app serves the font files itself, so browsers that open it never contact Google.
+
+### Both together
+
+Start the database and the API as above, then the front end:
+
+```sh
+cd frontend
+bun run dev
+```
+
+The home page at http://127.0.0.1:3000 shows the API's readiness and version. The browser only talks to the web app: in development, the web app forwards every request for `/api/*` to the API, at `http://localhost:5100` unless `CHESS_ASCENT_API_URL` says otherwise. To change it, copy `frontend/.env.example` to `frontend/.env.local` and edit it there.
+
+The front end's API types are generated from the API's own description of itself. After changing an API endpoint, regenerate them (needs the .NET SDK and `bun install`, but no database):
+
+```sh
+cd frontend
+bun run api:types        # or scripts/gen-api-types.sh from the repository root
+```
+
+It rewrites `backend/openapi/ChessAscent.Api.json` (the OpenAPI 3.1 document) and `frontend/types/api.d.ts`; commit both.
 
 ### Chess engines
 

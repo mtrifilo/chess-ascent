@@ -16,6 +16,21 @@ public static class AppVersionEndpoints
         // body type, unlike a Spring ResponseEntity<?> whose type says nothing
         // about the status. The framework serializes the record to JSON with
         // camelCase property names.
+        //
+        // LEARN: That return type is also what puts this endpoint in the
+        // OpenAPI document. Ok<T> implements IEndpointMetadataProvider, an
+        // interface with a static abstract method. The framework calls it
+        // once, when it builds the endpoint, because the lambda's declared
+        // return type implements the interface: no instance and no request
+        // are involved. (A Java interface cannot declare a static method that
+        // each implementer must supply, so there is no direct counterpart.) It
+        // records "200, application/json, AppVersionResponse" as endpoint
+        // metadata, and the OpenAPI generator turns that into a response and a
+        // schema built from the record, with the /// comments on the record as
+        // its descriptions. A lambda returning IResult, or Results.Ok(...),
+        // declares nothing, and the document would show no response body.
+        // Returning several outcomes is written Results<Ok<T>, NotFound>, a
+        // union type the compiler checks, and each case becomes a response.
         version.MapGet("", () => TypedResults.Ok(response));
 
         return endpoints;
