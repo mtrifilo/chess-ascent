@@ -12,7 +12,9 @@ namespace ChessAscent.Api.Opponents;
 /// The script installs into an engines directory: the one named by the
 /// <see cref="EnginesDirectorySetting"/> environment variable, or
 /// <c>engines/</c> at the repository root. The API reads the same variable,
-/// so the two agree. Under it, <c>maia/</c> holds the Python environment
+/// so the two agree; without it, the API uses the repository's
+/// <c>engines/</c> only when it runs from its project directory (see
+/// <see cref="AddMaiaInstallation"/>). Under it, <c>maia/</c> holds the Python environment
 /// (<c>venv/</c>) and the downloaded weights (<c>huggingface/</c>).
 /// </para>
 /// <para>
@@ -27,21 +29,26 @@ public static class MaiaInstallation
     /// <summary>The environment variable that names the engines directory, for the API and the set-up script alike.</summary>
     public const string EnginesDirectorySetting = "CHESS_ASCENT_ENGINES_DIR";
 
+    // In the content root only when the API runs from its source, which
+    // lies at backend/src/ChessAscent.Api in the repository.
+    private const string ProjectFile = "ChessAscent.Api.csproj";
+
     /// <summary>
     /// Adds the settings that point the Maia kind at its installation, as
     /// defaults that every other configuration source overrides.
     /// </summary>
     /// <param name="configuration">The application's configuration, which already holds the environment variables.</param>
-    /// <exception cref="InvalidOperationException">
-    /// <see cref="EnginesDirectorySetting"/> is set to a relative path, or is
-    /// not set when the API is not running from a checkout of the repository.
-    /// </exception>
     /// <param name="contentRootPath">
     /// The API's content root. When <see cref="EnginesDirectorySetting"/> is
-    /// not set, the engines directory is <c>engines/</c> three levels above
-    /// it, which is the repository root when the API runs from its project
-    /// directory, as <c>dotnet run</c> does.
+    /// not set and this is the API's project directory in a checkout of the
+    /// repository, as under <c>dotnet run</c>, the engines directory is
+    /// <c>engines/</c> at the repository root.
     /// </param>
+    /// <exception cref="InvalidOperationException">
+    /// <see cref="EnginesDirectorySetting"/> is set to a relative path; or
+    /// it is not set, there is no default, and configuration does not give
+    /// the kind's program either.
+    /// </exception>
     // LEARN: Configuration is a stack of sources, like Spring's property
     // sources, and a key's value comes from the last source that has it.
     // WebApplication.CreateBuilder has already added appsettings.json, the
@@ -54,46 +61,54 @@ public static class MaiaInstallation
     {
         ArgumentNullException.ThrowIfNull(configuration);
         var enginesDirectory = EnginesDirectory(configuration[EnginesDirectorySetting], contentRootPath);
-        configuration.Sources.Insert(0, new MemoryConfigurationSource { InitialData = PoolSettings(enginesDirectory) });
+        if (enginesDirectory is not null)
+        {
+            configuration.Sources.Insert(0, new MemoryConfigurationSource { InitialData = PoolSettings(enginesDirectory) });
+        }
+        else if (string.IsNullOrWhiteSpace(configuration[Key(nameof(EngineKindOptions.ExecutablePath))]))
+        {
+            throw new InvalidOperationException(
+                $"{EnginesDirectorySetting} is not set, and the API is not running from its project directory in a checkout of the repository, "
+                + $"so there is no default. Set {EnginesDirectorySetting} to the full path of the directory scripts/setup-maia.sh installed Maia into, "
+                + "or configure the maia engine kind's ExecutablePath, WorkingDirectory and SetEnvironment:HF_HOME.");
+        }
     }
 
     /// <summary>
-    /// The engines directory, as a full path: the one given, or <c>engines/</c>
-    /// at the repository root, three levels above the content root.
+    /// The engines directory, as a full path: the one given; or, when the
+    /// content root is the API's project directory, <c>engines/</c> at the
+    /// repository root three levels above it; or null when there is neither.
     /// </summary>
+    /// <remarks>
+    /// The project file in the content root is what makes the default safe.
+    /// A published application has none, and three levels above it could be
+    /// anywhere, a shared directory such as /tmp included, where anyone could
+    /// leave a program for the API to run. Whoever can write a project file
+    /// into the API's own directory could change the API itself.
+    /// </remarks>
     /// <exception cref="InvalidOperationException">
     /// The path given is relative: the set-up script would read it against
     /// the shell's directory and the API against its own, which differ, so
-    /// both refuse it. Or none is given and the API is not running from a
-    /// checkout of the repository: three levels above a published
-    /// application could be anywhere, a shared directory such as /tmp
-    /// included, and the API would run whatever program it found there.
+    /// both refuse it.
     /// </exception>
-    internal static string EnginesDirectory(string? given, string contentRootPath)
+    internal static string? EnginesDirectory(string? given, string contentRootPath)
     {
-        if (string.IsNullOrWhiteSpace(given))
+        if (!string.IsNullOrWhiteSpace(given))
         {
-            var root = Path.GetFullPath(Path.Combine(contentRootPath, "..", "..", ".."));
-            return File.Exists(Path.Combine(root, "scripts", "setup-maia.sh"))
-                ? Path.Combine(root, "engines")
-                : throw new InvalidOperationException(
-                    $"{EnginesDirectorySetting} is not set, and the API is not running from a checkout of the repository "
-                    + "(there is no scripts/setup-maia.sh three levels above its content root). "
-                    + $"Set {EnginesDirectorySetting} to the full path of the directory that scripts/setup-maia.sh installed Maia into.");
+            return Path.IsPathFullyQualified(given)
+                ? Path.GetFullPath(given)
+                : throw new InvalidOperationException($"{EnginesDirectorySetting} must be a full path, not {given}.");
         }
 
-        return Path.IsPathFullyQualified(given)
-            ? Path.GetFullPath(given)
-            : throw new InvalidOperationException($"{EnginesDirectorySetting} must be a full path, not {given}.");
+        return File.Exists(Path.Combine(contentRootPath, ProjectFile))
+            ? Path.GetFullPath(Path.Combine(contentRootPath, "..", "..", "..", "engines"))
+            : null;
     }
 
     /// <summary>The pool settings that depend on where Maia is installed, by configuration key.</summary>
     internal static Dictionary<string, string?> PoolSettings(string enginesDirectory)
     {
         var maia = Path.Combine(enginesDirectory, "maia");
-        var kind = ConfigurationPath.Combine(EnginePoolOptions.SectionName, nameof(EnginePoolOptions.Kinds), MaiaOpponent.EngineKind);
-        string Key(params string[] path) => ConfigurationPath.Combine([kind, .. path]);
-
         return new Dictionary<string, string?>
         {
             // The environment's own interpreter, started directly: through a
@@ -108,4 +123,8 @@ public static class MaiaInstallation
             [Key(nameof(EngineKindOptions.SetEnvironment), "HF_HOME")] = Path.Combine(maia, "huggingface"),
         };
     }
+
+    // A configuration key under the Maia kind, such as EnginePool:Kinds:maia:ExecutablePath.
+    private static string Key(params string[] path) =>
+        ConfigurationPath.Combine([EnginePoolOptions.SectionName, nameof(EnginePoolOptions.Kinds), MaiaOpponent.EngineKind, .. path]);
 }

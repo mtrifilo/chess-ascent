@@ -17,7 +17,7 @@ public sealed partial class MaiaInstallationTests
     private static readonly string Maia = Path.Combine(Engines, "maia");
 
     [Fact]
-    public void TheEnginesDirectoryDefaultsToTheRepositoryRootSeenFromTheApiProject()
+    public void FromTheApiProjectDirectoryTheEnginesDirectoryDefaultsToTheRepositorysOwn()
     {
         var contentRoot = Path.Combine(RepositoryRoot, "backend", "src", "ChessAscent.Api");
 
@@ -27,14 +27,38 @@ public sealed partial class MaiaInstallationTests
     }
 
     [Fact]
-    public void WithoutTheSettingOutsideACheckoutThereIsNoDefault()
+    public void ElsewhereThereIsNoDefault()
     {
-        // A published application three levels below a shared directory.
-        var contentRoot = Path.Combine(Path.GetTempPath(), "published", "chess-ascent", "api");
+        // A published application, which has no project file, under a
+        // shared directory where the repository's own files could be faked.
+        var published = Directory.CreateTempSubdirectory("published-api-");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(published.FullName, "scripts"));
+            File.WriteAllText(Path.Combine(published.FullName, "scripts", "setup-maia.sh"), "");
+            var contentRoot = Directory.CreateDirectory(Path.Combine(published.FullName, "backend", "src", "ChessAscent.Api")).FullName;
 
-        var unset = () => MaiaInstallation.EnginesDirectory(null, contentRoot);
+            MaiaInstallation.EnginesDirectory(null, contentRoot).Should().BeNull();
+        }
+        finally
+        {
+            published.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void WithoutADefaultStartUpStopsUnlessTheKindsProgramIsConfigured()
+    {
+        var elsewhere = Path.GetTempPath();
+
+        var unset = () => new ConfigurationManager().AddMaiaInstallation(elsewhere);
+        var configured = new ConfigurationManager();
+        configured.AddInMemoryCollection(new Dictionary<string, string?> { ["EnginePool:Kinds:maia:ExecutablePath"] = "/opt/maia/python" });
+        configured.AddMaiaInstallation(elsewhere);
 
         unset.Should().Throw<InvalidOperationException>().WithMessage($"{MaiaInstallation.EnginesDirectorySetting} is not set*");
+        configured["EnginePool:Kinds:maia:ExecutablePath"].Should().Be("/opt/maia/python");
+        configured["EnginePool:Kinds:maia:WorkingDirectory"].Should().BeNull("no default is added without an engines directory");
     }
 
     [Fact]

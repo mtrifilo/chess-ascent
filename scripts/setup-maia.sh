@@ -65,6 +65,8 @@ HF_CACHE="$MAIA/huggingface"
 case "$(uname -s)" in
   Darwin)
     OS=macos
+    # The hardware, which a shell running under Rosetta reports truly.
+    [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ] || fail "on macOS, PyTorch needs an Apple Silicon Mac"
     [ "$(sw_vers -productVersion | cut -d. -f1)" -ge 14 ] || fail "on macOS, PyTorch needs macOS 14 or later"
     ;;
   Linux) OS=linux ;;
@@ -97,12 +99,14 @@ find_python() {
 if [ -x "$PYTHON" ] && in_range "$PYTHON" && "$PYTHON" -I -m pip --version >/dev/null 2>&1; then
   say "using the existing environment in $VENV"
 else
+  # Found before anything is removed, so that a run that cannot make a new
+  # environment leaves the old one as it was.
+  BASE_PYTHON="$(find_python)" || fail "no Python 3.12, 3.13 or 3.14 (on macOS, an Apple Silicon build) was found on PATH as python3.13, python3.12, python3.14 or python3; install one and run this again"
   if [ -e "$VENV" ]; then
     [ -f "$VENV/pyvenv.cfg" ] || fail "$VENV exists but is not a Python environment; move it away and run this again"
     say "the environment in $VENV no longer works; making it again"
     rm -rf "$VENV"
   fi
-  BASE_PYTHON="$(find_python)" || fail "no Python 3.12, 3.13 or 3.14 (on macOS, an Apple Silicon build) was found on PATH as python3.13, python3.12, python3.14 or python3; install one and run this again"
   say "making the environment with $BASE_PYTHON ($("$BASE_PYTHON" --version))"
   if ! "$BASE_PYTHON" -I -m venv "$VENV"; then
     # A failed attempt can leave an environment without pip behind.
@@ -161,9 +165,11 @@ HF_HOME="$HF_CACHE" HF_HUB_DISABLE_TELEMETRY=1 \
 SNAPSHOT="$HF_CACHE/hub/models--UofTCSSLab--Maia3-5M/snapshots/$WEIGHTS_REVISION"
 actual="$("$PYTHON" -I -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$SNAPSHOT/maia3-5m.pt")"
 if [ "$actual" != "$WEIGHTS_SHA256" ]; then
-  # Removed, so that the engine cannot load a file that failed the check.
-  rm -rf "$SNAPSHOT"
-  fail "the weights at revision $WEIGHTS_REVISION have SHA-256 $actual, not $WEIGHTS_SHA256, and were removed; if WEIGHTS_REVISION was changed, WEIGHTS_SHA256 must be changed with it"
+  # The whole cache, which holds nothing else, is removed: the engine cannot
+  # then load a file that failed the check, and the next run downloads it
+  # afresh rather than relinking the same stored bytes.
+  rm -rf "$HF_CACHE"
+  fail "the weights at revision $WEIGHTS_REVISION have SHA-256 $actual, not $WEIGHTS_SHA256, and were removed with $HF_CACHE; if WEIGHTS_REVISION was changed, change WEIGHTS_SHA256 with it, otherwise run this again"
 fi
 
 # The handshake is run the way the API runs the engine: the same arguments
