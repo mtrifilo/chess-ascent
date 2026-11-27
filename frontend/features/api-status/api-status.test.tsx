@@ -1,58 +1,41 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import type { Middleware } from 'openapi-fetch'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { paths } from '@/types/api'
+import { api } from '@/lib/api'
 
 import { ApiStatus } from './api-status'
 
 type Answer = { status: number; body: string; contentType: string } | Error
 
-// The component's requests are answered here, by path, rather than by a
-// server. Only the transport is replaced: the client is openapi-fetch typed by
-// the generated paths, as in lib/api.ts, so the component's handling of what
-// it parses is what is tested.
-const transport = vi.hoisted(() => ({
-  answers: {} as Record<string, Answer>,
-  requested: [] as string[],
-  // Node's Request, which openapi-fetch builds every call on, rejects a
-  // relative URL, which a browser resolves against the page. This resolves
-  // it against jsdom's location in the same way.
-  Request: class extends Request {
-    constructor(input: RequestInfo | URL, init?: RequestInit) {
-      super(
-        typeof input === 'string' ? new URL(input, location.href) : input,
-        init
-      )
-    }
-  },
-}))
-
-vi.mock('@/lib/api', async importOriginal => {
-  const { default: createClient } = await import('openapi-fetch')
-  return {
-    ...(await importOriginal<typeof import('@/lib/api')>()),
-    api: createClient<paths>({
-      baseUrl: '/api',
-      Request: transport.Request,
-      fetch: async request => {
-        const path = new URL(request.url).pathname
-        transport.requested.push(path)
-        const reply = transport.answers[path]
-        if (!reply) throw new Error(`unexpected request to ${path}`)
-        if (reply instanceof Error) throw reply
-        return new Response(reply.body, {
-          status: reply.status,
-          headers: { 'Content-Type': reply.contentType },
-        })
-      },
-    }),
-  }
-})
+// The real client answers each request from here, by path, instead of
+// sending it: openapi-fetch hands every request to its middleware first, and
+// a Response returned there is used as the server's answer.
+let answerMiddleware: Middleware | undefined
+const requested: string[] = []
 
 function answer(answers: Record<string, Answer>) {
-  transport.answers = answers
-  transport.requested = []
+  answerMiddleware = {
+    onRequest: ({ request }) => {
+      const path = new URL(request.url).pathname
+      requested.push(path)
+      const reply = answers[path]
+      if (!reply) throw new Error(`unexpected request to ${path}`)
+      if (reply instanceof Error) throw reply
+      return new Response(reply.body, {
+        status: reply.status,
+        headers: { 'Content-Type': reply.contentType },
+      })
+    },
+  }
+  api.use(answerMiddleware)
 }
+
+afterEach(() => {
+  if (answerMiddleware) api.eject(answerMiddleware)
+  answerMiddleware = undefined
+  requested.length = 0
+})
 
 const version = (value: string): Answer => ({
   status: 200,
@@ -79,10 +62,10 @@ describe('ApiStatus', () => {
 
     render(<ApiStatus />)
 
-    expect(await screen.findByText('Healthy')).toBeInTheDocument()
-    expect(await screen.findByText('0.1.0')).toBeInTheDocument()
-    expect(valueOf('API')).toHaveTextContent('Healthy')
-    expect(valueOf('Version')).toHaveTextContent('0.1.0')
+    await vi.waitFor(() => {
+      expect(valueOf('API')).toHaveTextContent('Healthy')
+      expect(valueOf('Version')).toHaveTextContent('0.1.0')
+    })
   })
 
   it('shows Unhealthy when readiness answers 503', async () => {
@@ -93,7 +76,9 @@ describe('ApiStatus', () => {
 
     render(<ApiStatus />)
 
-    expect(await screen.findByText('Unhealthy')).toBeInTheDocument()
+    await vi.waitFor(() =>
+      expect(valueOf('API')).toHaveTextContent('Unhealthy')
+    )
   })
 
   it('leaves both values blank when the API cannot be reached', async () => {
@@ -104,7 +89,7 @@ describe('ApiStatus', () => {
 
     render(<ApiStatus />)
 
-    await vi.waitFor(() => expect(transport.requested).toHaveLength(2))
+    await vi.waitFor(() => expect(requested).toHaveLength(2))
     // Let both answers settle before checking nothing was shown.
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(valueOf('API')).toBeEmptyDOMElement()

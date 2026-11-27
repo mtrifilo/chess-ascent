@@ -9,3 +9,18 @@ import { afterEach } from 'vitest'
 afterEach(() => {
   cleanup()
 })
+
+// A browser resolves a relative URL such as '/api/version' against the page;
+// Node's Request, which jsdom leaves in place, rejects it. The API client
+// (lib/api.ts) builds every call on Request with a relative base URL, so it is
+// made to resolve against jsdom's location as a browser would. This runs
+// before any test file imports the client, which captures Request then.
+class PageRelativeRequest extends Request {
+  constructor(input: RequestInfo | URL, init?: RequestInit) {
+    super(
+      typeof input === 'string' ? new URL(input, location.href) : input,
+      init
+    )
+  }
+}
+globalThis.Request = PageRelativeRequest

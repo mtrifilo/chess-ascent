@@ -1,7 +1,10 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import Home from './page'
+
+// The API status calls the API; its own tests cover it.
+vi.mock('@/features/api-status/api-status', () => ({ ApiStatus: () => null }))
 
 describe('Home', () => {
   it('names the product in its top-level heading', () => {

@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Net.Mime;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -13,10 +15,6 @@ namespace ChessAscent.Api.Features.Health;
 // hand, so the front end gets types for it too.
 internal static class HealthApiDescription
 {
-    // The built-in health check response writer answers with the overall
-    // status's name, such as "Healthy", as plain text.
-    private const string BodyMediaType = "text/plain";
-
     /// <summary>
     /// Adds <c>GET /health/ready</c> to the document: one response per status
     /// code the endpoint answers with, each listing the bodies it can carry.
@@ -29,11 +27,10 @@ internal static class HealthApiDescription
                          .GroupBy(mapping => mapping.Value, mapping => mapping.Key)
                          .OrderBy(group => group.Key))
             {
-                responses[group.Key.ToString(System.Globalization.CultureInfo.InvariantCulture)] =
+                responses[group.Key.ToString(CultureInfo.InvariantCulture)] =
                     StatusResponse([.. group]);
             }
 
-            document.Paths ??= [];
             document.Paths[HealthEndpoints.ReadinessPath] = new OpenApiPathItem
             {
                 Operations = new()
@@ -49,12 +46,15 @@ internal static class HealthApiDescription
             return Task.CompletedTask;
         });
 
+    // The body is what the built-in response writer sends: the overall
+    // status's name, such as "Healthy", as plain text. Giving the readiness
+    // endpoint a ResponseWriter of its own means changing this to match.
     private static OpenApiResponse StatusResponse(IReadOnlyList<HealthStatus> statuses) => new()
     {
         Description = $"The overall status is {string.Join(" or ", statuses)}.",
         Content = new Dictionary<string, IOpenApiMediaType>
         {
-            [BodyMediaType] = new OpenApiMediaType
+            [MediaTypeNames.Text.Plain] = new OpenApiMediaType
             {
                 Schema = new OpenApiSchema
                 {
