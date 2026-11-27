@@ -120,9 +120,10 @@ public static class AccountEndpoints
         // outcome other than success gets the same status and body, a
         // locked-out account included, because the approved sign-in screen
         // has one error for all of them. That keeps the answer from saying
-        // whether an account exists or is locked. Other things still say
-        // whether it exists: registering the email answers 409, and an
-        // unknown email is answered sooner, without the password hashing.
+        // whether an account exists or is locked. Other things still say so:
+        // registering the email answers 409, and both an unknown email and a
+        // locked-out account are answered sooner, without the password
+        // hashing.
         var result = await signInManager.PasswordSignInAsync(
             user, request.Password, isPersistent: true, lockoutOnFailure: true);
         return result.Succeeded ? TypedResults.Ok(new CurrentUserResponse(email)) : SignInFailed();

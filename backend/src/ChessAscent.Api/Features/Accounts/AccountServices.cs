@@ -41,7 +41,15 @@ public static class AccountServices
         // options.Password, options.Lockout and
         // options.User.AllowedUserNameCharacters.
         //
-        // The lockout cuts both ways: anyone who knows an account's email can
+        // The lockout limits guessing one attempt after another, not guessing
+        // in parallel. Each failed attempt saves the new count with
+        // Identity's concurrency check, so of many wrong passwords sent at the
+        // same moment only one is counted (the rest fail their save and are
+        // answered as wrong), and a right password among them still signs in.
+        // A cap on concurrent sign-ins per account would close that; it is
+        // rate limiting, which this API does not have yet.
+        //
+        // It also cuts both ways: anyone who knows an account's email can
         // keep it locked by sending five wrong passwords every five minutes,
         // and the player then sees the same "incorrect" answer as for a wrong
         // password (see AccountEndpoints for why).

@@ -95,6 +95,7 @@ public sealed class CrossSiteRequestTests(ApiFactory factory) : IClassFixture<Ap
         using var response = await client.SendAsync(forged, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("text/plain");
     }
 
     // A browser without Fetch Metadata, behind the same rewrite, has only an

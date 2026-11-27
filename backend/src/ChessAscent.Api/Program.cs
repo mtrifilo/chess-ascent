@@ -73,8 +73,9 @@ if (!ApiDocumentServices.IsBuildTimeGeneration)
 app.UseExceptionHandler();
 
 // A response that leaves the pipeline with an error status and no body, such
-// as the 404 for an unknown path, gets a problem-details body here, so every
-// error the API returns has the same shape. The steps below rely on it for
+// as the 404 for an unknown path, gets a body here: problem details when the
+// request accepts JSON, as every request from the front end does, and plain
+// text when its Accept header rules JSON out. The steps below rely on it for
 // their 401 and 403 answers.
 app.UseStatusCodePages();
 
