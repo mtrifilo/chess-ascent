@@ -2,6 +2,11 @@ namespace ChessAscent.Chess.Tests;
 
 public sealed class GameStatusTests
 {
+    private const string KingsAndRook = "4k3/8/8/8/8/8/8/R3K3 w - - 0 1";
+
+    // Both kings step aside and back, which leaves the position as it was.
+    private static readonly string[] KingsShuffle = ["e8d8", "e1d1", "d8e8", "d1e1"];
+
     [Fact]
     public void NewGameIsOngoingWithWhiteToMove()
     {
@@ -58,13 +63,77 @@ public sealed class GameStatusTests
         game.LegalMoves().Should().BeEmpty();
     }
 
-    [Fact]
-    public void RepetitionsNeedNotBeConsecutive()
+    // A library that compares a position only with the ones exactly 4 and 8
+    // half-moves earlier finds the knight dance above and misses both of
+    // these. Each row is a move list whose last move makes the third
+    // occurrence of the starting position, and no earlier move does.
+    public static TheoryData<string, string[]> RepetitionsThatAreNotFourHalfMovesApart() => new()
     {
-        // The starting position recurs at plies 4 and 10, with other positions in between.
-        var game = Games.Load(
-            "4k3/8/8/8/8/8/8/R3K3 w - - 0 1",
-            "e1d1", "e8d8", "d1e1", "d8e8", "e1d1", "e8d8", "d1d2", "d8d7", "d2e1", "d7e8");
+        // A six-half-move king triangle, twice: the position recurs at plies 6 and 12.
+        { KingsAndRook, ["e1d1", "e8d8", "d1d2", "d8d7", "d2e1", "d7e8", "e1d1", "e8d8", "d1d2", "d8d7", "d2e1", "d7e8"] },
+
+        // Uneven gaps: the position recurs at plies 4 and 10, with other positions in between.
+        { KingsAndRook, ["e1d1", "e8d8", "d1e1", "d8e8", "e1d1", "e8d8", "d1d2", "d8d7", "d2e1", "d7e8"] },
+    };
+
+    [Theory]
+    [MemberData(nameof(RepetitionsThatAreNotFourHalfMovesApart))]
+    public void RepetitionIsFoundWhateverTheGapsBetweenOccurrences(string fen, string[] moves)
+    {
+        var game = Games.Load(fen, moves[..^1]);
+        game.Status.Value.Should().Be(new Ongoing(), "the position has occurred only twice before the last move");
+
+        game.TryPlay(moves[^1]).Value.Should().BeOfType<MovePlayed>()
+            .Which.Status.Value.Should().Be(new Draw(DrawReason.ThreefoldRepetition));
+    }
+
+    // The FIDE Laws count castling rights as part of a position: a king that
+    // could still castle with an unmoved rook stands in a different position
+    // from the same placement after that right is lost, even when castling is
+    // impossible in both because pieces stand in the way. Here the kingside
+    // rooks step aside and back, which removes the kingside rights, then the
+    // kingside knights and then the queenside knights go out and back. With
+    // the rights counted, the first third occurrence is the starting
+    // placement at ply 16 (plies 8, 12 and 16). An engine that ignored them
+    // would draw at ply 10, the third time both kingside knights stand out
+    // (plies 2, 6 and 10).
+    [Fact]
+    public void LostCastlingRightsMakeADifferentPosition()
+    {
+        var game = Games.Play("g1f3", "g8f6", "h1g1", "h8g8", "g1h1", "g8h8", "f3g1", "f6g8");
+        string[] laterMoves = [.. Games.KnightDance[..4], "b1c3", "b8c6", "c3b1", "c6b8"];
+
+        for (var index = 0; index < laterMoves.Length; index++)
+        {
+            var ply = 9 + index;
+            GameStatus expected = ply == 16 ? new Draw(DrawReason.ThreefoldRepetition) : new Ongoing();
+            game.TryPlay(laterMoves[index]).Value.Should().BeOfType<MovePlayed>("the game is not over before ply 16")
+                .Which.Status.Value.Should().Be(expected.Value, "at ply {0} (the comment above lists which plies repeat)", ply);
+        }
+    }
+
+    // An en passant capture that is available makes a position different
+    // from the same pieces without it: after e2e4 here Black may take on e3,
+    // and once the kings shuffle that chance is gone. The placement after
+    // e2e4 recurs without the capture at plies 5 and 9; counting ply 1, which
+    // had it, would wrongly make ply 9 the third occurrence. The test below
+    // is the same line without the black pawn, where ply 9 is the third.
+    [Fact]
+    public void AnAvailableEnPassantCaptureMakesADifferentPosition()
+    {
+        var game = Games.Load("4k3/8/8/8/3p4/8/4P3/4K3 w - - 0 1", ["e2e4", .. KingsShuffle, .. KingsShuffle]);
+
+        game.Status.Value.Should().Be(new Ongoing());
+    }
+
+    // The other side of the same rule: when no pawn can take en passant, the
+    // double step leaves the same position as any other way of reaching it,
+    // although FEN records an en passant square after every double step. The
+    // position after e2e4 recurs at plies 5 and 9, which is the third occurrence.
+    [Fact]
+    public void AnEnPassantSquareNoPawnCanUseDoesNotMakeADifferentPosition()
+    {
+        var game = Games.Load("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1", ["e2e4", .. KingsShuffle, .. KingsShuffle]);
 
         game.Status.Value.Should().Be(new Draw(DrawReason.ThreefoldRepetition));
     }
@@ -114,6 +183,17 @@ public sealed class GameStatusTests
         game.Status.Value.Should().Be(new Checkmate(Side.White));
     }
 
+    [Theory]
+    [InlineData("4k3/8/8/8/8/8/r7/R3K3 w - - 99 60", "a1a2")] // A capture.
+    [InlineData("4k3/8/8/8/8/8/P7/R3K3 w - - 99 60", "a2a3")] // A pawn move.
+    public void CaptureOrPawnMoveOnTheHundredthHalfMoveRestartsTheCount(string fen, string uci)
+    {
+        var game = Games.Load(fen);
+
+        game.TryPlay(uci).Value.Should().BeOfType<MovePlayed>().Which.Status.Value.Should().Be(new Ongoing());
+        game.Fen.Should().Contain(" b - - 0 60");
+    }
+
     [Fact]
     public void CapturingTheLastPieceLeavesADeadPosition()
     {
@@ -131,6 +211,18 @@ public sealed class GameStatusTests
     public void DeadPositionLoadedFromFenIsAlreadyDrawn(string fen)
     {
         Games.Load(fen).Status.Value.Should().Be(new Draw(DrawReason.DeadPosition));
+    }
+
+    // Mate is possible in each of these, if only with help from the defender,
+    // so none is a dead position under FIDE rules.
+    [Theory]
+    [InlineData("4kn2/8/8/8/8/8/8/2B1K3 w - - 0 1")] // King and bishop against king and knight.
+    [InlineData("4k1b1/8/8/8/8/8/8/2B1K3 w - - 0 1")] // Bishops on squares of different colours.
+    [InlineData("4kn2/8/8/8/8/8/8/1N2K3 w - - 0 1")] // A knight each.
+    [InlineData("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1")] // King and pawn against king.
+    public void MaterialThatCanStillMatePlaysOn(string fen)
+    {
+        Games.Load(fen).Status.Value.Should().Be(new Ongoing());
     }
 
     // Whether this is a draw is an open question for the project owner; until

@@ -19,17 +19,31 @@ public sealed class TryPlayTests
     }
 
     [Theory]
-    [InlineData("e7e8q", "e8=Q")]
-    [InlineData("e7e8r", "e8=R")]
-    [InlineData("e7e8b", "e8=B")]
-    [InlineData("e7e8n", "e8=N+")]
-    public void PromotionNeedsItsPieceLetter(string uci, string san)
+    [InlineData("e7e8q", "e8=Q", "4Q3")]
+    [InlineData("e7e8r", "e8=R", "4R3")]
+    [InlineData("e7e8b", "e8=B", "4B3")]
+    [InlineData("e7e8n", "e8=N+", "4N3")]
+    public void PromotionNeedsItsPieceLetter(string uci, string san, string lastRank)
     {
         var game = Games.Load(PromotionFen);
 
-        // Only the move is checked: promoting to a bishop or knight here leaves
-        // king and minor piece against king, which is a dead position.
+        // The status is not checked: promoting to a bishop or knight here
+        // leaves king and minor piece against king, which is a dead position.
         game.TryPlay(uci).Value.Should().BeOfType<MovePlayed>().Which.Move.Should().Be(new PlayedMove(uci, san));
+        game.Fen.Should().StartWith(lastRank + "/", "the pawn becomes the piece its letter names");
+    }
+
+    // The letter is lower case for both sides in UCI, although FEN writes a
+    // black piece in lower case and a white one in upper case.
+    [Theory]
+    [InlineData("d2c1n", "dxc1=N", "4K3/8/8/8/8/8/8/2n1k3")]
+    [InlineData("d2c1r", "dxc1=R", "4K3/8/8/8/8/8/8/2r1k3")]
+    public void BlackUnderPromotesWithACaptureInLowerCase(string uci, string san, string placement)
+    {
+        var game = Games.Load("4K3/8/8/8/8/8/3p4/2R1k3 b - - 0 1");
+
+        game.TryPlay(uci).Value.Should().BeOfType<MovePlayed>().Which.Move.Should().Be(new PlayedMove(uci, san));
+        game.Fen.Should().StartWith(placement + " w ");
     }
 
     [Fact]
@@ -88,6 +102,7 @@ public sealed class TryPlayTests
     [InlineData(" e2e4")]
     [InlineData("e2-e4")]
     [InlineData("e7e8k")]
+    [InlineData("e7e8Q")]
     [InlineData("i2i4")]
     [InlineData("e0e1")]
     [InlineData("e2e2")]
