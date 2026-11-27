@@ -90,19 +90,22 @@ public sealed class EngineKindOptions
 
     /// <summary>
     /// How long a caller waits for an engine of this kind, from asking until
-    /// one is free and has passed its check.
+    /// one is free and has passed its check. A check still running when the
+    /// time is up goes on without the caller.
     /// </summary>
     public TimeSpan? CheckOutTimeout { get; init; }
 
     /// <summary>
     /// How many failures in a row a process slot may have before the pool
     /// stops trying to fill it, until the application restarts. A failure is
-    /// a process that could not be started, or that ended or failed its
-    /// check before it was first handed to a caller. At least 1.
+    /// a process that could not be started, or one that was retired (it
+    /// ended, failed its check, or a caller reported it broken) before any
+    /// conversation with it ended with the engine still usable. A
+    /// conversation that does end that way resets the count. At least 1.
     /// </summary>
     public int? StartAttempts { get; init; }
 
-    /// <summary>The pause after a failure before the next attempt to start a process.</summary>
+    /// <summary>The pause before each start of a slot's process after its first: after a failed start, and before a replacement.</summary>
     public TimeSpan? RestartDelay { get; init; }
 
     /// <summary>The client's options. Valid only once <see cref="EnginePoolOptionsValidator"/> has passed these.</summary>

@@ -885,12 +885,19 @@ public sealed partial class UciEngine : IAsyncDisposable
         if (budget.TryTake(out var suppressed))
         {
             LogSuppressed(_logger, ProcessId, "over-long output", suppressed);
-            var text = UciText.ForLog(start);
-            LogLineTooLong(_logger, ProcessId, MaxLineLength, text);
+            LogLineTooLong(_logger, ProcessId, MaxLineLength);
+
+            // What the engine prints is logged only at Debug.
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                var text = UciText.ForLog(start);
+                LogLineTooLongStart(_logger, ProcessId, text);
+            }
         }
     }
 
-    // Standard error is for people: it goes to the log and is never parsed.
+    // Standard error is for people: it goes to the log, at Debug like
+    // everything else the engine prints, and is never parsed.
     private async Task ReadStandardErrorAsync()
     {
         var budget = new LogBudget(LogEntriesPerWindow, LogWindow);
@@ -899,7 +906,7 @@ public sealed partial class UciEngine : IAsyncDisposable
             var reader = new BoundedLineReader(_process.StandardError, MaxLineLength);
             while (await reader.ReadLineAsync(CancellationToken.None) is { } line)
             {
-                if (budget.TryTake(out var suppressed) && _logger.IsEnabled(LogLevel.Information))
+                if (budget.TryTake(out var suppressed) && _logger.IsEnabled(LogLevel.Debug))
                 {
                     LogSuppressed(_logger, ProcessId, "standard error", suppressed);
                     var text = UciText.ForLog(line.Text);
@@ -962,10 +969,13 @@ public sealed partial class UciEngine : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Debug, Message = "Engine {ProcessId} info string: {Line}")]
     private static partial void LogInfoString(ILogger logger, int processId, string line);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Engine {ProcessId} printed a line longer than {MaxLength} characters, which was skipped. It began: {Start}")]
-    private static partial void LogLineTooLong(ILogger logger, int processId, int maxLength, string start);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Engine {ProcessId} printed a line longer than {MaxLength} characters, which was skipped")]
+    private static partial void LogLineTooLong(ILogger logger, int processId, int maxLength);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Engine {ProcessId} stderr: {Line} (truncated: {IsTruncated})")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Engine {ProcessId}: the skipped line began: {Start}")]
+    private static partial void LogLineTooLongStart(ILogger logger, int processId, string start);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Engine {ProcessId} stderr: {Line} (truncated: {IsTruncated})")]
     private static partial void LogStandardError(ILogger logger, int processId, string line, bool isTruncated);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Engine {ProcessId}: {Count} lines of {Stream} were not logged")]

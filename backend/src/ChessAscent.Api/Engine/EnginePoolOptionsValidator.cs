@@ -29,7 +29,8 @@ internal sealed class EnginePoolOptionsValidator(IOptions<HostOptions> host) : I
 
     private void ValidateKind(string path, EngineKindOptions? engine, List<string> failures)
     {
-        // A kind given an empty value in configuration binds to null.
+        // Configuration always binds a kind to an instance; a null one can
+        // only come from code that builds the options itself.
         if (engine is null)
         {
             failures.Add($"{path} has no settings.");
@@ -68,7 +69,8 @@ internal sealed class EnginePoolOptionsValidator(IOptions<HostOptions> host) : I
         // The pool stops all its engines at once. For every process to be
         // gone before the host gives up on shutting down, the longest an
         // engine can take to stop has to fit in the host's time.
-        if (engine.StopTimeout > TimeSpan.Zero && engine.ExitTimeout > TimeSpan.Zero)
+        if (engine.StopTimeout > TimeSpan.Zero && engine.ExitTimeout > TimeSpan.Zero
+            && host.Value.ShutdownTimeout != Timeout.InfiniteTimeSpan)
         {
             var longestStop = UciEngineOptions.LongestDisposal(engine.StopTimeout.Value, engine.ExitTimeout.Value);
             if (longestStop >= host.Value.ShutdownTimeout)

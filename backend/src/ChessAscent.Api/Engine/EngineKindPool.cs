@@ -78,7 +78,10 @@ internal sealed partial class EngineKindPool
 
     /// <summary>
     /// Waits for an idle engine that passes its check, and takes it. Engines
-    /// that fail the check are retired, and the wait goes on.
+    /// that fail the check are retired, and the wait goes on. The wait ends
+    /// at the check-out timeout or when the caller cancels, even during a
+    /// check: the check then goes on without the caller, and decides whether
+    /// the engine goes back to the idle queue.
     /// </summary>
     /// <exception cref="OperationCanceledException">The caller's token was cancelled.</exception>
     /// <exception cref="EngineUnavailableException">No engine was ready in time, the kind has none left, or the pool is stopping.</exception>
@@ -91,16 +94,30 @@ internal sealed partial class EngineKindPool
             while (true)
             {
                 var pooled = await _idle.Reader.ReadAsync(wait.Token);
-                if (pooled.TryCheckOut() && await PassesCheckAsync(pooled, wait.Token))
+                if (!pooled.TryCheckOut())
                 {
-                    return pooled;
+                    continue;
+                }
+
+                var check = CheckAsync(pooled);
+                try
+                {
+                    if (await check.WaitAsync(wait.Token))
+                    {
+                        return pooled;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    _ = PutBackIfPassedAsync(pooled, check);
+                    throw;
                 }
             }
         }
         catch (OperationCanceledException) when (wait.IsCancellationRequested)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            throw Unavailable(string.Create(CultureInfo.InvariantCulture, $"no engine was free within {_checkOutTimeout.TotalMilliseconds:0} ms"));
+            throw Unavailable(string.Create(CultureInfo.InvariantCulture, $"no engine was free and ready within {_checkOutTimeout.TotalMilliseconds:0} ms"));
         }
         catch (ChannelClosedException)
         {
@@ -109,8 +126,9 @@ internal sealed partial class EngineKindPool
     }
 
     /// <summary>
-    /// Gives a checked-out engine back: to the idle queue if it is still
-    /// usable and the caller did not report it broken; otherwise it is retired.
+    /// Takes back an engine at the end of a conversation: to the idle queue
+    /// if it is still usable and the caller did not report it broken, which
+    /// also shows the program works; otherwise it is retired.
     /// </summary>
     public void Return(PooledEngine pooled, bool reportedBroken)
     {
@@ -122,15 +140,36 @@ internal sealed partial class EngineKindPool
         {
             pooled.Retire("it became unusable while a caller had it");
         }
-        else if (pooled.TryReturn())
+        else
         {
-            _idle.Writer.TryWrite(pooled);
+            pooled.MarkServed();
+            PutBack(pooled);
         }
     }
 
-    // An engine that has exited is not handed out, nor one that does not
-    // answer isready: a process can die a moment before IsUsable shows it.
-    private async Task<bool> PassesCheckAsync(PooledEngine pooled, CancellationToken cancellationToken)
+    private void PutBack(PooledEngine pooled)
+    {
+        if (pooled.TryReturn())
+        {
+            _idle.Writer.TryWrite(pooled);
+
+            // The engine may have ended since it was last seen usable. If the
+            // slot noticed while it was still checked out, the slot left it
+            // to this return, so it is retired here.
+            if (!pooled.Engine.IsUsable)
+            {
+                pooled.RetireIfIdle("it ended while idle");
+            }
+        }
+    }
+
+    // Whether the engine may be handed out. One that has exited is not, nor
+    // one that does not answer isready (a process can die a moment before
+    // IsUsable shows it); either is retired. The ping is bounded by the ready
+    // timeout and by stopping, not by the caller, so that a caller who gives
+    // up mid-check is not held up while the engine's reply is collected.
+    // Never fails.
+    private async Task<bool> CheckAsync(PooledEngine pooled)
     {
         var engine = pooled.Engine;
         if (!engine.IsUsable)
@@ -141,30 +180,39 @@ internal sealed partial class EngineKindPool
 
         try
         {
-            await engine.PingAsync(cancellationToken);
-            pooled.MarkHandedOut();
+            await engine.PingAsync(_stopping);
             return true;
         }
-        catch (OperationCanceledException)
+        catch (Exception e) when (e is UciEngineException or InvalidOperationException or OperationCanceledException)
         {
-            // The caller stopped waiting, which says nothing against the engine.
-            Return(pooled, reportedBroken: false);
-            throw;
-        }
-        catch (Exception e) when (e is UciEngineException or InvalidOperationException)
-        {
-            // InvalidOperationException includes ObjectDisposedException:
-            // the pool began stopping the engine.
-            LogCheckFailed(_logger, e, Kind, engine.ProcessId);
+            // InvalidOperationException includes ObjectDisposedException, and
+            // OperationCanceledException comes only from stopping: in both
+            // cases the pool is stopping the engine, which is not its fault.
+            if (!_stopping.IsCancellationRequested)
+            {
+                LogCheckFailed(_logger, e, Kind, engine.ProcessId);
+            }
+
             pooled.Retire("it failed its check before hand-out");
             return false;
         }
     }
 
+    // The caller stopped waiting during the check; the engine goes back to
+    // the idle queue if it passed. CheckAsync never fails, so neither does this.
+    private async Task PutBackIfPassedAsync(PooledEngine pooled, Task<bool> check)
+    {
+        if (await check)
+        {
+            PutBack(pooled);
+        }
+    }
+
     // A slot's whole life: start a process, publish it, wait until it is
-    // retired or stopping begins, stop it, and start the next. Failures in a
-    // row are counted, with a pause after each, so a program that crashes on
-    // start does not spin; an engine that was handed out at least once
+    // retired or stopping begins, stop it, and start the next, after a pause.
+    // Failures in a row are counted, so that a program that crashes on start,
+    // or on every use, does not spin: a failure is a start that fails, or an
+    // engine retired before any conversation with it ended well. One that did
     // resets the count, because it showed the program works.
     private async Task RunSlotAsync(int slot)
     {
@@ -173,12 +221,15 @@ internal sealed partial class EngineKindPool
         await Task.Yield();
 
         var failures = 0;
+        var firstStart = true;
         while (!_stopping.IsCancellationRequested)
         {
-            if (failures > 0 && !await PauseAsync())
+            if (!firstStart && !await PauseAsync())
             {
                 return;
             }
+
+            firstStart = false;
 
             var engine = await TryStartAsync(slot, failures + 1);
             if (engine is null)
@@ -201,7 +252,7 @@ internal sealed partial class EngineKindPool
                 }
 
                 LogReplacing(_logger, Kind, slot, engine.ProcessId, reason);
-                failures = pooled.WasHandedOut ? 0 : failures + 1;
+                failures = pooled.HasServed ? 0 : failures + 1;
             }
 
             if (!_stopping.IsCancellationRequested && GaveUp(slot, failures))

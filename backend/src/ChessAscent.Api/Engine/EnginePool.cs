@@ -19,9 +19,10 @@ namespace ChessAscent.Api.Engine;
 /// starts the pool, so the application serves before they are ready; the
 /// readiness check reports each kind until it has a working process. A
 /// process that ends, fails the check before hand-out, or is reported broken
-/// is stopped and replaced. A slot whose process fails
-/// <see cref="EngineKindOptions.StartAttempts"/> times in a row stays empty
-/// until the application restarts.
+/// is stopped and replaced after <see cref="EngineKindOptions.RestartDelay"/>.
+/// A slot whose process fails <see cref="EngineKindOptions.StartAttempts"/>
+/// times in a row (see there for what counts) stays empty until the
+/// application restarts.
 /// </para>
 /// <para>
 /// It knows no particular engine: the kinds, their programs and their
@@ -53,7 +54,8 @@ public sealed class EnginePool : IAsyncDisposable
     /// <remarks>
     /// Waiting for a free engine is bounded by the kind's
     /// <see cref="EngineKindOptions.CheckOutTimeout"/>, and includes an
-    /// <c>isready</c> check of the engine before it is handed over. The
+    /// <c>isready</c> check of the engine before it is handed over; the
+    /// caller's token ends the wait at once, even during the check. The
     /// conversation itself is not bounded here: each call it makes on the
     /// engine is bounded by the engine's own timeouts. An engine that is no
     /// longer usable when the conversation ends (see

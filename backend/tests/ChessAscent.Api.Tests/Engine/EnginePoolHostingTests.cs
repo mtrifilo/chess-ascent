@@ -3,6 +3,7 @@ using ChessAscent.Api.Engine;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace ChessAscent.Api.Tests.Engine;
@@ -59,6 +60,28 @@ public sealed class EnginePoolHostingTests(PostgresFixture postgres)
 
         await fake.WaitForStartedAsync(2);
         await ReadinessIsOkAsync(client);
+    }
+
+    [Fact]
+    public async Task TheHostedServiceStopsEveryEngineWithinTheShutdownTimeout()
+    {
+        using var fake = new FakeEngineKind("--ignore-quit");
+        await using var api = Api(FakeEngineKind.Settings(Kind, fake.Options(processes: 2, exitTimeout: TimeSpan.FromMilliseconds(500))));
+        using var client = api.CreateClient();
+        await ReadinessIsOkAsync(client);
+        var processIds = fake.StartedProcessIds();
+        var service = api.Services.GetServices<IHostedService>().OfType<EnginePoolService>().Single();
+        var shutdownTimeout = api.Services.GetRequiredService<IOptions<HostOptions>>().Value.ShutdownTimeout;
+        using var deadline = new CancellationTokenSource(shutdownTimeout);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        await service.StopAsync(deadline.Token);
+
+        clock.Elapsed.Should().BeLessThan(shutdownTimeout);
+        foreach (var processId in processIds)
+        {
+            (await FakeEngine.IsGoneAsync(processId, attempts: 1)).Should().BeTrue($"process {processId} was stopped by the hosted service");
+        }
     }
 
     [Fact]

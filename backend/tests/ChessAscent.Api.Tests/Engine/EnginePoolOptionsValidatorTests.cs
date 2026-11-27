@@ -70,6 +70,14 @@ public sealed class EnginePoolOptionsValidatorTests
             .Contain(Prefix + "StopTimeout").And.Contain(Prefix + "ExitTimeout").And.Contain("shutdown timeout");
     }
 
+    [Fact]
+    public void AnInfiniteShutdownTimeoutLeavesStoppingUnchecked()
+    {
+        var validator = new EnginePoolOptionsValidator(Options.Create(new HostOptions { ShutdownTimeout = Timeout.InfiniteTimeSpan }));
+
+        validator.Validate(null, With(Complete())).Succeeded.Should().BeTrue();
+    }
+
     private static string Required(string setting) => $"{Prefix}{setting} is required.";
 
     private static EnginePoolOptions With(EngineKindOptions kind)

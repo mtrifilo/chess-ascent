@@ -233,6 +233,66 @@ public sealed class EnginePoolTests
     }
 
     [Fact]
+    public async Task ProgramThatCrashesOnEveryUseIsReplacedAfterAPauseAndThenGivenUp()
+    {
+        // Each process passes the handshake and the check, then exits on its first search.
+        using var fake = new FakeEngineKind("--exit-on", "go");
+        await using var pool = StartPool(fake.Options(startAttempts: 2, restartDelay: TimeSpan.FromMilliseconds(500)), out var logger);
+        var search = () => pool.RunAsync(Kind, lease => lease.Engine.SearchAsync(Start, Depth1, Token), Token);
+
+        await search.Should().ThrowExactlyAsync<UciEngineExitedException>();
+        var clock = Stopwatch.StartNew();
+        await search.Should().ThrowExactlyAsync<UciEngineExitedException>();
+
+        clock.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(450), "the replacement waited out the restart delay");
+        (await search.Should().ThrowExactlyAsync<EngineUnavailableException>()).Which.Message.Should().Contain("stopped trying");
+        fake.StartedProcessIds().Should().HaveCount(2);
+        logger.Entries.Should().ContainSingle(entry => entry.Message.Contains("gave up after 2 failures", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AConversationThatEndsWellResetsTheFailureCount()
+    {
+        // With one attempt allowed, any failure counted would give the slot up.
+        using var fake = new FakeEngineKind();
+        await using var pool = StartPool(fake.Options(startAttempts: 1), out _);
+        var first = await ProcessIdAsync(pool);
+
+        FakeEngine.Kill(first);
+
+        (await ProcessIdAsync(pool)).Should().NotBe(first);
+    }
+
+    [Fact]
+    public async Task CallerWhoGivesUpDuringTheCheckIsNotHeldUpAndTheEngineIsKept()
+    {
+        // The handshake's isready is answered at once, the check's after 2 s, later ones at once.
+        using var fake = new FakeEngineKind("--ready-ms", "0,2000,0");
+        await using var pool = StartPool(fake.Options(checkOutTimeout: TimeSpan.FromMilliseconds(300)), out _);
+        await fake.WaitForStartedAsync(1);
+        var clock = Stopwatch.StartNew();
+
+        var call = () => ProcessIdAsync(pool);
+
+        await call.Should().ThrowExactlyAsync<EngineUnavailableException>();
+        clock.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(1500), "the caller does not wait for the check to finish");
+
+        // The check passes later, and the same engine goes back to the pool.
+        await Eventually.TrueAsync(async () =>
+        {
+            try
+            {
+                return await ProcessIdAsync(pool) == fake.StartedProcessIds().Single();
+            }
+            catch (EngineUnavailableException)
+            {
+                return false;
+            }
+        }, "the checked engine to be handed out");
+        fake.StartedProcessIds().Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task ReadinessListsAKindUntilItHasAWorkingProcess()
     {
         using var fake = new FakeEngineKind();
