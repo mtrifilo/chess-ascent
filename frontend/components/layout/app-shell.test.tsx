@@ -108,7 +108,8 @@ describe('AppShell', () => {
     expect(calls(sent)).toContain('POST /api/auth/sign-out')
   })
 
-  it('stays signed in when the API refuses to sign out', async () => {
+  it('stays signed in, and reports why, when the API refuses to sign out', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const trigger = await renderSignedIn()
     const sent = answer({
       ...signedIn,
@@ -121,8 +122,13 @@ describe('AppShell', () => {
     await waitFor(() =>
       expect(calls(sent)).toContain('POST /api/auth/sign-out')
     )
-    await new Promise(resolve => setTimeout(resolve, 0))
+    await waitFor(() =>
+      expect(consoleError).toHaveBeenCalledWith(
+        new Error('sign-out answered 403.')
+      )
+    )
     expect(reloadPage).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: EMAIL })).toBeInTheDocument()
+    consoleError.mockRestore()
   })
 })

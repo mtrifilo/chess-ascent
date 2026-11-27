@@ -1,10 +1,11 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen } from '@testing-library/react'
 import type { useRouter } from 'next/navigation'
 import type { Middleware } from 'openapi-fetch'
 import { afterEach } from 'vitest'
 
 import { api } from '@/lib/api'
+import { createQueryClient } from '@/lib/query-client'
 
 // Helpers for component tests that call the API. Imported only by tests.
 
@@ -63,14 +64,13 @@ afterEach(() => {
 // Renders with a query cache of its own, so no test sees another's session.
 // Failed queries are not retried, so a test sees a failure at once.
 export function renderWithQueries(ui: React.ReactElement) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
-  return render(ui, {
+  const queryClient = createQueryClient({ queries: { retry: false } })
+  const result = render(ui, {
     wrapper: ({ children }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     ),
   })
+  return { ...result, queryClient }
 }
 
 // A stand-in for useRouter's result, for a test that mocks next/navigation.

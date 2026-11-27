@@ -1,6 +1,11 @@
 'use client'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 import { reloadPage } from '@/lib/page-load'
@@ -24,15 +29,29 @@ const SESSION_KEY = ['session'] as const
 
 // Who is signed in, read from the API in the browser. Every component that
 // asks shares one cached answer, and signing in, signing up or signing out
-// replaces it, so they all change together. While the first answer is on its
-// way, `data` is undefined: neither signed in nor signed out.
+// replaces it, so they all change together. `data` is undefined until an
+// answer arrives, and stays undefined if the API cannot be asked (`isError`):
+// in both cases the page knows neither that someone is signed in nor that
+// nobody is.
 export function useSession() {
   return useQuery({ queryKey: SESSION_KEY, queryFn: fetchSession })
 }
 
-async function fetchSession(): Promise<Session> {
+// The query is asked again on its own, for instance when the window regains
+// focus. If it then finds that a session this page knew about has ended
+// (signed out in another tab, or expired), the page is loaded again from
+// scratch, as for any other 401 (see page-load.ts), rather than carrying on
+// with what it held for that account.
+async function fetchSession({
+  client,
+}: {
+  client: QueryClient
+}): Promise<Session> {
   const { data, response } = await api.GET('/auth/me')
-  if (response.status === 401) return null
+  if (response.status === 401) {
+    if (client.getQueryData<Session>(SESSION_KEY)) reloadPage()
+    return null
+  }
   if (data) return data
   throw new Error(`GET /auth/me answered ${response.status}.`)
 }
@@ -60,13 +79,16 @@ export function useRegister() {
 // unreachable, is thrown and leaves the form as it was.
 //
 // The email is trimmed here, so white space typed or pasted around it never
-// reaches the API. The password is sent as typed.
+// reaches the API. The password is sent as typed, and is not kept: the
+// mutation cache holds each attempt's variables, password included, and
+// `gcTime: 0` drops an attempt as soon as no form is showing its answer.
 function useCredentialsMutation<Refused extends string>(
   path: '/auth/sign-in' | '/auth/register',
   refusal: { status: number; kind: Refused }
 ) {
   const queryClient = useQueryClient()
   return useMutation({
+    gcTime: 0,
     mutationFn: async ({
       email,
       password,
@@ -75,6 +97,10 @@ function useCredentialsMutation<Refused extends string>(
         body: { email: email.trim(), password },
       })
       if (data) {
+        // A session request sent before this one, which will answer that
+        // nobody is signed in, must not land after the new session and
+        // replace it.
+        await queryClient.cancelQueries({ queryKey: SESSION_KEY })
         queryClient.setQueryData<Session>(SESSION_KEY, data)
         return { kind: 'signed-in' }
       }

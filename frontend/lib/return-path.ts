@@ -22,17 +22,31 @@ const THIS_SITE = 'https://this-site.invalid'
 // matching characters: browsers read `//evil.example`, `/\evil.example` and
 // `/<tab>/evil.example` all as addresses on another site, and the parser
 // resolves each of them to that site's origin.
+//
+// The path that comes out is checked too, because resolving can change it:
+// dot segments are removed, so `/.//evil.example` resolves on this site to the
+// path `//evil.example`, which the browser, given it as an address, reads as
+// another site. Only a path that resolves to this site a second time is kept.
 export function returnPathFrom(value: string | null | undefined): string {
   if (!value?.startsWith('/')) return DEFAULT_RETURN_PATH
 
+  const path = pathOnThisSite(value)
+  if (path === undefined || pathOnThisSite(path) !== path) {
+    return DEFAULT_RETURN_PATH
+  }
+  return path
+}
+
+// The path, query and fragment `value` resolves to, or undefined when it
+// resolves to another origin or does not parse.
+function pathOnThisSite(value: string): string | undefined {
   let url: URL
   try {
     url = new URL(value, THIS_SITE)
   } catch {
-    return DEFAULT_RETURN_PATH
+    return undefined
   }
-  if (url.origin !== THIS_SITE) return DEFAULT_RETURN_PATH
-
+  if (url.origin !== THIS_SITE) return undefined
   return url.pathname + url.search + url.hash
 }
 

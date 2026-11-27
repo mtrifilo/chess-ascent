@@ -112,7 +112,7 @@ describe('SignUpForm', () => {
         status: 409,
         body: {
           status: 409,
-          detail: 'An account with this email already exists.',
+          detail: 'Wording the page does not show.',
         },
       },
     })

@@ -174,7 +174,10 @@ export function FormField({
         {...inputProps}
       />
       {invalid && (
-        <ul id={errorsId} className="text-body-s text-destructive">
+        <ul
+          id={errorsId}
+          className="text-body-s wrap-anywhere text-destructive"
+        >
           {lines.map(line => (
             <li key={line}>{line}</li>
           ))}

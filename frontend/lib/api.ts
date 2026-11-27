@@ -16,7 +16,8 @@ export const api = createClient<paths>({ baseUrl: '/api' })
 // The endpoints whose 401 is an answer for the caller to read, not a sign
 // that the session has ended: the current-user endpoint answers 401 to a
 // visitor who is not signed in, and sign-in answers 401 to a wrong email or
-// password.
+// password. The session query (features/auth/session.ts) tells for itself
+// when the current-user endpoint's 401 means a session has ended.
 const UNAUTHORIZED_IS_AN_ANSWER: ReadonlySet<keyof paths> = new Set([
   '/auth/me',
   '/auth/sign-in',

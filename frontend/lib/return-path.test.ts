@@ -24,6 +24,12 @@ describe('returnPathFrom', () => {
     ['a script', 'javascript:alert(1)'],
     ['a relative path', 'games'],
     ['a data address', 'data:text/html,<p>hi</p>'],
+    ['a dot segment before two slashes', '/.//evil.example/phish'],
+    ['two dot segments before two slashes', '/..//evil.example'],
+    ['an encoded dot segment', '/%2e//evil.example'],
+    ['an encoded double dot segment', '/%2e%2e//evil.example'],
+    ['a dot segment after a folder', '/games/..//evil.example'],
+    ['a dot segment before a backslash', '/./\\evil.example'],
   ])('refuses %s and goes to /play', (_case, value) => {
     expect(returnPathFrom(value)).toBe('/play')
   })

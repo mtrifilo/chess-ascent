@@ -139,7 +139,7 @@ describe('SignInForm', () => {
       '/api/auth/me': SIGNED_OUT,
       '/api/auth/sign-in': {
         status: 401,
-        body: { status: 401, detail: 'Email or password is incorrect.' },
+        body: { status: 401, detail: 'Wording the page does not show.' },
       },
     })
     renderWithQueries(<SignInForm />)

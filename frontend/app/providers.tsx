@@ -1,6 +1,8 @@
 'use client'
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
+
+import { createQueryClient } from '@/lib/query-client'
 
 // One query cache for the whole app in the browser, so every component that
 // reads server state, such as who is signed in, shares one answer. A server
@@ -10,8 +12,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 let browserQueryClient: QueryClient | undefined
 
 function getQueryClient() {
-  if (typeof window === 'undefined') return new QueryClient()
-  browserQueryClient ??= new QueryClient()
+  if (typeof window === 'undefined') return createQueryClient()
+  browserQueryClient ??= createQueryClient()
   return browserQueryClient
 }
 
