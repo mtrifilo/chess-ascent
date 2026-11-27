@@ -45,6 +45,17 @@ public sealed class EngineEnvironmentTests : IDisposable
     }
 
     [Fact]
+    public async Task ValueWithLineBreaksAndEqualsSignsArrivesWhole()
+    {
+        // A key in PEM form, say: a dump read line by line would split it.
+        var multiline = SetInThisProcess("MULTILINE", "first line\nsecond = line\nthird");
+
+        var environment = await EngineEnvironmentAsync(copy: [multiline], set: []);
+
+        environment.Should().Equal(new Dictionary<string, string> { [multiline] = "first line\nsecond = line\nthird" });
+    }
+
+    [Fact]
     public async Task SetVariableReachesTheEngineWithTheGivenValue()
     {
         var given = _prefix + "GIVEN";

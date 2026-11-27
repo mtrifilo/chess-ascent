@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace ChessAscent.Api.Tests.Engine;
 
 /// <summary>
@@ -14,7 +16,7 @@ internal sealed class EnvironmentDump : IDisposable
     /// <summary>The arguments that make the fake write the dump.</summary>
     public string[] Arguments => ["--env-dump", FilePath];
 
-    private string FilePath => Path.Combine(_directory.FullName, "environment.txt");
+    private string FilePath => Path.Combine(_directory.FullName, "environment.json");
 
     /// <summary>
     /// The variables the fake reported, with their values shown only for the
@@ -32,10 +34,12 @@ internal sealed class EnvironmentDump : IDisposable
     public async Task<Dictionary<string, string>> ReadAsync(params IEnumerable<string> shown)
     {
         var visible = shown.ToHashSet(StringComparer.Ordinal);
-        return (await File.ReadAllLinesAsync(FilePath, TestContext.Current.CancellationToken))
-            .Select(line => line.Split('=', 2))
-            .Where(parts => !(OperatingSystem.IsMacOS() && parts[0] == "__CF_USER_TEXT_ENCODING"))
-            .ToDictionary(parts => parts[0], parts => visible.Contains(parts[0]) ? parts[1] : Hidden);
+        await using var file = File.OpenRead(FilePath);
+        var variables = await JsonSerializer.DeserializeAsync<Dictionary<string, string>>(file, cancellationToken: TestContext.Current.CancellationToken)
+            ?? throw new InvalidOperationException("The fake wrote no environment.");
+        return variables
+            .Where(variable => !(OperatingSystem.IsMacOS() && variable.Key == "__CF_USER_TEXT_ENCODING"))
+            .ToDictionary(variable => variable.Key, variable => visible.Contains(variable.Key) ? variable.Value : Hidden);
     }
 
     public void Dispose() => _directory.Delete(recursive: true);

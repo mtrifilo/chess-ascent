@@ -88,6 +88,20 @@ public sealed class EnginePoolOptionsValidatorTests
     }
 
     [Fact]
+    public void EnvironmentNamesWithANulCharacterAreRefused()
+    {
+        var kind = Complete();
+        kind.CopyEnvironment.Add("COPY\0NAME");
+        kind.SetEnvironment["SET\0NAME"] = "value";
+
+        var result = Validator.Validate(null, With(kind));
+
+        result.Failures.Should().HaveCount(2);
+        result.Failures.Should().Contain(failure => failure.StartsWith("Entry 0 (", StringComparison.Ordinal) && failure.Contains(Prefix + "CopyEnvironment is not a valid", StringComparison.Ordinal));
+        result.Failures.Should().Contain(failure => failure.StartsWith(Prefix + "SetEnvironment has a variable name", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void AnEnvironmentValueWithANulCharacterIsRefusedWithoutEchoingIt()
     {
         var kind = Complete();

@@ -27,7 +27,7 @@ using ChessAscent.FakeUciEngine;
 //   --pid-file <path>          write this process's id to the file
 //   --pid-dir <path>           create a file in the directory named by this process's id, so
 //                              that several processes started with the same arguments can be told apart
-//   --env-dump <path>          write this process's environment variables to the file, one NAME=VALUE per line
+//   --env-dump <path>          write this process's environment variables to the file, as a JSON object
 //   --child-pid-file <path>    start a child process that sleeps, and write its id to the file
 //   --sleep                    do nothing but sleep (the child's mode)
 var settings = Settings.Parse(args);
@@ -45,9 +45,10 @@ if (settings.PidFile is { } pidFile)
 
 if (settings.EnvironmentDump is { } environmentDump)
 {
+    // JSON, so that a value holding a line break or an equals sign stays one value.
     var variables = Environment.GetEnvironmentVariables();
-    var lines = variables.Keys.Cast<string>().Order(StringComparer.Ordinal).Select(name => $"{name}={variables[name]}");
-    await File.WriteAllLinesAsync(environmentDump, lines);
+    var byName = variables.Keys.Cast<string>().ToDictionary(name => name, name => (string?)variables[name], StringComparer.Ordinal);
+    await File.WriteAllTextAsync(environmentDump, System.Text.Json.JsonSerializer.Serialize(byName));
 }
 
 if (settings.PidDirectory is { } pidDirectory)
