@@ -47,10 +47,8 @@ public sealed class UciEngineExitedException : UciEngineException
 /// </summary>
 public sealed class UciEngineTimeoutException : UciEngineException
 {
-    internal UciEngineTimeoutException(string? awaited, TimeSpan timeout)
-        : base(awaited is null
-            ? $"The call ran out of its {timeout.TotalMilliseconds:0} ms while a command was being sent."
-            : $"The engine did not answer with {awaited} within {timeout.TotalMilliseconds:0} ms.")
+    internal UciEngineTimeoutException(string? awaited, TimeSpan timeout, bool commandCutOff)
+        : base(Describe(awaited, timeout, commandCutOff))
     {
         Awaited = awaited;
         Timeout = timeout;
@@ -58,13 +56,27 @@ public sealed class UciEngineTimeoutException : UciEngineException
 
     /// <summary>
     /// The reply the client was waiting for: <c>uciok</c>, <c>readyok</c> or
-    /// <c>bestmove</c>. Null when the time ran out while a command was being
-    /// sent, which happens when the engine stops reading its input.
+    /// <c>bestmove</c>. Null when the time ran out while no reply was awaited,
+    /// which has two causes: a command was being sent and the engine was not
+    /// taking it (it has stopped reading its input), or the time ran out
+    /// between two commands of the call, before the next was written. In the
+    /// first case the engine is unusable; in the second nothing was lost and it
+    /// stays usable. <see cref="UciEngine.IsUsable"/> tells them apart.
     /// </summary>
     public string? Awaited { get; }
 
     /// <summary>The time allowed for the whole call, from the timeout that applies to it.</summary>
     public TimeSpan Timeout { get; }
+
+    private static string Describe(string? awaited, TimeSpan timeout, bool commandCutOff)
+    {
+        var milliseconds = timeout.TotalMilliseconds.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+        return awaited is not null
+            ? $"The engine did not answer with {awaited} within {milliseconds} ms."
+            : commandCutOff
+                ? $"The engine did not take a command within {milliseconds} ms; it has stopped reading its input."
+                : $"The call ran out of its {milliseconds} ms between two commands, before the next was sent.";
+    }
 }
 
 /// <summary>

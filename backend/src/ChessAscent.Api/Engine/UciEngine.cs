@@ -47,7 +47,9 @@ namespace ChessAscent.Api.Engine;
 /// reads on to that reply and discards it, so that it is not later mistaken
 /// for the answer to another command; for a search's <c>bestmove</c> it sends
 /// <c>stop</c> first. The engine stays usable if the reply comes within the
-/// stop timeout, and becomes unusable if it does not.
+/// stop timeout, and becomes unusable if it does not. The one exception is
+/// the handshake in <see cref="StartAsync"/>: when it fails the engine is
+/// disposed at once, so its owed reply is not waited for.
 /// </para>
 /// </remarks>
 // LEARN: `sealed` is Java's `final` for classes: nothing may extend it.
@@ -214,8 +216,9 @@ public sealed partial class UciEngine : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// If the handshake fails, the process is stopped before the exception
-    /// reaches the caller. The engine inherits the application's environment
-    /// variables.
+    /// reaches the caller, without waiting for a reply the engine still owed
+    /// (unlike other calls, which read on to it). The engine inherits the
+    /// application's environment variables.
     /// </remarks>
     /// <exception cref="Win32Exception">The program could not be started, for example because it does not exist.</exception>
     // LEARN: There is no `.ConfigureAwait(false)` after any `await` in this
@@ -589,8 +592,11 @@ public sealed partial class UciEngine : IAsyncDisposable
 
     // Runs one exchange with the engine, holding the gate. If the exchange
     // ends early while a reply is owed, that reply would later be mistaken
-    // for the reply to another command, so it is collected first, or, when
-    // that is not wanted, the conversation is marked out of step.
+    // for the reply to another command, so it is collected first.
+    // `collectOwedReply: false` is only for an exchange whose failure
+    // disposes the engine (the handshake): waiting for a reply nobody will use
+    // would only delay that failure, so the conversation is marked out of
+    // step instead.
     private async Task<T> ExchangeAsync<T>(
         TimeSpan timeout,
         Func<Exchange, Task<T>> conversation,
@@ -687,7 +693,7 @@ public sealed partial class UciEngine : IAsyncDisposable
 
         return _lifetime.IsCancellationRequested
             ? new ObjectDisposedException(nameof(UciEngine))
-            : new UciEngineTimeoutException(awaited, timeout);
+            : new UciEngineTimeoutException(awaited, timeout, commandCutOff: _fault is not null);
     }
 
     private void ThrowIfUnusable()
@@ -709,14 +715,10 @@ public sealed partial class UciEngine : IAsyncDisposable
 
     private async Task SendAsync(string command, CancellationToken cancellationToken)
     {
-        // Time that ran out before anything was written leaves the
-        // conversation in step, so it is not treated as a cut-off write.
-        cancellationToken.ThrowIfCancellationRequested();
-        LogSent(_logger, ProcessId, command);
+        CommandWriteOutcome outcome;
         try
         {
-            await _process.StandardInput.WriteLineAsync(command.AsMemory(), cancellationToken);
-            await _process.StandardInput.FlushAsync(cancellationToken);
+            outcome = await CommandWriter.WriteAsync(_process.StandardInput, command, cancellationToken);
         }
         catch (IOException)
         {
@@ -731,13 +733,27 @@ public sealed partial class UciEngine : IAsyncDisposable
             _fault ??= "it closed its input";
             throw _end is { } end ? UciEngineExitedException.Exited(end.ExitCode) : UciEngineExitedException.ClosedInput();
         }
-        catch (OperationCanceledException)
+
+        switch (outcome)
         {
-            // Part of the command may already be in the pipe, and the next
-            // command would be read as its continuation.
-            _fault ??= "a command was cut off while it was being written";
-            throw;
+            case CommandWriteOutcome.Written:
+                LogSent(_logger, ProcessId, command);
+                return;
+
+            case CommandWriteOutcome.CutOff:
+                // Part of the command may already be in the pipe, and the
+                // next command would be read as its continuation.
+                _fault ??= "a command was cut off while it was being written";
+                break;
+
+            case CommandWriteOutcome.NotStarted:
+            default:
+                // Time ran out before anything was written: the conversation
+                // is still in step.
+                break;
         }
+
+        throw new OperationCanceledException(cancellationToken);
     }
 
     // Reads lines until one starts with the awaited reply, and returns its

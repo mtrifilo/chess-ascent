@@ -29,6 +29,25 @@ public sealed class UciEngineFailureTests
     }
 
     [Fact]
+    public async Task AFailedHandshakeDoesNotWaitForTheReplyItWasOwed()
+    {
+        // Any other call would wait up to the stop timeout for the uciok it
+        // gave up on; the handshake disposes the engine instead.
+        using var fake = new FakeEngine("--silent-on", "uci");
+        fake.Options = fake.Options with
+        {
+            HandshakeTimeout = TimeSpan.FromSeconds(1),
+            StopTimeout = TimeSpan.FromSeconds(5),
+        };
+        var clock = Stopwatch.StartNew();
+
+        var start = fake.StartAsync;
+
+        await start.Should().ThrowExactlyAsync<UciEngineTimeoutException>();
+        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(4), "the 5 s stop timeout was not waited out");
+    }
+
+    [Fact]
     public async Task EngineThatExitsDuringTheHandshakeIsReportedAsExited()
     {
         using var fake = new FakeEngine("--exit-on", "isready", "--exit-code", "7");
