@@ -3,8 +3,10 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Activity } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { reloadPage } from '@/lib/page-load'
 import {
   answer,
+  type Reply,
   fillIn,
   renderWithQueries,
   routerWith,
@@ -13,6 +15,7 @@ import {
 
 import { SignInForm } from './sign-in-form'
 
+vi.mock('@/lib/page-load', () => ({ reloadPage: vi.fn(), loadPage: vi.fn() }))
 vi.mock('next/navigation', () => ({
   useRouter: vi.fn(),
   useSearchParams: vi.fn(),
@@ -28,6 +31,7 @@ function openWith(query = '') {
 
 beforeEach(() => {
   replace.mockReset()
+  vi.mocked(reloadPage).mockReset()
   vi.mocked(useRouter).mockReturnValue(routerWith(replace))
   openWith()
 })
@@ -156,6 +160,25 @@ describe('SignInForm', () => {
     )
     expect(screen.getByLabelText('Password')).toHaveValue('wrong')
     expect(replace).not.toHaveBeenCalled()
+  })
+
+  it('keeps the new session when an older session check answers after sign-in', async () => {
+    let releaseSessionCheck: (reply: Reply) => void = () => {}
+    answer({
+      '/api/auth/me': new Promise<Reply>(resolve => {
+        releaseSessionCheck = resolve
+      }),
+      '/api/auth/sign-in': { status: 200, body: { email: 'a@example.com' } },
+    })
+    renderWithQueries(<SignInForm />)
+
+    fillIn('a@example.com', 'secret', 'Sign in')
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/play'))
+    releaseSessionCheck(SIGNED_OUT)
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(reloadPage).not.toHaveBeenCalled()
+    expect(screen.queryByLabelText('Email')).not.toBeInTheDocument()
   })
 
   it('clears the fields and the last answer when Next.js hides the page', async () => {

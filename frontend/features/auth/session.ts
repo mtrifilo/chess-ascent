@@ -38,22 +38,35 @@ export function useSession() {
 }
 
 // The query is asked again on its own, for instance when the window regains
-// focus. If it then finds that a session this page knew about has ended
-// (signed out in another tab, or expired), the page is loaded again from
-// scratch, as for any other 401 (see page-load.ts), rather than carrying on
-// with what it held for that account.
+// focus. If it then finds that the account this page knew about is no
+// longer the one signed in (signed out or replaced in another tab, or
+// expired), the page is loaded again from scratch, as for any other 401 (see
+// page-load.ts), rather than carrying on with what it held for that account.
+//
+// Passing `signal` lets TanStack Query abort the request when the query is
+// cancelled, as sign-in does before it records the new session; an answer to
+// a cancelled request is never acted on.
 async function fetchSession({
   client,
+  signal,
 }: {
   client: QueryClient
+  signal: AbortSignal
 }): Promise<Session> {
-  const { data, response } = await api.GET('/auth/me')
-  if (response.status === 401) {
-    if (client.getQueryData<Session>(SESSION_KEY)) reloadPage()
-    return null
+  const before = client.getQueryData<Session>(SESSION_KEY)
+  const { data, response } = await api.GET('/auth/me', { signal })
+  const session = response.status === 401 ? null : data
+  if (session === undefined) {
+    throw new Error(`GET /auth/me answered ${response.status}.`)
   }
-  if (data) return data
-  throw new Error(`GET /auth/me answered ${response.status}.`)
+  if (!signal.aborted && before && session?.email !== before.email) {
+    reloadPage()
+    // The page is about to be replaced. Answering with the session it
+    // already shows keeps anything, such as RequireAccount's own redirect,
+    // from acting on the change before the reload does.
+    return before
+  }
+  return session
 }
 
 // A refused sign-in (401) is one answer for a wrong email and a wrong

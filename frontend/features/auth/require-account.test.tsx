@@ -62,6 +62,33 @@ describe('RequireAccount', () => {
     await queryClient.refetchQueries()
 
     expect(reloadPage).toHaveBeenCalledOnce()
+    // The reload alone moves the visitor on; no client-side redirect races it.
+    expect(replace).not.toHaveBeenCalled()
+  })
+
+  it('loads the page afresh when another account has signed in meanwhile', async () => {
+    answer({ '/api/auth/me': signedInAs('a@example.com') })
+    const { queryClient } = renderWithQueries(
+      <RequireAccount>My games</RequireAccount>
+    )
+    await screen.findByText('My games')
+
+    answer({ '/api/auth/me': signedInAs('b@example.com') })
+    await queryClient.refetchQueries()
+
+    expect(reloadPage).toHaveBeenCalledOnce()
+  })
+
+  it('stays put when a refresh finds the same account', async () => {
+    answer({ '/api/auth/me': signedInAs('a@example.com') })
+    const { queryClient } = renderWithQueries(
+      <RequireAccount>My games</RequireAccount>
+    )
+    await screen.findByText('My games')
+
+    await queryClient.refetchQueries()
+
+    expect(reloadPage).not.toHaveBeenCalled()
   })
 
   it('shows nothing until the API says who is signed in', () => {

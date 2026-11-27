@@ -24,9 +24,12 @@ let answerMiddleware: Middleware | undefined
 
 // Answers each request from `replies`, by path, instead of sending it:
 // openapi-fetch hands every request to its middleware first, and a Response
-// returned there is used as the server's answer. Each call replaces the
-// previous replies. Returns the requests sent from then on.
-export function answer(replies: Record<string, Reply>): Sent[] {
+// returned there is used as the server's answer. A reply given as a promise
+// is held until the test settles it. Each call replaces the previous
+// replies. Returns the requests sent from then on.
+export function answer(
+  replies: Record<string, Reply | Promise<Reply>>
+): Sent[] {
   if (answerMiddleware) api.eject(answerMiddleware)
   const sent: Sent[] = []
   answerMiddleware = {
@@ -37,8 +40,8 @@ export function answer(replies: Record<string, Reply>): Sent[] {
         call: `${request.method} ${path}`,
         body: text ? JSON.parse(text) : undefined,
       })
-      const reply = replies[path]
-      if (!reply) throw new Error(`unexpected request to ${path}`)
+      if (!(path in replies)) throw new Error(`unexpected request to ${path}`)
+      const reply = await replies[path]
       return new Response(
         reply.body === undefined ? null : JSON.stringify(reply.body),
         {
