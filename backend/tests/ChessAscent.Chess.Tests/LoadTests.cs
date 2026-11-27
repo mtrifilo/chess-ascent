@@ -30,6 +30,17 @@ public sealed class LoadTests
     [InlineData("4k3/8/8/8/8/8/8/4K3 w K - 0 1")] // Castling right with no rook.
     [InlineData("8/8/8/8/8/8/8/8 w - - 0 1")] // No kings.
     [InlineData("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -")] // Four fields.
+    [InlineData("4k2P/8/8/8/8/8/8/4K3 w - - 0 1")] // A white pawn on the last rank.
+    [InlineData("4k3/8/8/8/8/8/8/p3K3 w - - 0 1")] // A black pawn on the first rank.
+    [InlineData("4k3/8/8/8/8/8/8/3KK3 w - - 0 1")] // Two white kings.
+    [InlineData("4k3/8/8/8/8/8/8/8 w - - 0 1")] // No white king.
+    [InlineData("8/8/8/8/8/8/8/3kK3 w - - 0 1")] // Kings side by side: the side not to move is in check.
+    [InlineData("4k3/8/8/8/8/8/8/R2K4 w Q - 0 1")] // Castling right with the king off its square.
+    [InlineData("4k2r/8/8/8/8/8/8/4K3 w q - 0 1")] // Black queenside right with the rook on the kingside.
+    [InlineData("4k3/8/8/8/4P3/8/8/4K3 w - e3 0 1")] // En passant square behind a pawn of the side to move.
+    [InlineData("4k3/8/8/8/8/8/8/4K3 w - e6 0 1")] // En passant square with no pawn that could have made the double step.
+    [InlineData("4k3/8/8/8/8/8/8/4K3 w - - -1 1")] // Negative half-move clock.
+    [InlineData("4k3/8/8/8/8/8/8/4K3 x - - 0 1")] // Neither side to move.
     [InlineData("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ")] // Trailing space.
     [InlineData("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 0")] // Move number zero.
     public void InvalidStartingPositionComesBackAsAValue(string fen)

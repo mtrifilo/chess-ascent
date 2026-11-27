@@ -24,4 +24,7 @@ internal static class Games
             GameLoaded loaded => loaded.Game,
             var other => throw new InvalidOperationException($"Expected the game to load, but got {other.Value}."),
         };
+
+    public static Square SquareNamed(string name) =>
+        Square.TryParse(name, out var square) ? square : throw new ArgumentException($"Not a square: {name}.", nameof(name));
 }

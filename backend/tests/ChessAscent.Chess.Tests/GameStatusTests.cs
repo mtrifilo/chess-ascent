@@ -58,13 +58,84 @@ public sealed class GameStatusTests
         game.LegalMoves().Should().BeEmpty();
     }
 
-    [Fact]
-    public void RepetitionsNeedNotBeConsecutive()
+    // A library that compares a position only with the ones exactly 4 and 8
+    // half-moves earlier finds the knight dance above and misses both of
+    // these. Each row is a move list whose last move makes the third
+    // occurrence of the starting position, and no earlier move does.
+    public static TheoryData<string, string[]> RepetitionsThatAreNotFourHalfMovesApart() => new()
     {
-        // The starting position recurs at plies 4 and 10, with other positions in between.
-        var game = Games.Load(
-            "4k3/8/8/8/8/8/8/R3K3 w - - 0 1",
-            "e1d1", "e8d8", "d1e1", "d8e8", "e1d1", "e8d8", "d1d2", "d8d7", "d2e1", "d7e8");
+        // A six-half-move king triangle, twice: the position recurs at plies 6 and 12.
+        { "4k3/8/8/8/8/8/8/R3K3 w - - 0 1", ["e1d1", "e8d8", "d1d2", "d8d7", "d2e1", "d7e8", "e1d1", "e8d8", "d1d2", "d8d7", "d2e1", "d7e8"] },
+
+        // Uneven gaps: the position recurs at plies 4 and 10, with other positions in between.
+        { "4k3/8/8/8/8/8/8/R3K3 w - - 0 1", ["e1d1", "e8d8", "d1e1", "d8e8", "e1d1", "e8d8", "d1d2", "d8d7", "d2e1", "d7e8"] },
+    };
+
+    [Theory]
+    [MemberData(nameof(RepetitionsThatAreNotFourHalfMovesApart))]
+    public void RepetitionIsFoundWhateverTheGapsBetweenOccurrences(string fen, string[] moves)
+    {
+        var game = Games.Load(fen, moves[..^1]);
+        game.Status.Value.Should().Be(new Ongoing(), "the position has occurred only twice before the last move");
+
+        game.TryPlay(moves[^1]).Value.Should().BeOfType<MovePlayed>()
+            .Which.Status.Value.Should().Be(new Draw(DrawReason.ThreefoldRepetition));
+    }
+
+    // Positions repeat only if the same moves are possible, so a position
+    // with castling rights is not the same as one with the same pieces and
+    // none. Here the kingside rooks step aside and back, which removes the
+    // kingside rights, then the knights dance. The starting placement recurs
+    // without those rights at plies 8, 12 and 16; counting the start, which
+    // had them, would wrongly make ply 12 the third occurrence.
+    [Fact]
+    public void LostCastlingRightsMakeADifferentPosition()
+    {
+        string[] rooksAsideAndBack = ["g1f3", "g8f6", "h1g1", "h8g8", "g1h1", "g8h8", "f3g1", "f6g8"];
+        string[] knightsOutAndBack = ["g1f3", "g8f6", "f3g1", "f6g8"];
+
+        var game = Games.Play([.. rooksAsideAndBack, .. knightsOutAndBack]);
+        game.Status.Value.Should().Be(new Ongoing(), "the position at ply 0 had castling rights that the one at ply 12 lacks");
+
+        foreach (var move in knightsOutAndBack)
+        {
+            game.TryPlay(move);
+        }
+
+        game.Status.Value.Should().Be(new Draw(DrawReason.ThreefoldRepetition));
+    }
+
+    // An en passant capture that is available makes a position different
+    // from the same pieces without it: after e2e4 here Black may take on e3,
+    // and once the kings shuffle that chance is gone. The placement after
+    // e2e4 recurs without the capture at plies 5, 9 and 13; counting ply 1,
+    // which had it, would wrongly make ply 9 the third occurrence.
+    [Fact]
+    public void AnAvailableEnPassantCaptureMakesADifferentPosition()
+    {
+        string[] kingsShuffle = ["e8d8", "e1d1", "d8e8", "d1e1"];
+
+        var game = Games.Load("4k3/8/8/8/3p4/8/4P3/4K3 w - - 0 1", ["e2e4", .. kingsShuffle, .. kingsShuffle]);
+        game.Status.Value.Should().Be(new Ongoing());
+
+        foreach (var move in kingsShuffle)
+        {
+            game.TryPlay(move);
+        }
+
+        game.Status.Value.Should().Be(new Draw(DrawReason.ThreefoldRepetition));
+    }
+
+    // The other side of the same rule: when no pawn can take en passant, the
+    // double step leaves the same position as any other way of reaching it,
+    // although FEN records an en passant square after every double step. The
+    // position after e2e4 recurs at plies 5 and 9, which is the third occurrence.
+    [Fact]
+    public void AnEnPassantSquareNoPawnCanUseDoesNotMakeADifferentPosition()
+    {
+        string[] kingsShuffle = ["e8d8", "e1d1", "d8e8", "d1e1"];
+
+        var game = Games.Load("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1", ["e2e4", .. kingsShuffle, .. kingsShuffle]);
 
         game.Status.Value.Should().Be(new Draw(DrawReason.ThreefoldRepetition));
     }
@@ -114,6 +185,17 @@ public sealed class GameStatusTests
         game.Status.Value.Should().Be(new Checkmate(Side.White));
     }
 
+    [Theory]
+    [InlineData("4k3/8/8/8/8/8/r7/R3K3 w - - 99 60", "a1a2")] // A capture.
+    [InlineData("4k3/8/8/8/8/8/P7/R3K3 w - - 99 60", "a2a3")] // A pawn move.
+    public void CaptureOrPawnMoveOnTheHundredthHalfMoveRestartsTheCount(string fen, string uci)
+    {
+        var game = Games.Load(fen);
+
+        game.TryPlay(uci).Value.Should().BeOfType<MovePlayed>().Which.Status.Value.Should().Be(new Ongoing());
+        game.Fen.Should().Contain(" b - - 0 60");
+    }
+
     [Fact]
     public void CapturingTheLastPieceLeavesADeadPosition()
     {
@@ -131,6 +213,18 @@ public sealed class GameStatusTests
     public void DeadPositionLoadedFromFenIsAlreadyDrawn(string fen)
     {
         Games.Load(fen).Status.Value.Should().Be(new Draw(DrawReason.DeadPosition));
+    }
+
+    // Mate is possible in each of these, if only with help from the defender,
+    // so none is a dead position under FIDE rules.
+    [Theory]
+    [InlineData("4kn2/8/8/8/8/8/8/2B1K3 w - - 0 1")] // King and bishop against king and knight.
+    [InlineData("4k1b1/8/8/8/8/8/8/2B1K3 w - - 0 1")] // Bishops on squares of different colours.
+    [InlineData("4kn2/8/8/8/8/8/8/1N2K3 w - - 0 1")] // A knight each.
+    [InlineData("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1")] // King and pawn against king.
+    public void MaterialThatCanStillMatePlaysOn(string fen)
+    {
+        Games.Load(fen).Status.Value.Should().Be(new Ongoing());
     }
 
     // Whether this is a draw is an open question for the project owner; until
