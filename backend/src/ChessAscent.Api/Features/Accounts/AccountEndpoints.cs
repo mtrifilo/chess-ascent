@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace ChessAscent.Api.Features.Accounts;
 
@@ -19,6 +21,10 @@ public static class AccountEndpoints
 
     /// <summary>The detail of the one error every refused sign-in gets.</summary>
     public const string SignInFailedDetail = "Email or password is incorrect.";
+
+    // The unique index Identity's model puts on the normalized user name,
+    // which here is the normalized email.
+    private const string UniqueUserNameIndex = "UserNameIndex";
 
     public static IEndpointRouteBuilder MapAccountEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -52,22 +58,37 @@ public static class AccountEndpoints
         SignInManager<IdentityUser> signInManager)
     {
         // The email doubles as the user name, so the database's unique index
-        // on the normalized user name keeps one account per address even if
-        // two registrations for it race past Identity's own check; the losing
-        // one then fails with a 500 rather than a 409.
+        // on the normalized user name keeps one account per address.
         var user = new IdentityUser { UserName = request.Email, Email = request.Email };
 
         // CreateAsync validates the password and then the email, and stores
         // only Identity's hash of the password.
-        var created = await userManager.CreateAsync(user, request.Password);
+        IdentityResult created;
+        try
+        {
+            created = await userManager.CreateAsync(user, request.Password);
+        }
+        catch (DbUpdateException exception) when (IsUniqueUserNameViolation(exception))
+        {
+            // LEARN: `catch ... when (condition)` is an exception filter: the
+            // block runs only if the condition holds, and otherwise the
+            // exception carries on up the stack as if this catch were not
+            // there, with its stack trace untouched. Java has no counterpart;
+            // there you would catch, test and rethrow.
+            //
+            // Two registrations for one email that arrive together can both
+            // pass Identity's check for an existing account before either
+            // saves, and then the index refuses the second insert. That is
+            // the same duplicate as one Identity catches, so it gets the same
+            // answer.
+            return DuplicateEmail();
+        }
+
         if (!created.Succeeded)
         {
-            if (RegistrationErrors.IsDuplicateEmail(created))
-            {
-                return TypedResults.Problem(DuplicateEmailDetail, statusCode: StatusCodes.Status409Conflict);
-            }
-
-            return RegistrationErrors.ToValidationProblem(created);
+            return RegistrationErrors.IsDuplicateEmail(created)
+                ? DuplicateEmail()
+                : RegistrationErrors.ToValidationProblem(created);
         }
 
         await signInManager.SignInAsync(user, isPersistent: true);
@@ -120,6 +141,18 @@ public static class AccountEndpoints
             ? TypedResults.Ok(new CurrentUserResponse(email))
             : TypedResults.Unauthorized();
     }
+
+    // The pattern checks the inner exception's type and two of its properties
+    // in one expression.
+    private static bool IsUniqueUserNameViolation(DbUpdateException exception) =>
+        exception.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.UniqueViolation,
+            ConstraintName: UniqueUserNameIndex,
+        };
+
+    private static ProblemHttpResult DuplicateEmail() =>
+        TypedResults.Problem(DuplicateEmailDetail, statusCode: StatusCodes.Status409Conflict);
 
     private static ProblemHttpResult SignInFailed() =>
         TypedResults.Problem(SignInFailedDetail, statusCode: StatusCodes.Status401Unauthorized);
