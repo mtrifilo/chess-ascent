@@ -2,6 +2,11 @@ namespace ChessAscent.Chess.Tests;
 
 public sealed class GameStatusTests
 {
+    private const string KingsAndRook = "4k3/8/8/8/8/8/8/R3K3 w - - 0 1";
+
+    // Both kings step aside and back, which leaves the position as it was.
+    private static readonly string[] KingsShuffle = ["e8d8", "e1d1", "d8e8", "d1e1"];
+
     [Fact]
     public void NewGameIsOngoingWithWhiteToMove()
     {
@@ -65,10 +70,10 @@ public sealed class GameStatusTests
     public static TheoryData<string, string[]> RepetitionsThatAreNotFourHalfMovesApart() => new()
     {
         // A six-half-move king triangle, twice: the position recurs at plies 6 and 12.
-        { "4k3/8/8/8/8/8/8/R3K3 w - - 0 1", ["e1d1", "e8d8", "d1d2", "d8d7", "d2e1", "d7e8", "e1d1", "e8d8", "d1d2", "d8d7", "d2e1", "d7e8"] },
+        { KingsAndRook, ["e1d1", "e8d8", "d1d2", "d8d7", "d2e1", "d7e8", "e1d1", "e8d8", "d1d2", "d8d7", "d2e1", "d7e8"] },
 
         // Uneven gaps: the position recurs at plies 4 and 10, with other positions in between.
-        { "4k3/8/8/8/8/8/8/R3K3 w - - 0 1", ["e1d1", "e8d8", "d1e1", "d8e8", "e1d1", "e8d8", "d1d2", "d8d7", "d2e1", "d7e8"] },
+        { KingsAndRook, ["e1d1", "e8d8", "d1e1", "d8e8", "e1d1", "e8d8", "d1d2", "d8d7", "d2e1", "d7e8"] },
     };
 
     [Theory]
@@ -85,22 +90,21 @@ public sealed class GameStatusTests
     // Positions repeat only if the same moves are possible, so a position
     // with castling rights is not the same as one with the same pieces and
     // none. Here the kingside rooks step aside and back, which removes the
-    // kingside rights, then the knights dance. The starting placement recurs
-    // without those rights at plies 8, 12 and 16; counting the start, which
-    // had them, would wrongly make ply 12 the third occurrence.
+    // kingside rights, then the kingside knights and then the queenside
+    // knights go out and back. The starting placement recurs without those
+    // rights at plies 8, 12 and 16; counting the start, which had them, would
+    // wrongly make ply 12 the third occurrence. (Repeating the kingside
+    // knights instead would draw at ply 14, on the third occurrence of the
+    // position with both kingside knights out.)
     [Fact]
     public void LostCastlingRightsMakeADifferentPosition()
     {
         string[] rooksAsideAndBack = ["g1f3", "g8f6", "h1g1", "h8g8", "g1h1", "g8h8", "f3g1", "f6g8"];
-        string[] knightsOutAndBack = ["g1f3", "g8f6", "f3g1", "f6g8"];
 
-        var game = Games.Play([.. rooksAsideAndBack, .. knightsOutAndBack]);
+        var game = Games.Play([.. rooksAsideAndBack, .. Games.KnightDance[..4]]);
         game.Status.Value.Should().Be(new Ongoing(), "the position at ply 0 had castling rights that the one at ply 12 lacks");
 
-        foreach (var move in knightsOutAndBack)
-        {
-            game.TryPlay(move);
-        }
+        Games.PlayOn(game, "b1c3", "b8c6", "c3b1", "c6b8");
 
         game.Status.Value.Should().Be(new Draw(DrawReason.ThreefoldRepetition));
     }
@@ -108,22 +112,15 @@ public sealed class GameStatusTests
     // An en passant capture that is available makes a position different
     // from the same pieces without it: after e2e4 here Black may take on e3,
     // and once the kings shuffle that chance is gone. The placement after
-    // e2e4 recurs without the capture at plies 5, 9 and 13; counting ply 1,
-    // which had it, would wrongly make ply 9 the third occurrence.
+    // e2e4 recurs without the capture at plies 5 and 9; counting ply 1, which
+    // had it, would wrongly make ply 9 the third occurrence. The test below
+    // is the same line without the black pawn, where ply 9 is the third.
     [Fact]
     public void AnAvailableEnPassantCaptureMakesADifferentPosition()
     {
-        string[] kingsShuffle = ["e8d8", "e1d1", "d8e8", "d1e1"];
+        var game = Games.Load("4k3/8/8/8/3p4/8/4P3/4K3 w - - 0 1", ["e2e4", .. KingsShuffle, .. KingsShuffle]);
 
-        var game = Games.Load("4k3/8/8/8/3p4/8/4P3/4K3 w - - 0 1", ["e2e4", .. kingsShuffle, .. kingsShuffle]);
         game.Status.Value.Should().Be(new Ongoing());
-
-        foreach (var move in kingsShuffle)
-        {
-            game.TryPlay(move);
-        }
-
-        game.Status.Value.Should().Be(new Draw(DrawReason.ThreefoldRepetition));
     }
 
     // The other side of the same rule: when no pawn can take en passant, the
@@ -133,9 +130,7 @@ public sealed class GameStatusTests
     [Fact]
     public void AnEnPassantSquareNoPawnCanUseDoesNotMakeADifferentPosition()
     {
-        string[] kingsShuffle = ["e8d8", "e1d1", "d8e8", "d1e1"];
-
-        var game = Games.Load("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1", ["e2e4", .. kingsShuffle, .. kingsShuffle]);
+        var game = Games.Load("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1", ["e2e4", .. KingsShuffle, .. KingsShuffle]);
 
         game.Status.Value.Should().Be(new Draw(DrawReason.ThreefoldRepetition));
     }

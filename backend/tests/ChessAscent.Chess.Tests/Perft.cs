@@ -79,11 +79,7 @@ internal static class Perft
     private static IChessGame PlayOnBranch(IChessGame game, string uci)
     {
         var branch = game.Branch();
-        if (branch.TryPlay(uci) is not MovePlayed)
-        {
-            throw new InvalidOperationException($"{uci} is listed as legal in {game.Fen} but was not played.");
-        }
-
+        Games.PlayOn(branch, uci);
         return branch;
     }
 

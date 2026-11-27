@@ -72,7 +72,6 @@ public sealed class PerftTests(ITestOutputHelper output)
         if (actual != expected)
         {
             var divideText = Perft.Format(divide);
-            output.WriteLine(divideText);
             Assert.Fail(
                 $"Perft of {name} at depth {depth} counted {actual} positions; the published count is {expected}.\n"
                 + $"FEN: {position.Fen}\n"

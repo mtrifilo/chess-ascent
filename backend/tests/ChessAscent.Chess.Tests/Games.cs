@@ -25,6 +25,20 @@ internal static class Games
             var other => throw new InvalidOperationException($"Expected the game to load, but got {other.Value}."),
         };
 
+    /// <summary>Plays the moves in order, throwing with the position if one is refused.</summary>
+    public static void PlayOn(IChessGame game, params string[] uciMoves)
+    {
+        foreach (var uci in uciMoves)
+        {
+            // A refused move leaves the game unchanged, so Fen is the position it was refused in.
+            var result = game.TryPlay(uci);
+            if (result is not MovePlayed)
+            {
+                throw new InvalidOperationException($"{uci} was refused in {game.Fen}: {result}.");
+            }
+        }
+    }
+
     public static Square SquareNamed(string name) =>
         Square.TryParse(name, out var square) ? square : throw new ArgumentException($"Not a square: {name}.", nameof(name));
 }

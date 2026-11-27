@@ -55,7 +55,7 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
         foreach (var (ply, game) in RandomGames.Positions(recorded))
         {
             var moves = game.LegalMoves();
-            var context = recorded.Describe(ply);
+            var context = recorded.At(ply);
 
             (game.Status.Value is Ongoing).Should().Be(moves.Count > 0, "the status is {0} in {1}", game.Status, context);
             moves.Select(move => move.Uci).Should().BeInAscendingOrder(StringComparer.Ordinal, "in {0}", context)
@@ -72,9 +72,9 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
     {
         var recorded = games[seed];
 
-        var replayed = Games.Load(Games.StartingFen, [.. recorded.Moves]);
+        var replayed = Games.Play([.. recorded.Moves]);
 
-        replayed.Fen.Should().Be(recorded.Fen, "in {0}", recorded.Describe(recorded.Moves.Count));
+        replayed.Fen.Should().Be(recorded.Fen, "in {0}", recorded.At(recorded.Moves.Count));
         replayed.Status.Value.Should().Be(recorded.Status.Value);
         replayed.History.Should().Equal(recorded.History);
     }
@@ -89,10 +89,11 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
         var recorded = games[seed];
         foreach (var (ply, game) in RandomGames.Positions(recorded))
         {
-            var context = recorded.Describe(ply);
-            var reloaded = Games.Load(game.Fen);
+            var context = recorded.At(ply);
+            var fen = game.Fen;
+            var reloaded = Games.Load(fen);
 
-            reloaded.Fen.Should().Be(game.Fen, "in {0}", context);
+            reloaded.Fen.Should().Be(fen, "in {0}", context);
             if (game.Status.Value is not Draw { Reason: DrawReason.ThreefoldRepetition })
             {
                 reloaded.Status.Value.Should().Be(game.Status.Value, "in {0}", context);
@@ -108,29 +109,59 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
         var recorded = games[seed];
         foreach (var (ply, game) in RandomGames.Positions(recorded))
         {
-            var context = recorded.Describe(ply);
+            var context = recorded.At(ply);
             var legal = game.LegalMoves();
 
-            foreach (var move in legal)
-            {
-                var branch = game.Branch();
-                var played = branch.TryPlay(move.Uci).Value.Should().BeOfType<MovePlayed>("{0} is listed in {1}", move.Uci, context).Which;
-                played.Move.Should().Be(new PlayedMove(move.Uci, move.San), "the move is recorded as it was listed in {0}", context);
-                played.Status.Value.Should().Be(branch.Status.Value, "in {0}", context);
-                branch.History.Should().HaveCount(ply + 1).And.EndWith(played.Move);
-            }
+            AssertEveryListedMoveIsPlayedAsListed(game, legal, context);
 
             var isLast = ply == recorded.Moves.Count;
             if ((ply + seed) % RefusalCheckInterval == 0 || isLast)
             {
-                AssertEveryOtherMoveIsRefused(game, legal, context);
+                // On a branch, so that a candidate wrongly accepted cannot
+                // move the replayed game on and spoil every later check.
+                AssertEveryOtherMoveIsRefused(game.Branch(), legal, context);
             }
         }
     }
 
-    // Plain comparisons collect the mismatches and one assertion reports them,
-    // because an assertion per candidate would cost more than the move itself.
-    private static void AssertEveryOtherMoveIsRefused(IChessGame game, IReadOnlyList<LegalMove> legal, string context)
+    // These two helpers compare plainly, collect the mismatches and make one
+    // assertion per position, because an assertion per move would cost more
+    // than playing the move.
+    private static void AssertEveryListedMoveIsPlayedAsListed(IChessGame game, IReadOnlyList<LegalMove> legal, GamePosition context)
+    {
+        var historyLength = game.History.Count;
+        var mismatches = new List<string>();
+        foreach (var move in legal)
+        {
+            var branch = game.Branch();
+            var result = branch.TryPlay(move.Uci);
+            if (result is not MovePlayed played)
+            {
+                mismatches.Add($"{move.Uci} is listed but gave {result}");
+                continue;
+            }
+
+            if (played.Move != new PlayedMove(move.Uci, move.San))
+            {
+                mismatches.Add($"{move.Uci} is listed as {move.San} but was recorded as {played.Move}");
+            }
+
+            if (!Equals(played.Status.Value, branch.Status.Value))
+            {
+                mismatches.Add($"{move.Uci} reported {played.Status} but left the game {branch.Status}");
+            }
+
+            var history = branch.History;
+            if (history.Count != historyLength + 1 || history[^1] != played.Move)
+            {
+                mismatches.Add($"{move.Uci} is not the last of {history.Count} moves in the history");
+            }
+        }
+
+        mismatches.Should().BeEmpty("every listed move is played as listed in {0}", context);
+    }
+
+    private static void AssertEveryOtherMoveIsRefused(IChessGame game, IReadOnlyList<LegalMove> legal, GamePosition context)
     {
         var fen = game.Fen;
         var historyLength = game.History.Count;
@@ -162,9 +193,22 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
 /// <summary>A game played by choosing uniformly among the legal moves, and how it ended.</summary>
 public sealed record RandomGame(int Seed, IReadOnlyList<string> Moves, string Fen, GameStatus Status, IReadOnlyList<PlayedMove> History)
 {
-    /// <summary>Names a position of this game well enough to rebuild it: the seed and the moves that lead to it.</summary>
-    public string Describe(int ply) =>
-        $"seed {Seed} after {ply} half-moves from the starting position: {string.Join(' ', Moves.Take(ply))}";
+    public GamePosition At(int ply) => new(this, ply);
+}
+
+/// <summary>
+/// A position in a recorded game, named well enough to rebuild it: the seed
+/// and the moves that lead to it.
+/// </summary>
+/// <remarks>
+/// Assertions format their reasons only when they fail, so passing this
+/// rather than its text keeps the move list from being joined at every
+/// position of every game.
+/// </remarks>
+public readonly record struct GamePosition(RandomGame Game, int Ply)
+{
+    public override string ToString() =>
+        $"seed {Game.Seed} after {Ply} half-moves from the starting position: {string.Join(' ', Game.Moves.Take(Ply))}";
 }
 
 /// <summary>The seeded random games, played once for every test in <see cref="RandomGameTests"/>.</summary>
@@ -188,7 +232,7 @@ public sealed class RandomGames
     // off. Java has no equivalent and would need a hand-written Iterator
     // class. Here it lets each test walk a game position by position without
     // knowing how the game is replayed. The game it yields is the same object
-    // each time, one move further on, so callers must not play moves on it.
+    // each time, one move further on, so callers play moves only on a Branch of it.
     /// <summary>Replays a recorded game, yielding the game at each position from the start to the end.</summary>
     public static IEnumerable<(int Ply, IChessGame Game)> Positions(RandomGame recorded)
     {
@@ -196,11 +240,7 @@ public sealed class RandomGames
         yield return (0, game);
         for (var index = 0; index < recorded.Moves.Count; index++)
         {
-            if (game.TryPlay(recorded.Moves[index]) is not MovePlayed)
-            {
-                throw new InvalidOperationException($"Replay refused {recorded.Moves[index]} in {recorded.Describe(index)}.");
-            }
-
+            Games.PlayOn(game, recorded.Moves[index]);
             yield return (index + 1, game);
         }
     }
@@ -224,11 +264,7 @@ public sealed class RandomGames
         {
             var legal = game.LegalMoves();
             var choice = legal[random.Next(legal.Count)].Uci;
-            if (game.TryPlay(choice) is not MovePlayed)
-            {
-                throw new InvalidOperationException($"Seed {seed}: listed move {choice} was not played after {string.Join(' ', moves)}.");
-            }
-
+            Games.PlayOn(game, choice);
             moves.Add(choice);
         }
 
@@ -237,15 +273,7 @@ public sealed class RandomGames
 
     private static string[] BuildEveryUciMove()
     {
-        var squares = new List<string>();
-        foreach (var file in "abcdefgh")
-        {
-            foreach (var rank in "12345678")
-            {
-                squares.Add($"{file}{rank}");
-            }
-        }
-
+        var squares = (from file in "abcdefgh" from rank in "12345678" select $"{file}{rank}").ToArray();
         string[] suffixes = ["", "q", "r", "b", "n"];
         return
         [

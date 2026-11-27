@@ -15,10 +15,7 @@ public sealed class CastlingTests
         var game = Games.Load("4k3/8/8/8/8/8/5Rb1/4K2R b K - 0 1", "g2h1");
         game.Fen.Should().Be("4k3/8/8/8/8/8/5R2/4K2b w - - 0 2", "capturing the rook on h1 removes the right at once");
 
-        foreach (var move in new[] { "f2f1", "e8d8", "f1h1", "d8e8" })
-        {
-            game.TryPlay(move).Value.Should().BeOfType<MovePlayed>();
-        }
+        Games.PlayOn(game, "f2f1", "e8d8", "f1h1", "d8e8");
 
         game.Fen.Should().Be("4k3/8/8/8/8/8/8/4K2R w - - 1 4");
         game.TryPlay("e1g1").Value.Should().Be(new IllegalMove("e1g1"));
