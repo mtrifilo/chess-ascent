@@ -47,7 +47,7 @@ public static class MaiaInstallation
     /// <exception cref="InvalidOperationException">
     /// <see cref="EnginesDirectorySetting"/> is set to a relative path; or
     /// it is not set, there is no default, and configuration does not give
-    /// the kind's program either.
+    /// the kind's program, working directory and <c>HF_HOME</c> either.
     /// </exception>
     // LEARN: Configuration is a stack of sources, like Spring's property
     // sources, and a key's value comes from the last source that has it.
@@ -65,12 +65,19 @@ public static class MaiaInstallation
         {
             configuration.Sources.Insert(0, new MemoryConfigurationSource { InitialData = PoolSettings(enginesDirectory) });
         }
-        else if (string.IsNullOrWhiteSpace(configuration[Key(nameof(EngineKindOptions.ExecutablePath))]))
+        else
         {
-            throw new InvalidOperationException(
-                $"{EnginesDirectorySetting} is not set, and the API is not running from its project directory in a checkout of the repository, "
-                + $"so there is no default. Set {EnginesDirectorySetting} to the full path of the directory scripts/setup-maia.sh installed Maia into, "
-                + "or configure the maia engine kind's ExecutablePath, WorkingDirectory and SetEnvironment:HF_HOME.");
+            // All three, or Maia would start in the API's directory and look
+            // for its weights in the user's own Hugging Face cache.
+            string[] paths = [Key(nameof(EngineKindOptions.ExecutablePath)), Key(nameof(EngineKindOptions.WorkingDirectory)), Key(nameof(EngineKindOptions.SetEnvironment), "HF_HOME")];
+            var missing = paths.Where(key => string.IsNullOrWhiteSpace(configuration[key])).ToList();
+            if (missing.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"{EnginesDirectorySetting} is not set, and the API is not running from its project directory in a checkout of the repository, "
+                    + $"so there is no default. Set {EnginesDirectorySetting} to the full path of the directory scripts/setup-maia.sh installed Maia into, "
+                    + $"or configure all of {string.Join(", ", paths)}; missing: {string.Join(", ", missing)}.");
+            }
         }
     }
 

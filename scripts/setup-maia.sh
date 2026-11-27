@@ -66,7 +66,7 @@ case "$(uname -s)" in
   Darwin)
     OS=macos
     # The hardware, which a shell running under Rosetta reports truly.
-    [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ] || fail "on macOS, PyTorch needs an Apple Silicon Mac"
+    [ "$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ] || fail "on macOS, PyTorch needs an Apple Silicon Mac"
     [ "$(sw_vers -productVersion | cut -d. -f1)" -ge 14 ] || fail "on macOS, PyTorch needs macOS 14 or later"
     ;;
   Linux) OS=linux ;;
@@ -82,13 +82,18 @@ in_range() {
   "$1" -I -c 'import platform, sys; sys.exit(not ((3, 12) <= sys.version_info[:2] <= (3, 14) and (sys.platform != "darwin" or platform.machine() == "arm64")))' 2>/dev/null
 }
 
+# Every match on PATH is tried for each name in turn. One inside a virtual
+# environment, such as this one activated in the user's shell, is passed
+# over: it may be the very one about to be made again.
 find_python() {
-  local candidate
-  for candidate in python3.13 python3.12 python3.14 python3; do
-    if command -v "$candidate" >/dev/null && in_range "$candidate"; then
-      command -v "$candidate"
-      return 0
-    fi
+  local name candidate
+  for name in python3.13 python3.12 python3.14 python3; do
+    while IFS= read -r candidate; do
+      if in_range "$candidate" && "$candidate" -I -c 'import sys; sys.exit(sys.prefix != sys.base_prefix)' 2>/dev/null; then
+        echo "$candidate"
+        return 0
+      fi
+    done < <(type -ap "$name" 2>/dev/null || true)
   done
   return 1
 }

@@ -47,18 +47,32 @@ public sealed partial class MaiaInstallationTests
     }
 
     [Fact]
-    public void WithoutADefaultStartUpStopsUnlessTheKindsProgramIsConfigured()
+    public void WithoutADefaultStartUpStopsUnlessEveryPathOfTheKindIsConfigured()
     {
         var elsewhere = Path.GetTempPath();
+        var program = new Dictionary<string, string?> { ["EnginePool:Kinds:maia:ExecutablePath"] = "/opt/maia/venv/bin/python" };
+        var everything = new Dictionary<string, string?>(program)
+        {
+            ["EnginePool:Kinds:maia:WorkingDirectory"] = "/opt/maia",
+            ["EnginePool:Kinds:maia:SetEnvironment:HF_HOME"] = "/opt/maia/huggingface",
+        };
 
         var unset = () => new ConfigurationManager().AddMaiaInstallation(elsewhere);
-        var configured = new ConfigurationManager();
-        configured.AddInMemoryCollection(new Dictionary<string, string?> { ["EnginePool:Kinds:maia:ExecutablePath"] = "/opt/maia/python" });
+        var programOnly = () => With(program).AddMaiaInstallation(elsewhere);
+        var configured = With(everything);
         configured.AddMaiaInstallation(elsewhere);
 
         unset.Should().Throw<InvalidOperationException>().WithMessage($"{MaiaInstallation.EnginesDirectorySetting} is not set*");
-        configured["EnginePool:Kinds:maia:ExecutablePath"].Should().Be("/opt/maia/python");
-        configured["EnginePool:Kinds:maia:WorkingDirectory"].Should().BeNull("no default is added without an engines directory");
+        programOnly.Should().Throw<InvalidOperationException>()
+            .WithMessage("*missing: EnginePool:Kinds:maia:WorkingDirectory, EnginePool:Kinds:maia:SetEnvironment:HF_HOME.");
+        configured["EnginePool:Kinds:maia:WorkingDirectory"].Should().Be("/opt/maia", "nothing is added over the configured paths");
+
+        static ConfigurationManager With(Dictionary<string, string?> settings)
+        {
+            var configuration = new ConfigurationManager();
+            configuration.AddInMemoryCollection(settings);
+            return configuration;
+        }
     }
 
     [Fact]
