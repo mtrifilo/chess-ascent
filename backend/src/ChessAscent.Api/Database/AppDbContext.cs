@@ -1,3 +1,4 @@
+using ChessAscent.Api.Features.Games;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -23,11 +24,10 @@ namespace ChessAscent.Api.Database;
 // the Development environment the DI container refuses to build if a
 // Singleton depends on a Scoped service.
 //
-// The application's own tables arrive as DbSet<T> properties when its first
-// entities do; Identity's come from the base class (below). The
-// constructor takes the options AddDbContext built (provider and connection
-// string), the way an EntityManagerFactory is configured outside the
-// EntityManager.
+// The application's own tables are the DbSet<T> properties below; Identity's
+// come from the base class (below). The constructor takes the options
+// AddDbContext built (provider and connection string), the way an
+// EntityManagerFactory is configured outside the EntityManager.
 //
 // LEARN: Deriving from IdentityUserContext<IdentityUser> instead of plain
 // DbContext adds ASP.NET Core Identity's entities to this model: users
@@ -39,4 +39,24 @@ namespace ChessAscent.Api.Database;
 // and the start-up migration creates them. IdentityDbContext would add role
 // tables as well; the API has no roles.
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
-    : IdentityUserContext<IdentityUser>(options);
+    : IdentityUserContext<IdentityUser>(options)
+{
+    // LEARN: A DbSet<T> is the starting point for queries on one entity's
+    // table, roughly a Spring Data repository with LINQ in place of derived
+    // query methods. Set<T>() returns the context's one instance for T, so
+    // these properties hold no state of their own. They are internal
+    // because only GameStore uses them.
+    internal DbSet<Game> Games => Set<Game>();
+
+    internal DbSet<Move> Moves => Set<Move>();
+
+    protected override void OnModelCreating(ModelBuilder builder)
+    {
+        // Identity's mapping first: it configures the entity the games'
+        // owner key points at.
+        base.OnModelCreating(builder);
+
+        builder.ApplyConfiguration(new GameConfiguration());
+        builder.ApplyConfiguration(new MoveConfiguration());
+    }
+}
