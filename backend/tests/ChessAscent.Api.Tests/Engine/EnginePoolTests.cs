@@ -259,14 +259,34 @@ public sealed class EnginePoolTests
     [Fact]
     public async Task AnEngineHandedOutResetsTheFailureCount()
     {
-        // With one attempt allowed, any failure counted would give the slot up.
+        // Two failures in a row would give the slot up. An engine killed
+        // before it is ever handed out is a failure; one handed out between
+        // two such failures resets the count, so the slot carries on.
         using var fake = new FakeEngineKind();
-        await using var pool = StartPool(fake.Options(startAttempts: 1), out _);
-        var first = await ProcessIdAsync(pool);
+        await using var pool = StartPool(fake.Options(startAttempts: 2), out var logger);
+        var killed = new List<int>();
 
-        FakeEngine.Kill(first);
+        await KillTheNewProcessOnceReadyAsync();
+        var handedOut = await ProcessIdAsync(pool);
+        killed.Add(handedOut);
+        FakeEngine.Kill(handedOut);
+        await KillTheNewProcessOnceReadyAsync();
 
-        (await ProcessIdAsync(pool)).Should().NotBe(first);
+        killed.Should().NotContain(await ProcessIdAsync(pool));
+        fake.StartedProcessIds().Should().HaveCount(4);
+        logger.Entries.Should().NotContain(entry => entry.Message.Contains("gave up", StringComparison.Ordinal));
+
+        // Kills the one process not yet killed, which has never been handed
+        // out, once the pool has published it.
+        async Task KillTheNewProcessOnceReadyAsync()
+        {
+            await Eventually.TrueAsync(
+                () => fake.StartedProcessIds().Except(killed).Any() && pool.KindsWithoutWorkingEngine().Count == 0,
+                "a new process to be ready");
+            var newest = fake.StartedProcessIds().Except(killed).Single();
+            killed.Add(newest);
+            FakeEngine.Kill(newest);
+        }
     }
 
     [Fact]
