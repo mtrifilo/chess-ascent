@@ -98,10 +98,12 @@ public sealed class EngineKindOptions
     /// <summary>
     /// How many failures in a row a process slot may have before the pool
     /// stops trying to fill it, until the application restarts. A failure is
-    /// a process that could not be started, or one that was retired (it
-    /// ended, failed its check, or a caller reported it broken) before any
-    /// conversation with it ended with the engine still usable. A
-    /// conversation that does end that way resets the count. At least 1.
+    /// a process that could not be started, or that ended or failed its
+    /// check before it was first handed to a caller; one that was handed out
+    /// resets the count. A process that ends during a conversation, or that
+    /// a caller reports broken, is replaced (after
+    /// <see cref="RestartDelay"/>) without counting, because its input may be
+    /// the cause. At least 1.
     /// </summary>
     public int? StartAttempts { get; init; }
 

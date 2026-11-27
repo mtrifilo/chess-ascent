@@ -233,25 +233,31 @@ public sealed class EnginePoolTests
     }
 
     [Fact]
-    public async Task ProgramThatCrashesOnEveryUseIsReplacedAfterAPauseAndThenGivenUp()
+    public async Task EngineThatCrashesOnEveryUseIsReplacedNoFasterThanTheRestartDelay()
     {
-        // Each process passes the handshake and the check, then exits on its first search.
+        // Each process passes the handshake and the check, then exits on its
+        // first search. With one attempt allowed, counting these crashes
+        // would give the slot up after the first.
         using var fake = new FakeEngineKind("--exit-on", "go");
-        await using var pool = StartPool(fake.Options(startAttempts: 2, restartDelay: TimeSpan.FromMilliseconds(500)), out var logger);
+        await using var pool = StartPool(fake.Options(startAttempts: 1, restartDelay: TimeSpan.FromMilliseconds(500)), out var logger);
         var search = () => pool.RunAsync(Kind, lease => lease.Engine.SearchAsync(Start, Depth1, Token), Token);
 
-        await search.Should().ThrowExactlyAsync<UciEngineExitedException>();
-        var clock = Stopwatch.StartNew();
-        await search.Should().ThrowExactlyAsync<UciEngineExitedException>();
+        for (var crash = 0; crash < 3; crash++)
+        {
+            var clock = Stopwatch.StartNew();
+            await search.Should().ThrowExactlyAsync<UciEngineExitedException>();
+            if (crash > 0)
+            {
+                clock.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(450), "the replacement waited out the restart delay");
+            }
+        }
 
-        clock.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(450), "the replacement waited out the restart delay");
-        (await search.Should().ThrowExactlyAsync<EngineUnavailableException>()).Which.Message.Should().Contain("stopped trying");
-        fake.StartedProcessIds().Should().HaveCount(2);
-        logger.Entries.Should().ContainSingle(entry => entry.Message.Contains("gave up after 2 failures", StringComparison.Ordinal));
+        fake.StartedProcessIds().Should().HaveCount(3);
+        logger.Entries.Should().NotContain(entry => entry.Message.Contains("gave up", StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task AConversationThatEndsWellResetsTheFailureCount()
+    public async Task AnEngineHandedOutResetsTheFailureCount()
     {
         // With one attempt allowed, any failure counted would give the slot up.
         using var fake = new FakeEngineKind();
@@ -261,6 +267,32 @@ public sealed class EnginePoolTests
         FakeEngine.Kill(first);
 
         (await ProcessIdAsync(pool)).Should().NotBe(first);
+    }
+
+    [Fact]
+    public async Task StopByTheHostedServiceWaitsForEveryEngineEvenAfterTheShutdownTimeout()
+    {
+        // The web server's request draining can spend the whole shutdown
+        // budget, so the hosted service may be handed a token already cancelled.
+        using var fake = new FakeEngineKind("--ignore-quit");
+        var pool = BuildPool(fake.Options(processes: 2, exitTimeout: TimeSpan.FromMilliseconds(500)), out _);
+        var logger = new ListLogger<EnginePoolService>();
+        var service = new EnginePoolService(pool, logger);
+        await service.StartAsync(Token);
+        var processIds = await fake.WaitForStartedAsync(2);
+        await Eventually.TrueAsync(() => pool.KindsWithoutWorkingEngine().Count == 0, "both engines to be ready");
+        using var spent = new CancellationTokenSource();
+        await spent.CancelAsync();
+
+        await service.StopAsync(spent.Token);
+
+        foreach (var processId in processIds)
+        {
+            (await FakeEngine.IsGoneAsync(processId, attempts: 1)).Should().BeTrue($"process {processId} was stopped before StopAsync returned");
+        }
+
+        logger.Entries.Should().Contain(entry => entry.Level == LogLevel.Warning
+            && entry.Message.Contains("after the host's shutdown timeout had run out", StringComparison.Ordinal));
     }
 
     [Fact]

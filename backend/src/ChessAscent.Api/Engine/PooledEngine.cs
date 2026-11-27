@@ -24,7 +24,7 @@ internal sealed class PooledEngine(UciEngine engine)
     private readonly TaskCompletionSource<string> _retired = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private State _state = State.Idle;
-    private volatile bool _served;
+    private volatile bool _handedOut;
 
     private enum State
     {
@@ -38,14 +38,14 @@ internal sealed class PooledEngine(UciEngine engine)
     /// <summary>Completes with the reason once the engine is retired.</summary>
     public Task<string> Retired => _retired.Task;
 
-    /// <summary>Whether a conversation with the engine has ever ended with the engine still usable and not reported broken.</summary>
-    public bool HasServed => _served;
+    /// <summary>Whether the engine has ever passed its check and gone to a caller.</summary>
+    public bool WasHandedOut => _handedOut;
 
     /// <summary>Takes the engine for a caller, if it is idle.</summary>
     public bool TryCheckOut() => TryMove(State.Idle, State.CheckedOut);
 
-    /// <summary>Records that a conversation with the engine ended well.</summary>
-    public void MarkServed() => _served = true;
+    /// <summary>Records that the engine passed its check and went to a caller.</summary>
+    public void MarkHandedOut() => _handedOut = true;
 
     /// <summary>Makes a checked-out engine idle again; false if it was retired meanwhile.</summary>
     public bool TryReturn() => TryMove(State.CheckedOut, State.Idle);

@@ -104,6 +104,7 @@ internal sealed partial class EngineKindPool
                 {
                     if (await check.WaitAsync(wait.Token))
                     {
+                        pooled.MarkHandedOut();
                         return pooled;
                     }
                 }
@@ -127,8 +128,8 @@ internal sealed partial class EngineKindPool
 
     /// <summary>
     /// Takes back an engine at the end of a conversation: to the idle queue
-    /// if it is still usable and the caller did not report it broken, which
-    /// also shows the program works; otherwise it is retired.
+    /// if it is still usable and the caller did not report it broken;
+    /// otherwise it is retired.
     /// </summary>
     public void Return(PooledEngine pooled, bool reportedBroken)
     {
@@ -142,7 +143,6 @@ internal sealed partial class EngineKindPool
         }
         else
         {
-            pooled.MarkServed();
             PutBack(pooled);
         }
     }
@@ -210,10 +210,15 @@ internal sealed partial class EngineKindPool
 
     // A slot's whole life: start a process, publish it, wait until it is
     // retired or stopping begins, stop it, and start the next, after a pause.
-    // Failures in a row are counted, so that a program that crashes on start,
-    // or on every use, does not spin: a failure is a start that fails, or an
-    // engine retired before any conversation with it ended well. One that did
-    // resets the count, because it showed the program works.
+    // The pause comes before every start but the first, so that nothing
+    // restarts faster than once per restart delay, however the engine ends.
+    // Failures in a row are counted, and give the slot up at the limit: a
+    // failure is a start that fails, or an engine retired before it was ever
+    // handed to a caller. One that was handed out resets the count, because
+    // it showed the program starts and answers. An engine that ends during
+    // a conversation is not counted against the program, because the cause
+    // may be that conversation's input: counting it would let a few requests
+    // that crash the engine leave the kind with no process until restart.
     private async Task RunSlotAsync(int slot)
     {
         // Process.Start is synchronous, and the first start would otherwise
@@ -252,7 +257,7 @@ internal sealed partial class EngineKindPool
                 }
 
                 LogReplacing(_logger, Kind, slot, engine.ProcessId, reason);
-                failures = pooled.HasServed ? 0 : failures + 1;
+                failures = pooled.WasHandedOut ? 0 : failures + 1;
             }
 
             if (!_stopping.IsCancellationRequested && GaveUp(slot, failures))
