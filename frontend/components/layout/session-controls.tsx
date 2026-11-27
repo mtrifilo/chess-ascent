@@ -18,7 +18,7 @@ export function SessionControls() {
 // The spacer sits before the links on phones, pushing them right with the
 // account menu, and after them from `md` up, where the links stay beside the
 // product name.
-export function SignedInControls({ email }: { email: string }) {
+function SignedInControls({ email }: { email: string }) {
   return (
     <>
       <div aria-hidden className="flex-1 md:hidden" />

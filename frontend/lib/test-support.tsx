@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
+import type { useRouter } from 'next/navigation'
 import type { Middleware } from 'openapi-fetch'
 import { afterEach } from 'vitest'
 
@@ -9,25 +10,32 @@ import { api } from '@/lib/api'
 
 export type Reply = { status: number; body?: unknown }
 
+// A request the client sent: "METHOD /path", and its JSON body.
 export type Sent = { call: string; body: unknown }
+
+export const SIGNED_OUT: Reply = { status: 401, body: { status: 401 } }
+
+export function signedInAs(email: string): Reply {
+  return { status: 200, body: { email } }
+}
 
 let answerMiddleware: Middleware | undefined
 
 // Answers each request from `replies`, by path, instead of sending it:
 // openapi-fetch hands every request to its middleware first, and a Response
 // returned there is used as the server's answer. Each call replaces the
-// previous replies. Returns the calls made, as "METHOD /path", and `sent`
-// holds each one's JSON body.
-export function answer(replies: Record<string, Reply>, sent: Sent[] = []) {
+// previous replies. Returns the requests sent from then on.
+export function answer(replies: Record<string, Reply>): Sent[] {
   if (answerMiddleware) api.eject(answerMiddleware)
-  const requested: string[] = []
+  const sent: Sent[] = []
   answerMiddleware = {
     onRequest: async ({ request }) => {
       const path = new URL(request.url).pathname
-      const call = `${request.method} ${path}`
-      requested.push(call)
       const text = await request.clone().text()
-      sent.push({ call, body: text ? JSON.parse(text) : undefined })
+      sent.push({
+        call: `${request.method} ${path}`,
+        body: text ? JSON.parse(text) : undefined,
+      })
       const reply = replies[path]
       if (!reply) throw new Error(`unexpected request to ${path}`)
       return new Response(
@@ -40,7 +48,11 @@ export function answer(replies: Record<string, Reply>, sent: Sent[] = []) {
     },
   }
   api.use(answerMiddleware)
-  return requested
+  return sent
+}
+
+export function calls(sent: Sent[]) {
+  return sent.map(request => request.call)
 }
 
 afterEach(() => {
@@ -59,4 +71,20 @@ export function renderWithQueries(ui: React.ReactElement) {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     ),
   })
+}
+
+// A stand-in for useRouter's result, for a test that mocks next/navigation.
+export function routerWith(replace: () => void) {
+  return { replace } as unknown as ReturnType<typeof useRouter>
+}
+
+// Types an email and a password and presses the form's submit button.
+export function fillIn(email: string, password: string, submit: string) {
+  fireEvent.change(screen.getByLabelText('Email'), {
+    target: { value: email },
+  })
+  fireEvent.change(screen.getByLabelText('Password'), {
+    target: { value: password },
+  })
+  fireEvent.click(screen.getByRole('button', { name: submit }))
 }

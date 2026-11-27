@@ -2,7 +2,13 @@ import { screen, waitFor } from '@testing-library/react'
 import { useRouter } from 'next/navigation'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { answer, renderWithQueries } from '@/lib/test-support'
+import {
+  answer,
+  renderWithQueries,
+  routerWith,
+  SIGNED_OUT,
+  signedInAs,
+} from '@/lib/test-support'
 
 import { RequireAccount } from './require-account'
 
@@ -12,9 +18,7 @@ const replace = vi.fn()
 
 beforeEach(() => {
   replace.mockReset()
-  vi.mocked(useRouter).mockReturnValue({ replace } as unknown as ReturnType<
-    typeof useRouter
-  >)
+  vi.mocked(useRouter).mockReturnValue(routerWith(replace))
 })
 
 afterEach(() => {
@@ -24,7 +28,7 @@ afterEach(() => {
 describe('RequireAccount', () => {
   it('shows the page to a signed-in visitor', async () => {
     answer({
-      '/api/auth/me': { status: 200, body: { email: 'a@example.com' } },
+      '/api/auth/me': signedInAs('a@example.com'),
     })
     renderWithQueries(<RequireAccount>My games</RequireAccount>)
 
@@ -34,7 +38,7 @@ describe('RequireAccount', () => {
 
   it('sends a signed-out visitor to sign in, carrying the page they wanted', async () => {
     window.history.replaceState(null, '', '/games/42')
-    answer({ '/api/auth/me': { status: 401, body: { status: 401 } } })
+    answer({ '/api/auth/me': SIGNED_OUT })
     renderWithQueries(<RequireAccount>My games</RequireAccount>)
 
     await waitFor(() =>
@@ -45,7 +49,7 @@ describe('RequireAccount', () => {
 
   it('shows nothing until the API says who is signed in', () => {
     answer({
-      '/api/auth/me': { status: 200, body: { email: 'a@example.com' } },
+      '/api/auth/me': signedInAs('a@example.com'),
     })
     renderWithQueries(<RequireAccount>My games</RequireAccount>)
 

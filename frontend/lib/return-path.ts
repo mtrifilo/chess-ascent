@@ -6,7 +6,7 @@ export const RETURN_PATH_PARAM = 'next'
 
 // Where a visitor goes when no return path is given, or the one given is
 // refused.
-export const DEFAULT_RETURN_PATH = '/play'
+const DEFAULT_RETURN_PATH = '/play'
 
 // A stand-in origin to resolve a candidate path against. It is never
 // contacted: anything that resolves to another origin is refused, and only

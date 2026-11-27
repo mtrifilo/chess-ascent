@@ -1,6 +1,7 @@
 'use client'
 
 import { CircleAlertIcon } from 'lucide-react'
+
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { authPagePath } from '@/lib/return-path'
@@ -10,34 +11,14 @@ import {
   FormField,
   SwitchLink,
   submitButtonClass,
-  useAuthFormRef,
-  useFocusFirstInvalid,
-  useLeaveWhenSignedIn,
-  useReturnPath,
+  useAuthForm,
 } from './auth-form'
 import { useSignIn } from './session'
 
 export function SignInForm() {
-  const { returnTo, passOn } = useReturnPath()
-  const leaving = useLeaveWhenSignedIn(returnTo)
-  const signIn = useSignIn()
-  const { formRef, ref } = useAuthFormRef(signIn.reset)
-  const outcome = signIn.data
-  useFocusFirstInvalid(formRef, outcome)
-
+  const { leaving, outcome, errors, passOn, formProps } =
+    useAuthForm(useSignIn())
   if (leaving) return null
-
-  const errors = outcome?.kind === 'invalid' ? outcome.errors : {}
-
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (signIn.isPending) return
-    const fields = new FormData(event.currentTarget)
-    signIn.mutate({
-      email: String(fields.get('email')),
-      password: String(fields.get('password')),
-    })
-  }
 
   return (
     <AuthCard title="Sign in">
@@ -52,15 +33,7 @@ export function SignInForm() {
           <AlertDescription>Check both and try again.</AlertDescription>
         </Alert>
       )}
-      {/* method="post": if the form is submitted before the page's script
-          has loaded, the browser posts the fields to this page instead of
-          putting them, the password included, in the address. */}
-      <form
-        ref={ref}
-        method="post"
-        onSubmit={handleSubmit}
-        className="flex flex-col gap-4"
-      >
+      <form {...formProps} className="flex flex-col gap-4">
         <FormField
           label="Email"
           name="email"

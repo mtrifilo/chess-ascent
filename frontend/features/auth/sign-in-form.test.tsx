@@ -1,9 +1,15 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Activity } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { answer, renderWithQueries, type Sent } from '@/lib/test-support'
+import {
+  answer,
+  fillIn,
+  renderWithQueries,
+  routerWith,
+  SIGNED_OUT,
+} from '@/lib/test-support'
 
 import { SignInForm } from './sign-in-form'
 
@@ -13,7 +19,6 @@ vi.mock('next/navigation', () => ({
 }))
 
 const replace = vi.fn()
-const signedOut = { status: 401, body: { status: 401 } }
 
 function openWith(query = '') {
   vi.mocked(useSearchParams).mockReturnValue(
@@ -23,25 +28,13 @@ function openWith(query = '') {
 
 beforeEach(() => {
   replace.mockReset()
-  vi.mocked(useRouter).mockReturnValue({ replace } as unknown as ReturnType<
-    typeof useRouter
-  >)
+  vi.mocked(useRouter).mockReturnValue(routerWith(replace))
   openWith()
 })
 
-function fillIn(email: string, password: string) {
-  fireEvent.change(screen.getByLabelText('Email'), {
-    target: { value: email },
-  })
-  fireEvent.change(screen.getByLabelText('Password'), {
-    target: { value: password },
-  })
-  fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
-}
-
 describe('SignInForm', () => {
   it('shows the fields, button and link as drawn', () => {
-    answer({ '/api/auth/me': signedOut })
+    answer({ '/api/auth/me': SIGNED_OUT })
     renderWithQueries(<SignInForm />)
 
     expect(
@@ -64,7 +57,7 @@ describe('SignInForm', () => {
   })
 
   it('posts rather than putting the fields in the address if submitted natively', () => {
-    answer({ '/api/auth/me': signedOut })
+    answer({ '/api/auth/me': SIGNED_OUT })
     renderWithQueries(<SignInForm />)
 
     expect(
@@ -73,20 +66,16 @@ describe('SignInForm', () => {
   })
 
   it('sends the trimmed email and the password, then goes to /play', async () => {
-    const sent: Sent[] = []
-    answer(
-      {
-        '/api/auth/me': signedOut,
-        '/api/auth/sign-in': {
-          status: 200,
-          body: { email: 'player@example.com' },
-        },
+    const sent = answer({
+      '/api/auth/me': SIGNED_OUT,
+      '/api/auth/sign-in': {
+        status: 200,
+        body: { email: 'player@example.com' },
       },
-      sent
-    )
+    })
     renderWithQueries(<SignInForm />)
 
-    fillIn('  player@example.com ', ' secret ')
+    fillIn('  player@example.com ', ' secret ', 'Sign in')
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/play'))
     expect(sent).toContainEqual({
@@ -98,12 +87,12 @@ describe('SignInForm', () => {
   it('returns to the page the visitor was sent from', async () => {
     openWith('next=%2Fgames%2F42')
     answer({
-      '/api/auth/me': signedOut,
+      '/api/auth/me': SIGNED_OUT,
       '/api/auth/sign-in': { status: 200, body: { email: 'a@example.com' } },
     })
     renderWithQueries(<SignInForm />)
 
-    fillIn('a@example.com', 'secret')
+    fillIn('a@example.com', 'secret', 'Sign in')
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/games/42'))
   })
@@ -111,12 +100,12 @@ describe('SignInForm', () => {
   it('goes to /play, not another site, when the return address points elsewhere', async () => {
     openWith('next=https%3A%2F%2Fevil.example%2Fphish')
     answer({
-      '/api/auth/me': signedOut,
+      '/api/auth/me': SIGNED_OUT,
       '/api/auth/sign-in': { status: 200, body: { email: 'a@example.com' } },
     })
     renderWithQueries(<SignInForm />)
 
-    fillIn('a@example.com', 'secret')
+    fillIn('a@example.com', 'secret', 'Sign in')
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/play'))
     expect(replace).not.toHaveBeenCalledWith(
@@ -126,7 +115,7 @@ describe('SignInForm', () => {
 
   it('carries the return address to the sign-up link', () => {
     openWith('next=%2Fgames')
-    answer({ '/api/auth/me': signedOut })
+    answer({ '/api/auth/me': SIGNED_OUT })
     renderWithQueries(<SignInForm />)
 
     expect(screen.getByRole('link', { name: 'Sign up' })).toHaveAttribute(
@@ -147,7 +136,7 @@ describe('SignInForm', () => {
 
   it('shows one message for a wrong email or password, naming neither', async () => {
     answer({
-      '/api/auth/me': signedOut,
+      '/api/auth/me': SIGNED_OUT,
       '/api/auth/sign-in': {
         status: 401,
         body: { status: 401, detail: 'Email or password is incorrect.' },
@@ -155,7 +144,7 @@ describe('SignInForm', () => {
     })
     renderWithQueries(<SignInForm />)
 
-    fillIn('player@example.com', 'wrong')
+    fillIn('player@example.com', 'wrong', 'Sign in')
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(
@@ -171,7 +160,7 @@ describe('SignInForm', () => {
 
   it('clears the fields and the last answer when Next.js hides the page', async () => {
     answer({
-      '/api/auth/me': signedOut,
+      '/api/auth/me': SIGNED_OUT,
       '/api/auth/sign-in': { status: 401, body: { status: 401 } },
     })
     const { rerender } = renderWithQueries(
@@ -179,7 +168,7 @@ describe('SignInForm', () => {
         <SignInForm />
       </Activity>
     )
-    fillIn('player@example.com', 'wrong')
+    fillIn('player@example.com', 'wrong', 'Sign in')
     await screen.findByRole('alert')
 
     rerender(
@@ -202,7 +191,7 @@ describe('SignInForm', () => {
 
   it('shows the errors the API reports on each field', async () => {
     answer({
-      '/api/auth/me': signedOut,
+      '/api/auth/me': SIGNED_OUT,
       '/api/auth/sign-in': {
         status: 400,
         body: {
@@ -213,7 +202,7 @@ describe('SignInForm', () => {
     })
     renderWithQueries(<SignInForm />)
 
-    fillIn('x@example.com', 'secret')
+    fillIn('x@example.com', 'secret', 'Sign in')
 
     const email = screen.getByLabelText('Email')
     await waitFor(() => expect(email).toHaveAttribute('aria-invalid', 'true'))

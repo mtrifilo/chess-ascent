@@ -1,8 +1,14 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { answer, renderWithQueries, type Sent } from '@/lib/test-support'
+import {
+  answer,
+  fillIn,
+  renderWithQueries,
+  routerWith,
+  SIGNED_OUT,
+} from '@/lib/test-support'
 
 import { SignUpForm } from './sign-up-form'
 
@@ -12,7 +18,6 @@ vi.mock('next/navigation', () => ({
 }))
 
 const replace = vi.fn()
-const signedOut = { status: 401, body: { status: 401 } }
 
 function openWith(query = '') {
   vi.mocked(useSearchParams).mockReturnValue(
@@ -22,21 +27,9 @@ function openWith(query = '') {
 
 beforeEach(() => {
   replace.mockReset()
-  vi.mocked(useRouter).mockReturnValue({ replace } as unknown as ReturnType<
-    typeof useRouter
-  >)
+  vi.mocked(useRouter).mockReturnValue(routerWith(replace))
   openWith()
 })
-
-function fillIn(email: string, password: string) {
-  fireEvent.change(screen.getByLabelText('Email'), {
-    target: { value: email },
-  })
-  fireEvent.change(screen.getByLabelText('Password'), {
-    target: { value: password },
-  })
-  fireEvent.click(screen.getByRole('button', { name: 'Sign up' }))
-}
 
 // The errors under a field, in order.
 function errorLines(field: HTMLElement) {
@@ -51,7 +44,7 @@ function errorLines(field: HTMLElement) {
 
 describe('SignUpForm', () => {
   it('shows the fields, button and link as drawn', () => {
-    answer({ '/api/auth/me': signedOut })
+    answer({ '/api/auth/me': SIGNED_OUT })
     renderWithQueries(<SignUpForm />)
 
     expect(
@@ -77,20 +70,16 @@ describe('SignUpForm', () => {
   })
 
   it('registers with the trimmed email and lands signed in on /play', async () => {
-    const sent: Sent[] = []
-    answer(
-      {
-        '/api/auth/me': signedOut,
-        '/api/auth/register': {
-          status: 200,
-          body: { email: 'new@example.com' },
-        },
+    const sent = answer({
+      '/api/auth/me': SIGNED_OUT,
+      '/api/auth/register': {
+        status: 200,
+        body: { email: 'new@example.com' },
       },
-      sent
-    )
+    })
     renderWithQueries(<SignUpForm />)
 
-    fillIn(' new@example.com  ', 'Secret-1')
+    fillIn(' new@example.com  ', 'Secret-1', 'Sign up')
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/play'))
     expect(sent).toContainEqual({
@@ -102,7 +91,7 @@ describe('SignUpForm', () => {
   it('returns to the page the visitor was sent from, carried over from sign-in', async () => {
     openWith('next=%2Fgames')
     answer({
-      '/api/auth/me': signedOut,
+      '/api/auth/me': SIGNED_OUT,
       '/api/auth/register': { status: 200, body: { email: 'a@example.com' } },
     })
     renderWithQueries(<SignUpForm />)
@@ -111,14 +100,14 @@ describe('SignUpForm', () => {
       'href',
       '/sign-in?next=%2Fgames'
     )
-    fillIn('a@example.com', 'Secret-1')
+    fillIn('a@example.com', 'Secret-1', 'Sign up')
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/games'))
   })
 
   it('shows the duplicate-email message on the email field', async () => {
     answer({
-      '/api/auth/me': signedOut,
+      '/api/auth/me': SIGNED_OUT,
       '/api/auth/register': {
         status: 409,
         body: {
@@ -129,7 +118,7 @@ describe('SignUpForm', () => {
     })
     renderWithQueries(<SignUpForm />)
 
-    fillIn('player@example.com', 'Secret-1')
+    fillIn('player@example.com', 'Secret-1', 'Sign up')
 
     const email = screen.getByLabelText('Email')
     await waitFor(() => expect(email).toHaveAttribute('aria-invalid', 'true'))
@@ -149,7 +138,7 @@ describe('SignUpForm', () => {
       "Passwords must have at least one uppercase ('A'-'Z').",
     ]
     answer({
-      '/api/auth/me': signedOut,
+      '/api/auth/me': SIGNED_OUT,
       '/api/auth/register': {
         status: 400,
         body: { status: 400, errors: { Password: rules } },
@@ -157,7 +146,7 @@ describe('SignUpForm', () => {
     })
     renderWithQueries(<SignUpForm />)
 
-    fillIn('player@example.com', 'secret')
+    fillIn('player@example.com', 'secret', 'Sign up')
 
     const password = screen.getByLabelText('Password')
     await waitFor(() =>
@@ -173,7 +162,7 @@ describe('SignUpForm', () => {
 
   it('shows an email the API refuses with the API’s own words', async () => {
     answer({
-      '/api/auth/me': signedOut,
+      '/api/auth/me': SIGNED_OUT,
       '/api/auth/register': {
         status: 400,
         body: {
@@ -184,7 +173,7 @@ describe('SignUpForm', () => {
     })
     renderWithQueries(<SignUpForm />)
 
-    fillIn("o'neill@example.com", 'Secret-1')
+    fillIn("o'neill@example.com", 'Secret-1', 'Sign up')
 
     const email = screen.getByLabelText('Email')
     await waitFor(() => expect(email).toHaveAttribute('aria-invalid', 'true'))
@@ -195,20 +184,20 @@ describe('SignUpForm', () => {
 
   it('signs up on a second attempt after the first is refused', async () => {
     answer({
-      '/api/auth/me': signedOut,
+      '/api/auth/me': SIGNED_OUT,
       '/api/auth/register': { status: 409, body: { status: 409 } },
     })
     renderWithQueries(<SignUpForm />)
-    fillIn('player@example.com', 'Secret-1')
+    fillIn('player@example.com', 'Secret-1', 'Sign up')
     await waitFor(() =>
       expect(screen.getByLabelText('Email')).toHaveAttribute('aria-invalid')
     )
 
     answer({
-      '/api/auth/me': signedOut,
+      '/api/auth/me': SIGNED_OUT,
       '/api/auth/register': { status: 200, body: { email: 'b@example.com' } },
     })
-    fillIn('b@example.com', 'Secret-1')
+    fillIn('b@example.com', 'Secret-1', 'Sign up')
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/play'))
   })

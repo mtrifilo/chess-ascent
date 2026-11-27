@@ -4,18 +4,65 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useId, useRef } from 'react'
 
+import { PageHeading } from '@/components/layout/page-heading'
 import { buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { RETURN_PATH_PARAM, returnPathFrom } from '@/lib/return-path'
 
-import { useSession } from './session'
+import { useSession, type FieldErrors } from './session'
+
+// What a sign-in or sign-up form needs from its mutation.
+type CredentialsMutation<Outcome> = {
+  data: Outcome | undefined
+  isPending: boolean
+  mutate: (credentials: { email: string; password: string }) => void
+  reset: () => void
+}
+
+// Everything around the fields of a sign-in or sign-up form: where to go
+// afterwards, the last answer and its field errors, and the props for the
+// <form> element.
+//
+// The form has method="post": if it is submitted before the page's script
+// has loaded, the browser posts the fields to the page instead of putting
+// them, the password included, in the address.
+export function useAuthForm<Outcome extends { kind: string }>(
+  mutation: CredentialsMutation<Outcome>
+) {
+  const { returnTo, passOn } = useReturnPath()
+  const leaving = useLeaveWhenSignedIn(returnTo)
+  const { formRef, ref } = useAuthFormRef(mutation.reset)
+  const outcome = mutation.data
+  useFocusFirstInvalid(formRef, outcome)
+
+  const errors: FieldErrors =
+    outcome && 'errors' in outcome ? (outcome.errors as FieldErrors) : {}
+
+  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (mutation.isPending) return
+    const fields = new FormData(event.currentTarget)
+    mutation.mutate({
+      email: String(fields.get('email')),
+      password: String(fields.get('password')),
+    })
+  }
+
+  return {
+    leaving,
+    outcome,
+    errors,
+    passOn,
+    formProps: { ref, method: 'post', onSubmit },
+  }
+}
 
 // The return path this page was opened with, if any. `returnTo` is where to
 // go once signed in; `passOn` is what the link to the other auth page
 // carries, so switching between sign-in and sign-up keeps it.
-export function useReturnPath() {
+function useReturnPath() {
   const requested = useSearchParams().get(RETURN_PATH_PARAM)
   const returnTo = returnPathFrom(requested)
   return { returnTo, passOn: requested === null ? undefined : returnTo }
@@ -26,7 +73,7 @@ export function useReturnPath() {
 // in or up on it, because both forms record the new session before they
 // return. Returns whether the visitor is signed in, so the form can stay
 // hidden while the browser leaves.
-export function useLeaveWhenSignedIn(returnTo: string): boolean {
+function useLeaveWhenSignedIn(returnTo: string): boolean {
   const { data: session } = useSession()
   const router = useRouter()
   const signedIn = Boolean(session)
@@ -38,8 +85,7 @@ export function useLeaveWhenSignedIn(returnTo: string): boolean {
   return signedIn
 }
 
-// The ref for a sign-in or sign-up form, and the form itself for code that
-// reads it.
+// The form's ref, and the form itself for code that reads it.
 //
 // Next.js keeps a page the visitor leaves in the document, hidden with
 // React's <Activity>, so that going back restores it, form fields included.
@@ -47,7 +93,7 @@ export function useLeaveWhenSignedIn(returnTo: string): boolean {
 // looking at, and show its last answer when the visitor came back. So when
 // the form is hidden or removed, its fields are cleared and the answer
 // forgotten: React calls the cleanup a callback ref returns at that moment.
-export function useAuthFormRef(forgetAnswer: () => void) {
+function useAuthFormRef(forgetAnswer: () => void) {
   const formRef = useRef<HTMLFormElement | null>(null)
   const ref = useCallback(
     (form: HTMLFormElement | null) => {
@@ -66,7 +112,7 @@ export function useAuthFormRef(forgetAnswer: () => void) {
 // After an answer that marks a field invalid, moves focus to the first such
 // field, as the browser does for its own validation, so a keyboard or
 // screen-reader user lands on the field and hears its error.
-export function useFocusFirstInvalid(
+function useFocusFirstInvalid(
   form: React.RefObject<HTMLFormElement | null>,
   outcome: unknown
 ) {
@@ -90,9 +136,7 @@ export function AuthCard({
   return (
     <div className="pt-2 md:pt-8">
       <div className="mx-auto flex flex-col gap-4 md:w-100 md:rounded-md md:border md:bg-card md:p-6">
-        <h1 className="font-display text-display-m font-semibold md:text-display-s">
-          {title}
-        </h1>
+        <PageHeading className="md:text-display-s">{title}</PageHeading>
         {children}
       </div>
     </div>

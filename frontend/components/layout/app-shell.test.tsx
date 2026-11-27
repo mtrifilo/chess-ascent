@@ -3,7 +3,13 @@ import { usePathname } from 'next/navigation'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { reloadPage } from '@/lib/page-load'
-import { answer, renderWithQueries } from '@/lib/test-support'
+import {
+  answer,
+  calls,
+  renderWithQueries,
+  SIGNED_OUT,
+  signedInAs,
+} from '@/lib/test-support'
 
 import { AppShell } from './app-shell'
 
@@ -12,12 +18,8 @@ vi.mock('@/lib/page-load', () => ({ reloadPage: vi.fn(), loadPage: vi.fn() }))
 
 const EMAIL = 'player@example.com'
 
-const signedIn = {
-  '/api/auth/me': { status: 200, body: { email: EMAIL } },
-}
-const signedOut = {
-  '/api/auth/me': { status: 401, body: { status: 401 } },
-}
+const signedIn = { '/api/auth/me': signedInAs(EMAIL) }
+const signedOut = { '/api/auth/me': SIGNED_OUT }
 
 beforeEach(() => {
   vi.mocked(usePathname).mockReturnValue('/play')
@@ -32,10 +34,10 @@ async function renderSignedIn() {
 
 describe('AppShell', () => {
   it('shows only the product name when signed out', async () => {
-    const requested = answer(signedOut)
+    const sent = answer(signedOut)
     renderWithQueries(<AppShell>Page</AppShell>)
 
-    await waitFor(() => expect(requested).toContain('GET /api/auth/me'))
+    await waitFor(() => expect(calls(sent)).toContain('GET /api/auth/me'))
     const banner = screen.getByRole('banner')
     expect(banner).toHaveTextContent(/^Chess Ascent$/)
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
@@ -94,7 +96,7 @@ describe('AppShell', () => {
 
   it('signs out from the account menu, then loads the page afresh', async () => {
     const trigger = await renderSignedIn()
-    const requested = answer({
+    const sent = answer({
       ...signedIn,
       '/api/auth/sign-out': { status: 204 },
     })
@@ -103,12 +105,12 @@ describe('AppShell', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }))
 
     await waitFor(() => expect(reloadPage).toHaveBeenCalledOnce())
-    expect(requested).toContain('POST /api/auth/sign-out')
+    expect(calls(sent)).toContain('POST /api/auth/sign-out')
   })
 
   it('stays signed in when the API refuses to sign out', async () => {
     const trigger = await renderSignedIn()
-    const requested = answer({
+    const sent = answer({
       ...signedIn,
       '/api/auth/sign-out': { status: 403, body: { status: 403 } },
     })
@@ -116,7 +118,9 @@ describe('AppShell', () => {
     fireEvent.keyDown(trigger, { key: 'Enter' })
     fireEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }))
 
-    await waitFor(() => expect(requested).toContain('POST /api/auth/sign-out'))
+    await waitFor(() =>
+      expect(calls(sent)).toContain('POST /api/auth/sign-out')
+    )
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(reloadPage).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: EMAIL })).toBeInTheDocument()

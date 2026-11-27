@@ -1,33 +1,23 @@
 'use client'
 
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type QueryClient,
-} from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 import { reloadPage } from '@/lib/page-load'
 import type { components } from '@/types/api'
 
 // The signed-in account, or null when nobody is signed in.
-export type Session = components['schemas']['CurrentUserResponse'] | null
+type Session = components['schemas']['CurrentUserResponse'] | null
 
-export type Credentials = { email: string; password: string }
+type Credentials = { email: string; password: string }
 
 // The error lists of a validation problem, keyed by the request's C# property
 // names (Email, Password), as the API reports them.
 export type FieldErrors = { Email?: string[]; Password?: string[] }
 
-export type SignInOutcome =
+type AuthOutcome<Refused extends string> =
   | { kind: 'signed-in' }
-  | { kind: 'refused' }
-  | { kind: 'invalid'; errors: FieldErrors }
-
-export type RegisterOutcome =
-  | { kind: 'signed-in' }
-  | { kind: 'duplicate-email' }
+  | { kind: Refused }
   | { kind: 'invalid'; errors: FieldErrors }
 
 const SESSION_KEY = ['session'] as const
@@ -47,53 +37,50 @@ async function fetchSession(): Promise<Session> {
   throw new Error(`GET /auth/me answered ${response.status}.`)
 }
 
-function setSession(queryClient: QueryClient, session: Session) {
-  queryClient.setQueryData(SESSION_KEY, session)
-}
-
-// The approved screens tell apart only the answers below. Anything else, such
-// as the API being unreachable, is thrown and leaves the form as it was.
-//
-// The email is trimmed here, so white space typed or pasted around it never
-// reaches the API. The password is sent as typed.
+// A refused sign-in (401) is one answer for a wrong email and a wrong
+// password alike; a refused registration (409) is an email that already has
+// an account.
 export function useSignIn() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({
-      email,
-      password,
-    }: Credentials): Promise<SignInOutcome> => {
-      const { data, error, response } = await api.POST('/auth/sign-in', {
-        body: { email: email.trim(), password },
-      })
-      if (data) {
-        setSession(queryClient, data)
-        return { kind: 'signed-in' }
-      }
-      if (response.status === 401) return { kind: 'refused' }
-      if (response.status === 400) return invalid(error)
-      throw unexpected('sign-in', response)
-    },
+  return useCredentialsMutation('/auth/sign-in', {
+    status: 401,
+    kind: 'refused',
   })
 }
 
 export function useRegister() {
+  return useCredentialsMutation('/auth/register', {
+    status: 409,
+    kind: 'duplicate-email',
+  })
+}
+
+// Signs in or registers, which answer alike: 200 with the account, which
+// becomes the session; 400 with field errors; or `refusal`. The approved
+// screens tell apart only these. Anything else, such as the API being
+// unreachable, is thrown and leaves the form as it was.
+//
+// The email is trimmed here, so white space typed or pasted around it never
+// reaches the API. The password is sent as typed.
+function useCredentialsMutation<Refused extends string>(
+  path: '/auth/sign-in' | '/auth/register',
+  refusal: { status: number; kind: Refused }
+) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async ({
       email,
       password,
-    }: Credentials): Promise<RegisterOutcome> => {
-      const { data, error, response } = await api.POST('/auth/register', {
+    }: Credentials): Promise<AuthOutcome<Refused>> => {
+      const { data, error, response } = await api.POST(path, {
         body: { email: email.trim(), password },
       })
       if (data) {
-        setSession(queryClient, data)
+        queryClient.setQueryData<Session>(SESSION_KEY, data)
         return { kind: 'signed-in' }
       }
-      if (response.status === 409) return { kind: 'duplicate-email' }
+      if (response.status === refusal.status) return { kind: refusal.kind }
       if (response.status === 400) return invalid(error)
-      throw unexpected('register', response)
+      throw unexpected(path, response)
     },
   })
 }
