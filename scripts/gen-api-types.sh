@@ -41,14 +41,23 @@ if [ ! -s "$GENERATED/ChessAscent.Api.json" ]; then
   echo "gen-api-types: the build wrote no OpenAPI document" >&2
   exit 1
 fi
-# The generator ends the file without a newline; .editorconfig asks for one.
-printf '\n' >>"$GENERATED/ChessAscent.Api.json"
+# .editorconfig asks for a final newline, which the generator leaves out.
+# $(...) drops a trailing newline, so the test is empty only when there is one.
+if [ -n "$(tail -c1 "$GENERATED/ChessAscent.Api.json")" ]; then
+  printf '\n' >>"$GENERATED/ChessAscent.Api.json"
+fi
 
+# Both tools read settings from the directory they run in (Prettier its
+# ignore files, openapi-typescript a redocly.yaml), so they run in frontend/
+# whatever directory the script was started from.
+cd "$ROOT/frontend"
 "$OPENAPI_TYPESCRIPT" "$GENERATED/ChessAscent.Api.json" --output "$GENERATED/api.d.ts"
 # The generator's own formatting differs from the repo's Prettier settings,
 # which `bun run format:check` enforces. Prettier reads its settings for the
-# path the file will have, not the temporary one.
-"$PRETTIER" --stdin-filepath "$TYPES" <"$GENERATED/api.d.ts" >"$GENERATED/api.formatted.d.ts"
+# path the file will have, not the temporary one, and the ignore file is the
+# one format:check uses.
+"$PRETTIER" --ignore-path ../.gitignore --stdin-filepath "$TYPES" \
+  <"$GENERATED/api.d.ts" >"$GENERATED/api.formatted.d.ts"
 
 mkdir -p "$(dirname "$DOCUMENT")" "$(dirname "$TYPES")"
 cp "$GENERATED/ChessAscent.Api.json" "$DOCUMENT"
