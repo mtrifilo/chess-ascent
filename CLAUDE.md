@@ -42,6 +42,7 @@ From the repo root, with Docker running:
 From `backend/`, with the .NET 11 SDK (`backend/global.json` pins 11.0.100 and accepts later 11.0 feature bands):
 
 - `dotnet build`: builds the solution. Any warning, analyzer finding or code-style violation fails it.
+- `dotnet restore --locked-mode`: restores packages only if every project's `packages.lock.json` still matches, and checks each package against the hash recorded there. An ordinary restore (and so `dotnet build`) rewrites a lock file when a package changes: commit it with that change, or CI fails. A restore that resolves packages also checks them, transitive ones included, against NuGet's vulnerability data, and a known vulnerability fails it.
 - `dotnet test`: runs every test project on Microsoft.Testing.Platform. Needs Docker: the API tests start their own PostgreSQL container with Testcontainers and never use the Compose database. While they run, Docker publishes those containers' ports (and that of Testcontainers' clean-up container, Ryuk) on every network interface, as Testcontainers does by default; each test database gets a random password. The `dotnet` CLI and the test platform send usage telemetry to Microsoft unless `DOTNET_CLI_TELEMETRY_OPTOUT=1` is set.
 - `dotnet format --verify-no-changes`: fails on formatting or code-style drift. `dotnet format` fixes it.
 - `dotnet test --project tests/ChessAscent.Chess.Tests --explicit only --filter-trait "Category=Slow" --parallel all`: the slow tier of the rules tests, which `dotnet test` leaves out: perft to depth 5 on the six standard positions, and the check that every unlisted move is refused at every position of the random games (the normal run checks every tenth). `--parallel all` runs them side by side; even so it takes about three and a half minutes on a 10-core machine, most of it perft from Kiwipete.
@@ -70,9 +71,11 @@ From `frontend/`:
 
 - Bun installs packages and runs scripts; Next.js and Vitest themselves run on Node. Never add `bun --bun`.
 - `bun test` is Bun's own test runner, not this project's: it runs the tests without jsdom and they fail. Use `bun run test`.
-- `@types/node` stays on the same minor version as the Node.js in use (24.11), so the type check rejects Node APIs that the runtime lacks.
+- `@types/node` stays on the same minor version as the Node.js in use (24.11, recorded in `frontend/.node-version`; Bun's version is the `packageManager` field of `package.json`), so the type check rejects Node APIs that the runtime lacks.
 - Run Next.js through these scripts, not `bunx next`: they set `NEXT_TELEMETRY_DISABLED=1`. `README.md` ("Run locally", "Front end") says what the front end does and does not send to outside services.
 - `bun add` pins exact versions (`bunfig.toml`). Record a new direct dependency in `THIRD-PARTY-NOTICES.md`.
+- `bun add` and `bun update` pick only versions published at least three days ago (`minimumReleaseAge` in `bunfig.toml`); asking for a newer one fails with "blocked by minimum-release-age". An install from an unchanged `bun.lock` is not affected.
+- `bun audit`: checks the packages in `bun.lock` against the npm registry's advisories; any advisory fails it.
 - `trustedDependencies` in `package.json` lists the packages whose install scripts Bun may run. It is empty: no dependency needs one, and defining the field, even empty, replaces Bun's built-in allowlist of popular packages. Add a package only after reading the script it would run.
 - This Next.js version differs from older training data. Read the guide for the installed version in `frontend/node_modules/next/dist/docs/` before writing Next.js code, and heed its deprecation notices.
 
@@ -85,3 +88,18 @@ The front end calls the API through types generated from the API's OpenAPI docum
 - Endpoints that the generator cannot describe from their C# types are added to the document by hand with a document transformer, as `Features/Health/HealthApiDescription.cs` does for `GET /health/ready`.
 - `frontend/lib/api.ts` is the typed client (`openapi-fetch`). It calls `/api/...` on the web app's own origin. In development, `next.config.ts` rewrites `/api/*` to the API at `CHESS_ASCENT_API_URL` (default `http://localhost:5100`, the `dotnet run` port), so the browser never calls the API's port directly. Only `next dev` has this rewrite (it checks the Next.js phase, not `NODE_ENV`); `next build` has none. `/api/*` belongs to the back end: an `app/api` route handler would answer before the rewrite, so the front end has none. To change the address, copy `frontend/.env.example` to `frontend/.env.local`, or set the variable in the shell.
 - To run both: start the database and `dotnet run --project src/ChessAscent.Api` in `backend/`, then `bun run dev` in `frontend/`. The home page shows the API's readiness and version.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every pull request and every push to `main`, with the tool versions recorded in the repo (`backend/global.json`, `frontend/package.json`, `frontend/.node-version`). Its jobs run the commands above, so to reproduce a job locally, run its commands in order:
+
+| Job | Commands |
+|---|---|
+| Back end | From `backend/`, with Docker running: `dotnet restore --locked-mode`, `dotnet tool restore`, `dotnet build`, `dotnet format --verify-no-changes`, `dotnet test`, `dotnet ef migrations has-pending-model-changes --project src/ChessAscent.Api` |
+| Front end | From `frontend/`: `bun install --frozen-lockfile`, `bun run format:check`, `bun run typecheck`, `bun run lint`, `bun run test`, `bun run build` |
+| API types drift | `bun install --frozen-lockfile` in `frontend/`, then `scripts/gen-api-types.sh`; fails if `git status` shows a change to `backend/openapi/ChessAscent.Api.json` or `frontend/types/api.d.ts` |
+| Secret scanning | `gitleaks git --redact --verbose .` from the repo root, with Gitleaks (https://github.com/gitleaks/gitleaks) at the version the workflow pins; fails on any finding in any commit |
+| Dependency advisories | `bun audit` from `frontend/`. The back end's packages are checked by the restore in the back-end job |
+| Back end, slow rules tests | Pushes to `main` only: the slow-tier command under "Back end" above |
+
+A ticket that adds a command to "How to run things" that CI should also run adds it to the workflow and to this table in the same PR.

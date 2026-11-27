@@ -50,6 +50,20 @@
     <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1900</WarningsNotAsErrors>
 
     <!--
+      LEARN: A NuGet lock file (packages.lock.json beside each project file)
+      records the exact version and content hash of every package the
+      project uses, transitive ones included, like Gradle's dependency
+      locking or npm's package-lock.json; Maven has no built-in equivalent.
+      An ordinary restore rewrites it when a package changes, so commit it
+      with that change. A restore in locked mode, which CI runs, instead
+      fails when the lock file no longer matches the project files or a
+      downloaded package does not match its recorded hash. (The option is
+      not spelled out here because an XML comment cannot contain two
+      hyphens in a row.)
+    -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+
+    <!--
       LEARN: The .NET code analyzers ship inside the SDK and run as part of
       the compiler, so there is no separate SpotBugs or Error Prone step.
       AnalysisLevel picks the rule set: "latest" tracks the SDK in use, and

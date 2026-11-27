@@ -1,0 +1,277 @@
+# Checks every pull request and every push to main. Each job runs the same
+# commands that CLAUDE.md ("How to run things", "Continuous integration")
+# gives for running them locally, so a green run means the same as a clean
+# local run.
+#
+# Tool versions are read from the repository, never written here:
+# backend/global.json (the .NET SDK), the packageManager field of
+# frontend/package.json (Bun) and frontend/.node-version (Node.js).
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# The workflow token can read the repository and nothing else, whatever the
+# repository's default token setting is. No job needs more, and no job uses a
+# secret. Pull requests from forks get a read-only token and no secrets from
+# GitHub in any case, because the trigger is pull_request and not
+# pull_request_target.
+permissions:
+  contents: read
+
+# A new push to a pull request cancels the run for its previous head, which
+# nobody reads any more. Runs on main are never cancelled: each gets a group
+# of its own commit, so every commit on main keeps a result of its own.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Telemetry off for the .NET CLI, the test platform (Microsoft.Testing.Platform)
+  # and Next.js. The front-end scripts already set NEXT_TELEMETRY_DISABLED;
+  # setting it here as well covers any Next.js command run outside them.
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  TESTINGPLATFORM_TELEMETRY_OPTOUT: "1"
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  backend:
+    name: Back end
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Caches the NuGet global packages folder, keyed on the lock files and
+      # the tool manifest.
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: backend/global.json
+          cache: true
+          cache-dependency-path: |
+            backend/**/packages.lock.json
+            backend/dotnet-tools.json
+
+      # Locked mode fails if a packages.lock.json is out of date or a package
+      # does not match its recorded hash. Restore also runs NuGet's audit of
+      # every package, transitive ones included (NuGetAuditMode "all"), and
+      # Directory.Build.props makes a known vulnerability (NU1901 to NU1904)
+      # an error, so this step is the back end's dependency-advisory check.
+      - name: Restore
+        run: dotnet restore --locked-mode
+
+      - name: Restore tools
+        run: dotnet tool restore
+
+      # Directory.Build.props sets TreatWarningsAsErrors, so any compiler,
+      # analyzer or code-style warning fails this step.
+      - name: Build
+        run: dotnet build
+
+      - name: Check formatting
+        run: dotnet format --verify-no-changes
+
+      # The API tests start their own PostgreSQL container with
+      # Testcontainers; the hosted Ubuntu runners have Docker.
+      - name: Test
+        run: dotnet test
+
+      # dotnet ef runs the API's start-up code in the Development environment
+      # unless told otherwise, so it reads the connection string from
+      # appsettings.Development.json. Checking for model changes never opens
+      # a connection, so no database is needed.
+      - name: Check for model changes without a migration
+        run: dotnet ef migrations has-pending-model-changes --project src/ChessAscent.Api
+
+  # The slow tier of the rules tests (depth-5 perft and the full random-game
+  # check) takes minutes, so it runs once each change lands on main rather
+  # than on every pull request. A pull request still runs the normal tier:
+  # perft on the same positions to depth 4, and every tenth position of the
+  # same random games.
+  backend-slow-tests:
+    name: Back end, slow rules tests
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: backend/global.json
+          cache: true
+          cache-dependency-path: |
+            backend/**/packages.lock.json
+            backend/dotnet-tools.json
+
+      - name: Restore
+        run: dotnet restore --locked-mode
+
+      - name: Slow rules tests
+        run: dotnet test --project tests/ChessAscent.Chess.Tests --explicit only --filter-trait "Category=Slow" --parallel all
+
+  frontend:
+    name: Front end
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: frontend/.node-version
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: frontend/package.json
+
+      # Bun's package cache, keyed on the lockfile. `bun install` still checks
+      # every package against the integrity hash in bun.lock.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('frontend/bun.lock') }}
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Check formatting
+        run: bun run format:check
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Test
+        run: bun run test
+
+      - name: Build
+        run: bun run build
+
+  # The committed OpenAPI document and the TypeScript types generated from it
+  # must match what the C# code produces. The job regenerates both and fails
+  # if either differs from the commit.
+  api-types:
+    name: API types drift
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: backend/global.json
+          cache: true
+          cache-dependency-path: |
+            backend/**/packages.lock.json
+            backend/dotnet-tools.json
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: frontend/.node-version
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: frontend/package.json
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('frontend/bun.lock') }}
+
+      - name: Install front-end packages
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate the API document and types
+        run: scripts/gen-api-types.sh
+
+      # git status, not git diff, so that a generated file missing from the
+      # commit (untracked) also fails the check.
+      - name: Fail if they differ from the commit
+        run: |
+          contract=(backend/openapi/ChessAscent.Api.json frontend/types/api.d.ts)
+          if [ -n "$(git status --porcelain -- "${contract[@]}")" ]; then
+            git status --short -- "${contract[@]}"
+            git diff -- "${contract[@]}"
+            echo "::error::The committed API contract is out of date. Run scripts/gen-api-types.sh (or bun run api:types in frontend/) and commit both files."
+            exit 1
+          fi
+
+  # Gitleaks (MIT) scans every commit in the history, not only the files as
+  # they stand, because a secret committed and then deleted is still public.
+  # A finding fails the job. --redact keeps the secret itself out of the log,
+  # which anyone can read on a public repository. The binary comes from the
+  # project's GitHub release and is checked against the SHA-256 pinned below
+  # before it runs.
+  secret-scanning:
+    name: Secret scanning
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Gitleaks
+        working-directory: ${{ runner.temp }}
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --fail --silent --show-error --location --output "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum --check --strict
+          tar --extract --gzip --file "$archive" gitleaks
+
+      - name: Scan the history for secrets
+        run: |
+          "$RUNNER_TEMP/gitleaks" git --redact --verbose --no-banner .
+
+  # The front end's packages are checked against the npm registry's advisory
+  # database. Any advisory, at any severity, fails the job, the same rule the
+  # back end already follows: there NuGet's audit runs during restore in the
+  # back-end job, at the lowest severity, with warnings as errors.
+  dependency-advisories:
+    name: Dependency advisories
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: frontend/package.json
+
+      # bun audit reads bun.lock, so nothing needs installing first.
+      - name: Audit front-end packages
+        run: bun audit
