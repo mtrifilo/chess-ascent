@@ -43,12 +43,11 @@ namespace ChessAscent.Api.Engine;
 /// <item><see cref="InvalidOperationException"/>: the engine had already become unusable.</item>
 /// </list>
 /// After any failure, <see cref="IsUsable"/> says whether the engine can
-/// still be used. A search that is cancelled or times out sends <c>stop</c>
-/// and reads on to the engine's <c>bestmove</c>, which is discarded, so the
-/// engine stays usable if that answer comes within the stop timeout. Any
-/// other wait that ends without its reply leaves a reply owed, which would
-/// later be mistaken for the answer to another command, so the engine becomes
-/// unusable.
+/// still be used. A call that is cancelled or times out while a reply is owed
+/// reads on to that reply and discards it, so that it is not later mistaken
+/// for the answer to another command; for a search's <c>bestmove</c> it sends
+/// <c>stop</c> first. The engine stays usable if the reply comes within the
+/// stop timeout, and becomes unusable if it does not.
 /// </para>
 /// </remarks>
 // LEARN: `sealed` is Java's `final` for classes: nothing may extend it.
@@ -167,6 +166,9 @@ public sealed partial class UciEngine : IAsyncDisposable
     // Why the conversation is out of step. Set only while holding the gate.
     private volatile string? _fault;
 
+    // 1 once the error about another process holding the output is logged.
+    private int _outputHeldOpenReported;
+
     private UciEngine(Process process, UciEngineOptions options, ILogger logger)
     {
         _process = process;
@@ -282,7 +284,8 @@ public sealed partial class UciEngine : IAsyncDisposable
     /// <param name="value">Its value, or null for an option that is a button.</param>
     /// <param name="cancellationToken">
     /// Ends the call. If it is cancelled once the option has been sent, the
-    /// engine's reply is still owed, so the engine becomes unusable.
+    /// engine's <c>readyok</c> is still read, within the stop timeout, before
+    /// the call ends; if it does not come, the engine becomes unusable.
     /// </param>
     /// <exception cref="ArgumentException">
     /// The name is blank or holds the word <c>name</c> or <c>value</c>, which
@@ -364,18 +367,22 @@ public sealed partial class UciEngine : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// It takes at most the stop timeout plus three times the exit timeout:
-    /// waiting for a call in progress to finish, then for the process to exit
-    /// after <c>quit</c>, then for it to go after it is killed, then for its
-    /// output to close.
+    /// It takes at most the stop timeout plus five times the exit timeout:
+    /// waiting for a call in progress to finish; for <c>quit</c> to be written
+    /// and the process to exit (two waits if the write finds the input
+    /// closed); for the process to go after it is killed; for its output to
+    /// close; and, if another process holds the output open, for the readers to
+    /// finish after this side of the pipes is closed. An engine that obeys
+    /// <c>quit</c> takes only as long as it needs to exit.
     /// </para>
     /// <para>
-    /// A process the engine started and left running when it exited, which
-    /// a program run from a wrapper script might do, is not killed: once its
-    /// parent has gone, it is no longer part of the engine's process tree, and
-    /// .NET offers no portable way to find it. If such a process holds the
-    /// engine's output open, disposal logs an error and closes this side of
-    /// the pipes.
+    /// A process the engine started and left running when it exited is not
+    /// killed: once its parent has gone, it is no longer part of the engine's
+    /// process tree, and .NET offers no portable way to find it. If it holds
+    /// the engine's output open, disposal logs an error and closes this side of
+    /// the pipes; if it does not, nothing here can notice it. Start engines
+    /// directly, or from a wrapper script that runs the engine with
+    /// <c>exec</c>, so that no such process exists.
     /// </para>
     /// </remarks>
     // LEARN: ValueTask is a struct, not a Task: it holds either a finished
@@ -396,8 +403,8 @@ public sealed partial class UciEngine : IAsyncDisposable
 
     private async Task DisposeOnceAsync()
     {
-        // Calls in progress stop waiting: a search sends stop and reads to
-        // its bestmove, which takes at most the stop timeout.
+        // Calls in progress stop waiting, and read the reply they owe, which
+        // takes at most the stop timeout.
         await _lifetime.CancelAsync();
         var entered = await _gate.WaitAsync(_options.StopTimeout);
         try
@@ -482,7 +489,7 @@ public sealed partial class UciEngine : IAsyncDisposable
         // holds its output open. Closing this side of the pipes ends the
         // readers; Process.Dispose does not, because the streams are read
         // directly rather than through its events.
-        LogOutputHeldOpen(_logger, ProcessId);
+        ReportOutputHeldOpen();
         _process.StandardOutput.Dispose();
         _process.StandardError.Dispose();
         if (!await WaitUpToExitTimeoutAsync(Task.WhenAll(_outputReader, _errorReader)))
@@ -493,10 +500,11 @@ public sealed partial class UciEngine : IAsyncDisposable
 
     // Records the exit as soon as the process has gone. Lines it printed just
     // before are still on their way, and the output reader completes the line
-    // buffer once they are read. But if a process the engine started still
-    // holds the output open, the buffer would never complete and a call would
-    // wait for its reply until its timeout, so after the exit timeout the
-    // buffer is completed here.
+    // buffer once they are read. If after the exit timeout the reader has not
+    // finished, either a process the engine started holds the output open,
+    // or the buffer is full of lines no call is reading; in both cases a call
+    // would otherwise wait for its reply until its timeout, so the buffer is
+    // completed here.
     private async Task WatchForExitAsync()
     {
         try
@@ -512,8 +520,22 @@ public sealed partial class UciEngine : IAsyncDisposable
         RecordEnd(_process.ExitCode);
         if (!await WaitUpToExitTimeoutAsync(_outputReader))
         {
-            LogOutputHeldOpen(_logger, ProcessId);
+            // A full buffer means the reader is waiting for room, not for the pipe.
+            if (_lines.Reader.Count < LineBufferCapacity)
+            {
+                ReportOutputHeldOpen();
+            }
+
             _lines.Writer.TryComplete();
+        }
+    }
+
+    // Logged once, by whichever notices first: the exit watcher or disposal.
+    private void ReportOutputHeldOpen()
+    {
+        if (Interlocked.Exchange(ref _outputHeldOpenReported, 1) == 0)
+        {
+            LogOutputHeldOpen(_logger, ProcessId);
         }
     }
 
@@ -556,9 +578,7 @@ public sealed partial class UciEngine : IAsyncDisposable
 
     // Runs one exchange with the engine, holding the gate. If the exchange
     // ends early while a reply is owed, that reply would later be mistaken
-    // for the reply to another command: an owed bestmove is collected by
-    // stopping the search, and any other owed reply leaves the conversation
-    // out of step.
+    // for the reply to another command, so it is collected first.
     private async Task<T> ExchangeAsync<T>(
         TimeSpan timeout,
         Func<Exchange, Task<T>> conversation,
@@ -578,16 +598,9 @@ public sealed partial class UciEngine : IAsyncDisposable
             }
             catch (OperationCanceledException) when (reply.IsCancellationRequested)
             {
-                if (_end is null)
+                if (_end is null && exchange.Awaiting is { } owed)
                 {
-                    if (exchange.Awaiting == "bestmove")
-                    {
-                        await StopSearchAsync();
-                    }
-                    else if (exchange.Awaiting is { } owed)
-                    {
-                        _fault ??= $"it stopped waiting for {owed}";
-                    }
+                    await CollectOwedReplyAsync(owed);
                 }
 
                 throw Interrupted(exchange.Awaiting, timeout, cancellationToken);
@@ -615,19 +628,25 @@ public sealed partial class UciEngine : IAsyncDisposable
         }
     }
 
-    // Ends a search that was cut short and reads its bestmove, which answers
-    // a search the caller no longer wants and is dropped.
-    private async Task StopSearchAsync()
+    // Reads the reply a call gave up on, which answers a command the caller
+    // no longer wants and is dropped. A search still running is ended with
+    // stop first. If the reply does not come in time, the conversation is out
+    // of step.
+    private async Task CollectOwedReplyAsync(string owed)
     {
         using var deadline = new CancellationTokenSource(_options.StopTimeout);
         try
         {
-            await SendAsync("stop", deadline.Token);
-            await ReadReplyAsync("bestmove", deadline.Token);
+            if (owed == "bestmove")
+            {
+                await SendAsync("stop", deadline.Token);
+            }
+
+            await ReadReplyAsync(owed, deadline.Token);
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
-            _fault ??= "it did not answer stop with bestmove in time";
+            _fault ??= $"it did not answer with the {owed} it owed in time";
         }
     }
 

@@ -9,6 +9,8 @@ using ChessAscent.FakeUciEngine;
 //                              a search ended by "stop" answers "a7a6" instead
 //   --extra-bestmove <text>    print a second, unasked-for bestmove line with each search's own
 //   --search-ms <n,n,...>      how long each search takes; the last value repeats (default 0)
+//   --ready-ms <n,n,...>       how long each isready takes to answer, while still reading
+//                              commands; the last value repeats (default 0)
 //   --silent-on <command>      never answer this command; for "go", ignore "stop" as well
 //   --silent-after <n>         answer the first n of those commands, then fall silent (default 0)
 //   --exit-on <command>        print one info line, then exit
@@ -65,6 +67,7 @@ Console.Out.WriteLine("Fake UCI engine, for tests");
 
 var transcript = new Transcript(settings.Transcript);
 var searchCount = 0;
+var readyCount = 0;
 var silentCount = 0;
 Search? search = null;
 
@@ -112,7 +115,17 @@ while (await Console.In.ReadLineAsync() is { } command)
             break;
 
         case "isready":
-            Console.Out.WriteLine("readyok");
+            var readyDelay = settings.ReadyMilliseconds[Math.Min(readyCount, settings.ReadyMilliseconds.Count - 1)];
+            readyCount++;
+            if (readyDelay == 0)
+            {
+                Console.Out.WriteLine("readyok");
+            }
+            else
+            {
+                _ = AnswerReadyLaterAsync(readyDelay);
+            }
+
             break;
 
         case "go":
@@ -172,6 +185,12 @@ static Process StartSleepingChild()
 
     start.ArgumentList.Add("--sleep");
     return Process.Start(start) ?? throw new InvalidOperationException("The child process did not start.");
+}
+
+static async Task AnswerReadyLaterAsync(int milliseconds)
+{
+    await Task.Delay(milliseconds);
+    Console.Out.WriteLine("readyok");
 }
 
 static async Task SendUciokLaterAsync(Transcript transcript)

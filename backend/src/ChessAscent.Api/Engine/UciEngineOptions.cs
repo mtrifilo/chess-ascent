@@ -38,14 +38,21 @@ public sealed record UciEngineOptions
     /// </summary>
     public required TimeSpan SearchTimeout { get; init; }
 
-    /// <summary>After <c>stop</c> ends a search early, until the engine answers with <c>bestmove</c>.</summary>
+    /// <summary>
+    /// After a call gives up on a reply it is owed (because it was cancelled,
+    /// timed out or the engine was disposed), until that reply comes: after
+    /// <c>stop</c> for a search's <c>bestmove</c>, and likewise for
+    /// <c>readyok</c>. Disposal also waits this long for a call in progress.
+    /// </summary>
     public required TimeSpan StopTimeout { get; init; }
 
     /// <summary>
     /// Each wait around the process's end: after <c>quit</c>, until the
     /// process exits; after it is killed, until it is gone; after its output
     /// closes, until its exit code is known; after it exits, until its output
-    /// closes; and after a write finds its input closed, until it exits.
+    /// closes; after a write finds its input closed, until it exits; and at
+    /// disposal, after this side of the pipes is closed, until the readers
+    /// finish.
     /// </summary>
     public required TimeSpan ExitTimeout { get; init; }
 

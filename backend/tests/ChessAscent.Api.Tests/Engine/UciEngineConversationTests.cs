@@ -209,7 +209,11 @@ public sealed class UciEngineConversationTests
     {
         // After the handshake the fake answers isready only on standard error.
         using var fake = new FakeEngine("--stderr-on", "isready", "readyok", "--silent-on", "isready", "--silent-after", "1");
-        fake.Options = fake.Options with { ReadyTimeout = TimeSpan.FromMilliseconds(500) };
+        fake.Options = fake.Options with
+        {
+            ReadyTimeout = TimeSpan.FromMilliseconds(500),
+            StopTimeout = TimeSpan.FromMilliseconds(300),
+        };
         await using var engine = await fake.StartAsync();
 
         var setOption = () => engine.SetOptionAsync("Skill Level", "1", Token);

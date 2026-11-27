@@ -11,6 +11,8 @@ internal sealed class Settings
 
     public List<int> SearchMilliseconds { get; } = [];
 
+    public List<int> ReadyMilliseconds { get; } = [];
+
     public string? SilentOn { get; private set; }
 
     public int SilentAfter { get; private set; }
@@ -57,6 +59,7 @@ internal sealed class Settings
                 case "--bestmove": settings.BestMove = Next(); break;
                 case "--extra-bestmove": settings.ExtraBestMove = Next(); break;
                 case "--search-ms": settings.SearchMilliseconds.AddRange(Next().Split(',').Select(ParseInt)); break;
+                case "--ready-ms": settings.ReadyMilliseconds.AddRange(Next().Split(',').Select(ParseInt)); break;
                 case "--silent-on": settings.SilentOn = Next(); break;
                 case "--silent-after": settings.SilentAfter = ParseInt(Next()); break;
                 case "--exit-on": settings.ExitOn = Next(); break;
@@ -79,6 +82,11 @@ internal sealed class Settings
         if (settings.SearchMilliseconds.Count == 0)
         {
             settings.SearchMilliseconds.Add(0);
+        }
+
+        if (settings.ReadyMilliseconds.Count == 0)
+        {
+            settings.ReadyMilliseconds.Add(0);
         }
 
         return settings;

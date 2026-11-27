@@ -3,7 +3,7 @@ using ChessAscent.Api.Engine;
 
 namespace ChessAscent.Api.Tests.Engine;
 
-/// <summary>Disposal sends quit, kills what does not exit, and leaves no process behind.</summary>
+/// <summary>Disposal sends quit, kills an engine that does not exit with the processes it started, and finishes in bounded time.</summary>
 public sealed class UciEngineDisposalTests
 {
     private static readonly UciPosition Start = UciPosition.StartingPosition([]);

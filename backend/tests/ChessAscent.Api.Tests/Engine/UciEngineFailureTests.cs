@@ -16,7 +16,11 @@ public sealed class UciEngineFailureTests
     public async Task HandshakeTimesOutAndLeavesNoProcess()
     {
         using var fake = new FakeEngine("--silent-on", "uci");
-        fake.Options = fake.Options with { HandshakeTimeout = TimeSpan.FromMilliseconds(1500) };
+        fake.Options = fake.Options with
+        {
+            HandshakeTimeout = TimeSpan.FromMilliseconds(1500),
+            StopTimeout = TimeSpan.FromMilliseconds(300),
+        };
 
         var start = fake.StartAsync;
 
@@ -49,6 +53,7 @@ public sealed class UciEngineFailureTests
     public async Task CancellingTheHandshakeLeavesNoProcess()
     {
         using var fake = new FakeEngine("--silent-on", "uci");
+        fake.Options = fake.Options with { StopTimeout = TimeSpan.FromMilliseconds(300) };
         using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
 
         var start = () => UciEngine.StartAsync(fake.Options, fake.Logger, cancel.Token);
@@ -99,7 +104,11 @@ public sealed class UciEngineFailureTests
     {
         // The handshake's isready is answered; later ones are not.
         using var fake = new FakeEngine("--silent-on", "isready", "--silent-after", "1");
-        fake.Options = fake.Options with { ReadyTimeout = TimeSpan.FromMilliseconds(300) };
+        fake.Options = fake.Options with
+        {
+            ReadyTimeout = TimeSpan.FromMilliseconds(300),
+            StopTimeout = TimeSpan.FromMilliseconds(300),
+        };
         await using var engine = await fake.StartAsync();
 
         var setOption = () => engine.SetOptionAsync("Skill Level", "1", Token);
@@ -124,6 +133,37 @@ public sealed class UciEngineFailureTests
         engine.IsUsable.Should().BeTrue();
         (await fake.TranscriptAsync()).Should().EndWith("stop");
         (await engine.SearchAsync(Start, Depth1, Token)).Value.Should().Be(new BestMove("e2e4"));
+    }
+
+    [Fact]
+    public async Task CancellingASearchDuringItsReadyCheckKeepsTheEngine()
+    {
+        // The search's isready is answered after a second; the caller gives
+        // up after 300 ms, before any position or go has been sent.
+        using var fake = new FakeEngine("--ready-ms", "0,1000,0");
+        await using var engine = await fake.StartAsync();
+        using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+
+        var search = () => engine.SearchAsync(Start, Depth1, cancel.Token);
+
+        await search.Should().ThrowAsync<OperationCanceledException>();
+        engine.IsUsable.Should().BeTrue();
+        (await fake.TranscriptAsync()).Should().Equal("uci", "isready", "isready");
+        (await engine.SearchAsync(Start, Depth1, Token)).Value.Should().Be(new BestMove("e2e4"));
+    }
+
+    [Fact]
+    public async Task CancellingASetOptionWhileItWaitsForReadyokKeepsTheEngine()
+    {
+        using var fake = new FakeEngine("--ready-ms", "0,1000,0");
+        await using var engine = await fake.StartAsync();
+        using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+
+        var setOption = () => engine.SetOptionAsync("Skill Level", "1", cancel.Token);
+
+        await setOption.Should().ThrowAsync<OperationCanceledException>();
+        engine.IsUsable.Should().BeTrue();
+        await engine.SetOptionAsync("Skill Level", "2", Token);
     }
 
     [Fact]
