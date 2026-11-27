@@ -44,7 +44,7 @@ Runtime libraries, or code generated from them, ship to the browser or run in th
 
 | Component | Source | Licence | How it is used |
 |---|---|---|---|
-| Chessground (`@lichess-org/chessground`) | https://github.com/lichess-org/chessground | GPL-3.0-or-later | Runtime: the chess board (drawing, drag and tap moves, arrows and circles), behind `frontend/components/chess-board/chess-board.tsx`, with its base stylesheet. It has no dependencies of its own |
+| Chessground (`@lichess-org/chessground`) | https://github.com/lichess-org/chessground | GPL-3.0-or-later | Runtime: the chess board (drawing, drag and tap moves, arrows and square marks), behind `frontend/components/chess-board/chess-board.tsx`, with its base stylesheet. It has no dependencies of its own |
 | Next.js (`next`) | https://github.com/vercel/next.js | MIT | Runtime: the web framework (App Router, server rendering, build) |
 | React (`react`) | https://github.com/react/react | MIT | Runtime: UI library |
 | React DOM (`react-dom`) | https://github.com/react/react | MIT | Runtime: renders React to the browser DOM and to HTML on the server |
