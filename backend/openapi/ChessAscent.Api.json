@@ -193,6 +193,235 @@
         }
       }
     },
+    "/games": {
+      "post": {
+        "tags": [
+          "GameEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/games/{id}": {
+      "get": {
+        "tags": [
+          "GameEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/games/{id}/moves": {
+      "post": {
+        "tags": [
+          "GameEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayMoveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/ready": {
       "get": {
         "summary": "Whether the API is ready to serve: every readiness check passes.",
@@ -251,6 +480,24 @@
         },
         "description": "The body of `GET /version`."
       },
+      "CreateGameRequest": {
+        "required": [
+          "playerSide",
+          "opponent"
+        ],
+        "type": "object",
+        "properties": {
+          "playerSide": {
+            "description": "The side the signed-in player has.",
+            "$ref": "#/components/schemas/Side"
+          },
+          "opponent": {
+            "description": "Who plays the other side.",
+            "$ref": "#/components/schemas/OpponentRequest"
+          }
+        },
+        "description": "The body of `POST /games`."
+      },
       "CurrentUserResponse": {
         "required": [
           "email"
@@ -263,6 +510,120 @@
           }
         },
         "description": "The account that is signed in."
+      },
+      "GameEndReason": {
+        "enum": [
+          "checkmate",
+          "stalemate",
+          "threefoldRepetition",
+          "fiftyMoveRule",
+          "deadPosition",
+          "resignation"
+        ]
+      },
+      "GameProgress": {
+        "enum": [
+          "ongoing",
+          "finished"
+        ],
+        "description": "Whether a game is still being played."
+      },
+      "GameResponse": {
+        "required": [
+          "id",
+          "playerSide",
+          "opponent",
+          "fen",
+          "sideToMove",
+          "status",
+          "result",
+          "endReason",
+          "moves",
+          "legalMoves",
+          "promotions"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The game's id.",
+            "format": "uuid"
+          },
+          "playerSide": {
+            "description": "The side the signed-in player has.",
+            "$ref": "#/components/schemas/Side"
+          },
+          "opponent": {
+            "description": "Who plays the other side.",
+            "$ref": "#/components/schemas/OpponentResponse"
+          },
+          "fen": {
+            "type": "string",
+            "description": "The current position as six-field FEN."
+          },
+          "sideToMove": {
+            "description": "The side whose turn it is. After checkmate, the side that was mated.",
+            "$ref": "#/components/schemas/Side"
+          },
+          "status": {
+            "description": "Whether the game is still being played.",
+            "$ref": "#/components/schemas/GameProgress"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "How the game ended; `null` while it is ongoing.",
+                "$ref": "#/components/schemas/GameResult"
+              }
+            ]
+          },
+          "endReason": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "Why the game ended; `null` while it is ongoing.",
+                "$ref": "#/components/schemas/GameEndReason"
+              }
+            ]
+          },
+          "moves": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MoveResponse"
+            },
+            "description": "The moves played so far, oldest first."
+          },
+          "legalMoves": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "The squares each piece of the side to move can go to, keyed by the\nsquare it stands on, such as `{ \"g1\": [\"f3\", \"h3\"] }`. A piece with\nno legal move has no key. A castling move is listed as the king's\ndestination. Empty once the game is over."
+          },
+          "promotions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PromotionResponse"
+            },
+            "description": "The moves in LegalMoves that promote a pawn, each with\nthe pieces it may become. Such a move is sent with the piece's letter.\nEmpty when there are none, and once the game is over."
+          }
+        },
+        "description": "A game as the game screen shows it."
+      },
+      "GameResult": {
+        "enum": [
+          "whiteWins",
+          "blackWins",
+          "draw"
+        ]
       },
       "HttpValidationProblemDetails": {
         "type": "object",
@@ -280,11 +641,9 @@
             ]
           },
           "status": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "null",
-              "integer",
-              "string"
+              "integer"
             ],
             "format": "int32"
           },
@@ -311,6 +670,86 @@
           }
         }
       },
+      "MoveResponse": {
+        "required": [
+          "halfMoveNumber",
+          "uci",
+          "san"
+        ],
+        "type": "object",
+        "properties": {
+          "halfMoveNumber": {
+            "type": "integer",
+            "description": "The move's place in the game, from 1 for the first move played, whichever\nside made it. It is not the FEN's move number.",
+            "format": "int32"
+          },
+          "uci": {
+            "type": "string",
+            "description": "The move in UCI coordinate form, such as `e2e4` or `e7e8q`."
+          },
+          "san": {
+            "type": "string",
+            "description": "The move in standard algebraic notation, such as `e4` or `e8=Q+`."
+          }
+        },
+        "description": "A move that has been played."
+      },
+      "OpponentKind": {
+        "enum": [
+          "none",
+          "computer"
+        ],
+        "description": "Who plays the side the player does not."
+      },
+      "OpponentRequest": {
+        "required": [
+          "kind"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "The kind of opponent. Only `none` is offered, meaning the signed-in\nplayer moves both sides; any other is refused with 400.",
+            "$ref": "#/components/schemas/OpponentKind"
+          }
+        },
+        "description": "Who plays the side the player does not."
+      },
+      "OpponentResponse": {
+        "required": [
+          "kind",
+          "strength"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "The kind of opponent.",
+            "$ref": "#/components/schemas/OpponentKind"
+          },
+          "strength": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "The computer's strength setting; `null` when the kind is `none`.",
+            "format": "int32"
+          }
+        },
+        "description": "Who plays the side the player does not."
+      },
+      "PlayMoveRequest": {
+        "required": [
+          "uci"
+        ],
+        "type": "object",
+        "properties": {
+          "uci": {
+            "maxLength": 5,
+            "type": "string",
+            "description": "The move in UCI coordinate form: the square the piece leaves and the\nsquare it arrives on, in lower case, such as `e2e4`, and for a\npromotion the piece's letter, as in `e7e8q`. A promotion needs its\nletter. Castling is the king's move, such as `e1g1`."
+          }
+        },
+        "description": "The body of `POST /games/{id}/moves`."
+      },
       "ProblemDetails": {
         "type": "object",
         "properties": {
@@ -327,11 +766,9 @@
             ]
           },
           "status": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "null",
-              "integer",
-              "string"
+              "integer"
             ],
             "format": "int32"
           },
@@ -348,6 +785,41 @@
             ]
           }
         }
+      },
+      "PromotionPiece": {
+        "enum": [
+          "queen",
+          "rook",
+          "bishop",
+          "knight"
+        ],
+        "description": "The piece a pawn becomes when it reaches the last rank."
+      },
+      "PromotionResponse": {
+        "required": [
+          "from",
+          "to",
+          "pieces"
+        ],
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "The square the pawn leaves."
+          },
+          "to": {
+            "type": "string",
+            "description": "The square it arrives on."
+          },
+          "pieces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PromotionPiece"
+            },
+            "description": "The pieces it may become, in the order queen, rook, bishop, knight. The\nUCI letters are `q`, `r`, `b` and `n`."
+          }
+        },
+        "description": "A pawn move to the last rank, which needs the piece the pawn becomes."
       },
       "RegisterRequest": {
         "required": [
@@ -367,6 +839,13 @@
           }
         },
         "description": "The body of `POST /auth/register`."
+      },
+      "Side": {
+        "enum": [
+          "white",
+          "black"
+        ],
+        "description": "One of the two players."
       },
       "SignInRequest": {
         "required": [
@@ -395,6 +874,9 @@
     },
     {
       "name": "ChessAscent.Api"
+    },
+    {
+      "name": "GameEndpoints"
     }
   ]
 }

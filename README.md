@@ -47,6 +47,14 @@ curl -c "$jar" -H 'Content-Type: application/json' \
 curl -b "$jar" http://localhost:5100/auth/me
 ```
 
+Games are under `/games`, for the signed-in player only. `POST /games` with `{"playerSide":"white","opponent":{"kind":"none"}}` starts a game from the standard position in which the player moves both sides; `GET /games/{id}` reads it; `POST /games/{id}/moves` with `{"uci":"e2e4"}` plays a move (`e7e8q` for a promotion). Each answers with the whole game: the position, the moves so far, the status, and the legal moves for the side to move. An illegal move is refused with 422, text that is not a move with 400, a move in a finished game or one that another request got to first with 409, and another player's game is 404, as is one that does not exist:
+
+```sh
+curl -b "$jar" -H 'Content-Type: application/json' \
+  -d '{"playerSide":"white","opponent":{"kind":"none"}}' http://localhost:5100/games   # the answer's "id" is the game's
+curl -b "$jar" -H 'Content-Type: application/json' -d '{"uci":"e2e4"}' http://localhost:5100/games/<id>/moves
+```
+
 The session cookie is encrypted with ASP.NET Core Data Protection keys, which by default live in `~/.aspnet/DataProtection-Keys` on the machine running the API. Deleting them signs everyone out. A deployment must keep them durable, private and shared between instances.
 
 In Development, `http://localhost:5100/scalar` is an API explorer (Scalar) for the API's endpoints, and `http://localhost:5100/openapi/v1.json` is the OpenAPI document it reads. Scalar's page and script are served by the API itself, and its telemetry, AI chat, MCP integration and developer toolbar (whose buttons would upload the document to Scalar) are turned off.

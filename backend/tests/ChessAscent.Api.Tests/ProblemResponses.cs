@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ChessAscent.Api.Tests;
@@ -20,4 +21,15 @@ internal static class ProblemResponses
     /// <inheritdoc cref="ReadProblemAsync{T}"/>
     public static Task<ProblemDetails> ReadProblemAsync(this HttpResponseMessage response) =>
         response.ReadProblemAsync<ProblemDetails>();
+
+    /// <summary>
+    /// The body as JSON text without its trace id, which differs on every
+    /// response, so two answers can be compared for everything else.
+    /// </summary>
+    public static async Task<string> ComparableBodyAsync(this HttpResponseMessage response)
+    {
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!.AsObject();
+        body.Remove("traceId");
+        return body.ToJsonString();
+    }
 }

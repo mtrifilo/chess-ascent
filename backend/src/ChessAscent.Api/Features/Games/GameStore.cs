@@ -13,8 +13,9 @@ namespace ChessAscent.Api.Features.Games;
 /// </para>
 /// <para>
 /// It records what it is given and does not check moves against the rules.
-/// The caller rebuilds the game from what <see cref="LoadAsync"/> returns,
-/// with <see cref="IChessRules.Load"/>, plays the moves on it through
+/// The caller rebuilds the game from what <see cref="LoadAsync"/> returns
+/// with <see cref="SavedGameBoards.RebuildBoard"/>, which also refuses a
+/// saved game that is broken, plays the moves on it through
 /// <see cref="IChessGame"/>, and saves the moves and status that produced.
 /// </para>
 /// <para>
@@ -258,7 +259,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // Not cancellable: a commit cancelled after the server has applied it
         // would report a save that happened as one that did not.
         await transaction.CommitAsync(CancellationToken.None);
-        return new MovesAppended(now);
+        return new MovesAppended(now, progress, result, endReason);
     }
 
     private void RefuseUnsavedChanges()
@@ -331,5 +332,6 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         game.EndReason,
         game.CreatedAt,
         game.UpdatedAt,
-        [.. game.Moves.Select(move => new PlayedMove(move.Uci, move.San))]);
+        [.. game.Moves.Select(move => new PlayedMove(move.Uci, move.San))],
+        game.Moves.Select((move, index) => move.HalfMoveNumber == index + 1).All(inOrder => inOrder));
 }

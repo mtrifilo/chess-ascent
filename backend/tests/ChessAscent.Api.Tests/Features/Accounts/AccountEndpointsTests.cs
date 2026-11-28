@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text.Json.Nodes;
 using ChessAscent.Api.Database;
 using ChessAscent.Api.Features.Accounts;
 using Microsoft.AspNetCore.Http;
@@ -169,7 +168,7 @@ public sealed class AccountEndpointsTests(ApiFactory factory) : IClassFixture<Ap
         using var unknownEmail = await client.SignInAsync(Accounts.NewEmail());
 
         unknownEmail.StatusCode.Should().Be(wrongPassword.StatusCode);
-        (await ComparableBodyAsync(unknownEmail)).Should().Be(await ComparableBodyAsync(wrongPassword));
+        (await unknownEmail.ComparableBodyAsync()).Should().Be(await wrongPassword.ComparableBodyAsync());
     }
 
     [Fact]
@@ -184,13 +183,13 @@ public sealed class AccountEndpointsTests(ApiFactory factory) : IClassFixture<Ap
         {
             using var wrong = await client.SignInAsync(email, password: Accounts.Password + "x");
             wrong.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-            wrongPasswordBody = await ComparableBodyAsync(wrong);
+            wrongPasswordBody = await wrong.ComparableBodyAsync();
         }
 
         using var rightPassword = await client.SignInAsync(email);
 
         rightPassword.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        (await ComparableBodyAsync(rightPassword)).Should().Be(wrongPasswordBody);
+        (await rightPassword.ComparableBodyAsync()).Should().Be(wrongPasswordBody);
         rightPassword.SessionCookieHeader().Should().BeNull();
     }
 
@@ -294,13 +293,5 @@ public sealed class AccountEndpointsTests(ApiFactory factory) : IClassFixture<Ap
     {
         const string domain = "@example.com";
         return new string('a', length - domain.Length) + domain;
-    }
-
-    // The trace id differs on every response; everything else must match.
-    private static async Task<string> ComparableBodyAsync(HttpResponseMessage response)
-    {
-        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!.AsObject();
-        body.Remove("traceId");
-        return body.ToJsonString();
     }
 }

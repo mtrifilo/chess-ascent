@@ -257,6 +257,240 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/games': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: {
+      parameters: {
+        query?: never
+        header?: never
+        path?: never
+        cookie?: never
+      }
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['CreateGameRequest']
+        }
+      }
+      responses: {
+        /** @description Created */
+        201: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/json': components['schemas']['GameResponse']
+          }
+        }
+        /** @description Bad Request */
+        400: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['HttpValidationProblemDetails']
+          }
+        }
+        /** @description Unauthorized */
+        401: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Forbidden */
+        403: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+      }
+    }
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/games/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get: {
+      parameters: {
+        query?: never
+        header?: never
+        path: {
+          id: string
+        }
+        cookie?: never
+      }
+      requestBody?: never
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/json': components['schemas']['GameResponse']
+          }
+        }
+        /** @description Unauthorized */
+        401: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Not Found */
+        404: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Internal Server Error */
+        500: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+      }
+    }
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/games/{id}/moves': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: {
+      parameters: {
+        query?: never
+        header?: never
+        path: {
+          id: string
+        }
+        cookie?: never
+      }
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['PlayMoveRequest']
+        }
+      }
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/json': components['schemas']['GameResponse']
+          }
+        }
+        /** @description Bad Request */
+        400: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['HttpValidationProblemDetails']
+          }
+        }
+        /** @description Unauthorized */
+        401: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Forbidden */
+        403: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Not Found */
+        404: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Conflict */
+        409: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Unprocessable Entity */
+        422: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Internal Server Error */
+        500: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+      }
+    }
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/health/ready': {
     parameters: {
       query?: never
@@ -317,29 +551,151 @@ export interface components {
        */
       commit: null | string
     }
+    /** @description The body of `POST /games`. */
+    CreateGameRequest: {
+      /** @description The side the signed-in player has. */
+      playerSide: components['schemas']['Side']
+      /** @description Who plays the other side. */
+      opponent: components['schemas']['OpponentRequest']
+    }
     /** @description The account that is signed in. */
     CurrentUserResponse: {
       /** @description The account's email address, as it was registered. */
       email: string
     }
+    /** @enum {unknown} */
+    GameEndReason:
+      | 'checkmate'
+      | 'stalemate'
+      | 'threefoldRepetition'
+      | 'fiftyMoveRule'
+      | 'deadPosition'
+      | 'resignation'
+    /**
+     * @description Whether a game is still being played.
+     * @enum {unknown}
+     */
+    GameProgress: 'ongoing' | 'finished'
+    /** @description A game as the game screen shows it. */
+    GameResponse: {
+      /**
+       * Format: uuid
+       * @description The game's id.
+       */
+      id: string
+      /** @description The side the signed-in player has. */
+      playerSide: components['schemas']['Side']
+      /** @description Who plays the other side. */
+      opponent: components['schemas']['OpponentResponse']
+      /** @description The current position as six-field FEN. */
+      fen: string
+      /** @description The side whose turn it is. After checkmate, the side that was mated. */
+      sideToMove: components['schemas']['Side']
+      /** @description Whether the game is still being played. */
+      status: components['schemas']['GameProgress']
+      result: null | components['schemas']['GameResult']
+      endReason: null | components['schemas']['GameEndReason']
+      /** @description The moves played so far, oldest first. */
+      moves: components['schemas']['MoveResponse'][]
+      /**
+       * @description The squares each piece of the side to move can go to, keyed by the
+       *     square it stands on, such as `{ "g1": ["f3", "h3"] }`. A piece with
+       *     no legal move has no key. A castling move is listed as the king's
+       *     destination. Empty once the game is over.
+       */
+      legalMoves: {
+        [key: string]: string[]
+      }
+      /**
+       * @description The moves in LegalMoves that promote a pawn, each with
+       *     the pieces it may become. Such a move is sent with the piece's letter.
+       *     Empty when there are none, and once the game is over.
+       */
+      promotions: components['schemas']['PromotionResponse'][]
+    }
+    /** @enum {unknown} */
+    GameResult: 'whiteWins' | 'blackWins' | 'draw'
     HttpValidationProblemDetails: {
       type?: null | string
       title?: null | string
       /** Format: int32 */
-      status?: null | number | string
+      status?: null | number
       detail?: null | string
       instance?: null | string
       errors?: {
         [key: string]: string[]
       }
     }
+    /** @description A move that has been played. */
+    MoveResponse: {
+      /**
+       * Format: int32
+       * @description The move's place in the game, from 1 for the first move played, whichever
+       *     side made it. It is not the FEN's move number.
+       */
+      halfMoveNumber: number
+      /** @description The move in UCI coordinate form, such as `e2e4` or `e7e8q`. */
+      uci: string
+      /** @description The move in standard algebraic notation, such as `e4` or `e8=Q+`. */
+      san: string
+    }
+    /**
+     * @description Who plays the side the player does not.
+     * @enum {unknown}
+     */
+    OpponentKind: 'none' | 'computer'
+    /** @description Who plays the side the player does not. */
+    OpponentRequest: {
+      /**
+       * @description The kind of opponent. Only `none` is offered, meaning the signed-in
+       *     player moves both sides; any other is refused with 400.
+       */
+      kind: components['schemas']['OpponentKind']
+    }
+    /** @description Who plays the side the player does not. */
+    OpponentResponse: {
+      /** @description The kind of opponent. */
+      kind: components['schemas']['OpponentKind']
+      /**
+       * Format: int32
+       * @description The computer's strength setting; `null` when the kind is `none`.
+       */
+      strength: null | number
+    }
+    /** @description The body of `POST /games/{id}/moves`. */
+    PlayMoveRequest: {
+      /**
+       * @description The move in UCI coordinate form: the square the piece leaves and the
+       *     square it arrives on, in lower case, such as `e2e4`, and for a
+       *     promotion the piece's letter, as in `e7e8q`. A promotion needs its
+       *     letter. Castling is the king's move, such as `e1g1`.
+       */
+      uci: string
+    }
     ProblemDetails: {
       type?: null | string
       title?: null | string
       /** Format: int32 */
-      status?: null | number | string
+      status?: null | number
       detail?: null | string
       instance?: null | string
+    }
+    /**
+     * @description The piece a pawn becomes when it reaches the last rank.
+     * @enum {unknown}
+     */
+    PromotionPiece: 'queen' | 'rook' | 'bishop' | 'knight'
+    /** @description A pawn move to the last rank, which needs the piece the pawn becomes. */
+    PromotionResponse: {
+      /** @description The square the pawn leaves. */
+      from: string
+      /** @description The square it arrives on. */
+      to: string
+      /**
+       * @description The pieces it may become, in the order queen, rook, bishop, knight. The
+       *     UCI letters are `q`, `r`, `b` and `n`.
+       */
+      pieces: components['schemas']['PromotionPiece'][]
     }
     /** @description The body of `POST /auth/register`. */
     RegisterRequest: {
@@ -351,6 +707,11 @@ export interface components {
       /** @description The new account's password. The response names any rule it breaks. */
       password: string
     }
+    /**
+     * @description One of the two players.
+     * @enum {unknown}
+     */
+    Side: 'white' | 'black'
     /** @description The body of `POST /auth/sign-in`. */
     SignInRequest: {
       /** @description The account's email address, in any case. */

@@ -1,9 +1,10 @@
 namespace ChessAscent.Api.Features.Games;
 
 // The member names of these enumerations, and of ChessAscent.Chess.Side, are
-// what the Games table stores (see GameConfiguration). Adding a member or
-// reordering them is safe; renaming one leaves the rows that hold the old
-// name unreadable until a migration rewrites them.
+// what the Games table stores (see GameConfiguration), and in camel case
+// what the API writes (see GameContracts). Adding a member or reordering
+// them is safe for the table; renaming one leaves the rows that hold the old
+// name unreadable until a migration rewrites them, and changes the API.
 
 /// <summary>Who plays the side the player does not.</summary>
 public enum OpponentKind
