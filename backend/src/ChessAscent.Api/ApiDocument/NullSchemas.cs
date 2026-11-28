@@ -48,10 +48,16 @@ internal static class NullSchemas
             // A request property can be nullable in C# only so that
             // validation can tell a missing value from a present one (see
             // GameContracts). [Required] refuses null, so the document says
-            // the property is never null.
+            // the property is never null: neither through the oneOf that
+            // wraps a reference, nor through the type list of a plain value
+            // such as an int?.
             if (context.JsonPropertyInfo?.AttributeProvider?.IsDefined(typeof(RequiredAttribute), inherit: false) == true)
             {
                 concrete.Metadata?.Remove(NullablePropertyMetadata);
+                if (concrete.Type is { } types)
+                {
+                    concrete.Type = types & ~JsonSchemaType.Null;
+                }
             }
 
             return Task.CompletedTask;

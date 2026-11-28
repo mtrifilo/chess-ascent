@@ -39,12 +39,35 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
     /// <param name="opponent">Who plays the other side.</param>
     /// <param name="startingFen">The position to start from, which the chess interface has accepted.</param>
     /// <param name="cancellationToken">Cancels the save.</param>
+    public Task<SavedGame> CreateAsync(
+        string ownerId, Side playerSide, Opponent opponent, string startingFen, CancellationToken cancellationToken) =>
+        CreateAsync(ownerId, playerSide, opponent, startingFen, [], new Ongoing(), cancellationToken);
+
+    /// <summary>
+    /// Creates a game with the moves already played in it, such as the
+    /// computer's first move when it has White, and its status after them.
+    /// The game and its moves are saved together or not at all.
+    /// </summary>
+    /// <param name="ownerId">The id of the account the game belongs to, which must exist.</param>
+    /// <param name="playerSide">The side the player has.</param>
+    /// <param name="opponent">Who plays the other side.</param>
+    /// <param name="startingFen">The position to start from, which the chess interface has accepted.</param>
+    /// <param name="moves">The moves played from <paramref name="startingFen"/>, oldest first; may be empty.</param>
+    /// <param name="statusAfter">The game's status after the last move, as the chess interface reported it.</param>
+    /// <param name="cancellationToken">Cancels the save, which then saves nothing.</param>
     public async Task<SavedGame> CreateAsync(
-        string ownerId, Side playerSide, Opponent opponent, string startingFen, CancellationToken cancellationToken)
+        string ownerId,
+        Side playerSide,
+        Opponent opponent,
+        string startingFen,
+        IReadOnlyList<PlayedMove> moves,
+        GameStatus statusAfter,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
         ArgumentNullException.ThrowIfNull(opponent);
         ArgumentException.ThrowIfNullOrWhiteSpace(startingFen);
+        RefuseBlankMoves(moves);
 
         // LEARN: A C# enum is a named integer, not a closed set of objects as
         // in Java: (Side)7 compiles and is a value of type Side. Enum.IsDefined
@@ -56,6 +79,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         }
 
         RefuseUnsavedChanges();
+        var (progress, result, endReason) = ToStoredOutcome(statusAfter);
 
         var now = Now();
         var game = new Game
@@ -66,11 +90,32 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
             OpponentKind = opponent.Kind,
             OpponentStrength = opponent.Strength,
             StartingFen = startingFen,
-            Status = GameProgress.Ongoing,
+            Status = progress,
+            Result = result,
+            EndReason = endReason,
             CreatedAt = now,
             UpdatedAt = now,
         };
+        var rows = moves
+            .Select((move, index) => new Move
+            {
+                GameId = game.Id,
+                HalfMoveNumber = index + 1,
+                Uci = move.Uci,
+                San = move.San,
+            })
+            .ToList();
+        game.Moves.AddRange(rows);
 
+        // LEARN: No transaction is begun here, and none is needed. JPA
+        // flushes changes only inside a transaction, which Spring code gets
+        // from @Transactional. EF Core's SaveChanges, called while no
+        // transaction is open, begins one itself: it sends every insert it
+        // has queued (the game, then its moves, ordered by the foreign key)
+        // inside it and commits only if all of them succeed, so one
+        // SaveChanges is all or nothing. An explicit transaction, as in
+        // AppendMovesAsync, is for work that spans several round trips whose
+        // results the code reads in between.
         database.Games.Add(game);
         try
         {
@@ -80,7 +125,14 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         {
             // The context is the caller's for the rest of the request. Left
             // tracked, a row whose insert failed would be inserted again by
-            // the caller's next SaveChanges.
+            // the caller's next SaveChanges. Detaching a move whose insert
+            // failed also takes it out of game.Moves, so the loop runs over
+            // a list of its own.
+            foreach (var row in rows)
+            {
+                database.Entry(row).State = EntityState.Detached;
+            }
+
             database.Entry(game).State = EntityState.Detached;
         }
 
@@ -155,16 +207,10 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(firstHalfMoveNumber, 1);
-        ArgumentNullException.ThrowIfNull(moves);
+        RefuseBlankMoves(moves);
         if (moves.Count == 0)
         {
             throw new ArgumentException("There are no moves to append.", nameof(moves));
-        }
-
-        foreach (var move in moves)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(move.Uci, nameof(moves));
-            ArgumentException.ThrowIfNullOrWhiteSpace(move.San, nameof(moves));
         }
 
         RefuseUnsavedChanges();
@@ -260,6 +306,16 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // would report a save that happened as one that did not.
         await transaction.CommitAsync(CancellationToken.None);
         return new MovesAppended(now, progress, result, endReason);
+    }
+
+    private static void RefuseBlankMoves(IReadOnlyList<PlayedMove> moves)
+    {
+        ArgumentNullException.ThrowIfNull(moves);
+        foreach (var move in moves)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(move.Uci, nameof(moves));
+            ArgumentException.ThrowIfNullOrWhiteSpace(move.San, nameof(moves));
+        }
     }
 
     private void RefuseUnsavedChanges()

@@ -33,9 +33,9 @@ public sealed class MoveRaceTests(ApiFactory factory) : IClassFixture<ApiFactory
         await client.RegisterNewAsync(AccountData.NewEmail());
         var game = await client.CreateGameAsync();
 
-        var first = client.PostMoveAsync(game.Id, "e2e4");
+        var first = client.PostMoveAsync(game.Id, "e2e4", 1);
         await hold.FirstUpdated.WaitAsync(Patience, Cancellation);
-        var second = client.PostMoveAsync(game.Id, "e2e4");
+        var second = client.PostMoveAsync(game.Id, "e2e4", 1);
         await hold.SecondUpdating.WaitAsync(Patience, Cancellation);
         hold.Release();
         using var firstResponse = await first;

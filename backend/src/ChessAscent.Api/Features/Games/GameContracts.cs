@@ -26,10 +26,21 @@ public sealed record CreateGameRequest(
 
 /// <summary>Who plays the side the player does not.</summary>
 /// <param name="Kind">
-/// The kind of opponent. Only <c>none</c> is offered, meaning the signed-in
-/// player moves both sides; any other is refused with 400.
+/// The kind of opponent: <c>computer</c>, or <c>none</c> when the signed-in
+/// player moves both sides.
 /// </param>
-public sealed record OpponentRequest([property: Required] OpponentKind? Kind);
+/// <param name="Strength">
+/// The computer's strength: 600, 800, 1000, 1200 or 1400, where higher is
+/// stronger. Left out or <c>null</c>, it is 800. Any other number is refused
+/// with 400, as is a strength given when the kind is <c>none</c>.
+/// </param>
+// The numbers above are OpponentStrengths.Offered and DefaultStrength,
+// written out because this comment becomes the API document's description.
+public sealed record OpponentRequest([property: Required] OpponentKind? Kind, int? Strength = null)
+{
+    /// <summary>The computer's strength when the request gives none.</summary>
+    public const int DefaultStrength = 800;
+}
 
 /// <summary>The body of <c>POST /games/{id}/moves</c>.</summary>
 /// <param name="Uci">
@@ -38,7 +49,16 @@ public sealed record OpponentRequest([property: Required] OpponentKind? Kind);
 /// promotion the piece's letter, as in <c>e7e8q</c>. A promotion needs its
 /// letter. Castling is the king's move, such as <c>e1g1</c>.
 /// </param>
-public sealed record PlayMoveRequest([property: Required, MaxLength(PlayMoveRequest.UciLength)] string Uci)
+/// <param name="HalfMoveNumber">
+/// The half-move number this move is meant to have, numbered as the
+/// response's moves are: one more than the number of moves in the game the
+/// client is showing. When the game has moved on from
+/// there, the move is refused with 409 and nothing is saved, so sending the
+/// same move again is always safe.
+/// </param>
+public sealed record PlayMoveRequest(
+    [property: Required, MaxLength(PlayMoveRequest.UciLength)] string Uci,
+    [property: Required] int? HalfMoveNumber)
 {
     /// <summary>
     /// The longest move in UCI form: two squares and a promotion letter, as

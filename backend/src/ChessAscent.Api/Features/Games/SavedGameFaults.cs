@@ -70,6 +70,27 @@ internal sealed class UnrebuildableGameException(Guid gameId, string reason)
     public string Reason { get; } = reason;
 }
 
+/// <summary>
+/// A computer game that cannot be played on, because what is saved, or what
+/// the opponent answered about it, is wrong. It is a fault on the server, not
+/// something the player did.
+/// </summary>
+/// <remarks>
+/// <see cref="SavedGameFaultFilter"/> turns it into a 500, as it does
+/// <see cref="UnrebuildableGameException"/>.
+/// </remarks>
+/// <param name="gameId">The game, or <c>null</c> for one that was being created and was not saved.</param>
+/// <param name="reason">What is wrong, without any text the game or the opponent holds.</param>
+internal sealed class ComputerGameFaultException(Guid? gameId, string reason)
+    : Exception(gameId is { } id
+        ? $"Computer game {id} cannot be played: {reason}."
+        : $"A computer game cannot be started: {reason}.")
+{
+    public Guid? GameId { get; } = gameId;
+
+    public string Reason { get; } = reason;
+}
+
 // LEARN: An endpoint filter wraps an endpoint's handler: InvokeAsync runs
 // before it, calls `next` to run it (and any filters added after this one),
 // and can then inspect or replace what it returned, or catch what it threw.
@@ -82,8 +103,9 @@ internal sealed class UnrebuildableGameException(Guid gameId, string reason)
 // so it sees the matched endpoint and its bound arguments in the invocation
 // context.
 /// <summary>
-/// Answers 500 when a handler finds a saved game it cannot rebuild, after
-/// logging which game it was. The game is left as it is.
+/// Answers 500 when a handler finds a saved game it cannot rebuild, or a
+/// computer game it cannot play, after logging which game it was. The game
+/// is left as it is.
 /// </summary>
 internal sealed partial class SavedGameFaultFilter(ILogger<SavedGameFaultFilter> logger) : IEndpointFilter
 {
@@ -98,8 +120,27 @@ internal sealed partial class SavedGameFaultFilter(ILogger<SavedGameFaultFilter>
             LogUnrebuildable(logger, exception.GameId, exception.Reason);
             return TypedResults.Problem(statusCode: StatusCodes.Status500InternalServerError);
         }
+        catch (ComputerGameFaultException exception)
+        {
+            if (exception.GameId is { } gameId)
+            {
+                LogUnplayable(logger, gameId, exception.Reason);
+            }
+            else
+            {
+                LogUnstartable(logger, exception.Reason);
+            }
+
+            return TypedResults.Problem(statusCode: StatusCodes.Status500InternalServerError);
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Saved game {GameId} cannot be rebuilt: {Reason}.")]
     private static partial void LogUnrebuildable(ILogger logger, Guid gameId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Computer game {GameId} cannot be played: {Reason}.")]
+    private static partial void LogUnplayable(ILogger logger, Guid gameId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "A computer game cannot be started: {Reason}.")]
+    private static partial void LogUnstartable(ILogger logger, string reason);
 }

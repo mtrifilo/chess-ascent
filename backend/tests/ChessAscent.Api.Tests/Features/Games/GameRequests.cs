@@ -35,16 +35,27 @@ internal static class GameRequests
     public static Task<HttpResponseMessage> PostGameAsync(this HttpClient client, string playerSide = "white") =>
         client.PostGameAsync(new { playerSide, opponent = new { kind = "none" } });
 
+    public static Task<HttpResponseMessage> PostComputerGameAsync(this HttpClient client, string playerSide, int strength) =>
+        client.PostGameAsync(new { playerSide, opponent = new { kind = "computer", strength } });
+
     public static Task<HttpResponseMessage> GetGameAsync(this HttpClient client, Guid gameId) =>
         client.GetAsync($"/games/{gameId}", Cancellation);
 
-    public static Task<HttpResponseMessage> PostMoveAsync(this HttpClient client, Guid gameId, string? uci) =>
-        client.PostAsJsonAsync($"/games/{gameId}/moves", new { uci }, Cancellation);
+    public static Task<HttpResponseMessage> PostMoveAsync(this HttpClient client, Guid gameId, string? uci, int halfMoveNumber) =>
+        client.PostAsJsonAsync($"/games/{gameId}/moves", new { uci, halfMoveNumber }, Cancellation);
 
     /// <summary>Creates a game, checking that it answered 201, and returns it.</summary>
     public static async Task<GameResponse> CreateGameAsync(this HttpClient client, string playerSide = "white")
     {
         using var response = await client.PostGameAsync(playerSide);
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        return await response.ReadGameAsync();
+    }
+
+    /// <summary>Creates a game against the computer, checking that it answered 201, and returns it.</summary>
+    public static async Task<GameResponse> CreateComputerGameAsync(this HttpClient client, string playerSide, int strength = 800)
+    {
+        using var response = await client.PostComputerGameAsync(playerSide, strength);
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         return await response.ReadGameAsync();
     }
@@ -57,19 +68,30 @@ internal static class GameRequests
         return await response.ReadGameAsync();
     }
 
-    /// <summary>Plays each move in turn, checking that each answered 200, and returns the game after the last.</summary>
+    /// <summary>
+    /// Plays each move in turn, each as the game's next half-move, checking
+    /// that each answered 200, and returns the game after the last.
+    /// </summary>
     public static async Task<GameResponse> PlayAsync(this HttpClient client, Guid gameId, params string[] uciMoves)
     {
-        GameResponse? game = null;
+        if (uciMoves.Length == 0)
+        {
+            throw new ArgumentException("No moves to play.", nameof(uciMoves));
+        }
+
+        var game = await client.ReadGameAsync(gameId);
         foreach (var uci in uciMoves)
         {
-            using var response = await client.PostMoveAsync(gameId, uci);
+            using var response = await client.PostMoveAsync(gameId, uci, game.NextHalfMoveNumber());
             response.StatusCode.Should().Be(HttpStatusCode.OK, $"{uci} is legal here");
             game = await response.ReadGameAsync();
         }
 
-        return game ?? throw new ArgumentException("No moves to play.", nameof(uciMoves));
+        return game;
     }
+
+    /// <summary>The half-move number the game's next move has.</summary>
+    public static int NextHalfMoveNumber(this GameResponse game) => game.Moves.Count + 1;
 
     /// <summary>Reads a game body with the serializer settings the API writes it with.</summary>
     public static async Task<GameResponse> ReadGameAsync(this HttpResponseMessage response)

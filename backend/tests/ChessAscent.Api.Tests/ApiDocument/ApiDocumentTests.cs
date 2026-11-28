@@ -62,9 +62,9 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
     // JSON is not declared, here or on the account endpoints: the typed
     // client always sends JSON. The move endpoint's remarks list it.
     [Theory]
-    [InlineData("/games", "post", new[] { "201", "400", "401", "403" })]
+    [InlineData("/games", "post", new[] { "201", "400", "401", "403", "500", "503" })]
     [InlineData("/games/{id}", "get", new[] { "200", "401", "404", "500" })]
-    [InlineData("/games/{id}/moves", "post", new[] { "200", "400", "401", "403", "404", "409", "422", "500" })]
+    [InlineData("/games/{id}/moves", "post", new[] { "200", "400", "401", "403", "404", "409", "422", "500", "503" })]
     public async Task DocumentListsEveryResponseOfTheGameEndpoints(string path, string method, string[] statuses)
     {
         var document = await GetDocumentAsync();
@@ -78,6 +78,8 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
     [Theory]
     [InlineData("MoveResponse", "halfMoveNumber", new[] { "integer" })]
     [InlineData("OpponentResponse", "strength", new[] { "null", "integer" })]
+    [InlineData("OpponentRequest", "strength", new[] { "null", "integer" })]
+    [InlineData("PlayMoveRequest", "halfMoveNumber", new[] { "integer" })]
     [InlineData("ProblemDetails", "status", new[] { "null", "integer" })]
     public async Task DocumentDescribesIntegersAsJsonIntegersOnly(string schema, string property, string[] types)
     {
@@ -127,6 +129,8 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
     [InlineData("GameResponse", "endReason", true, "GameEndReason")]
     [InlineData("GameResponse", "playerSide", false, "Side")]
     [InlineData("OpponentResponse", "strength", true, null)]
+    [InlineData("OpponentRequest", "strength", true, null)]
+    [InlineData("PlayMoveRequest", "halfMoveNumber", false, null)]
     public async Task DocumentAllowsNullOnlyWhereTheApiSendsOrAcceptsIt(
         string schema, string property, bool nullable, string? enumSchema)
     {
@@ -151,6 +155,21 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
         {
             described["type"].Should().NotBeNull("a plain value states its type");
         }
+    }
+
+    // A request field is required in the document exactly when the API
+    // refuses a body without it; the computer's strength may be left out.
+    [Theory]
+    [InlineData("CreateGameRequest", new[] { "playerSide", "opponent" })]
+    [InlineData("OpponentRequest", new[] { "kind" })]
+    [InlineData("PlayMoveRequest", new[] { "uci", "halfMoveNumber" })]
+    public async Task DocumentRequiresExactlyTheRequestFieldsTheApiRequires(string schema, string[] required)
+    {
+        var document = await GetDocumentAsync();
+
+        document["components"]!["schemas"]![schema]!["required"]!.AsArray()
+            .Select(field => field!.GetValue<string>())
+            .Should().BeEquivalentTo(required);
     }
 
     // Every response the account endpoints declare, including those that

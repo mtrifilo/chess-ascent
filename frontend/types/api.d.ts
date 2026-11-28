@@ -315,6 +315,24 @@ export interface paths {
             'application/problem+json': components['schemas']['ProblemDetails']
           }
         }
+        /** @description Internal Server Error */
+        500: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Service Unavailable */
+        503: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
       }
     }
     delete?: never
@@ -476,6 +494,15 @@ export interface paths {
         }
         /** @description Internal Server Error */
         500: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Service Unavailable */
+        503: {
           headers: {
             [name: string]: unknown
           }
@@ -647,10 +674,17 @@ export interface components {
     /** @description Who plays the side the player does not. */
     OpponentRequest: {
       /**
-       * @description The kind of opponent. Only `none` is offered, meaning the signed-in
-       *     player moves both sides; any other is refused with 400.
+       * @description The kind of opponent: `computer`, or `none` when the signed-in
+       *     player moves both sides.
        */
       kind: components['schemas']['OpponentKind']
+      /**
+       * Format: int32
+       * @description The computer's strength: 600, 800, 1000, 1200 or 1400, where higher is
+       *     stronger. Left out or `null`, it is 800. Any other number is refused
+       *     with 400, as is a strength given when the kind is `none`.
+       */
+      strength?: null | number
     }
     /** @description Who plays the side the player does not. */
     OpponentResponse: {
@@ -671,6 +705,15 @@ export interface components {
        *     letter. Castling is the king's move, such as `e1g1`.
        */
       uci: string
+      /**
+       * Format: int32
+       * @description The half-move number this move is meant to have, numbered as the
+       *     response's moves are: one more than the number of moves in the game the
+       *     client is showing. When the game has moved on from
+       *     there, the move is refused with 409 and nothing is saved, so sending the
+       *     same move again is always safe.
+       */
+      halfMoveNumber: number
     }
     ProblemDetails: {
       type?: null | string
