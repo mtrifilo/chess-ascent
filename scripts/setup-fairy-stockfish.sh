@@ -102,14 +102,15 @@ BUILD_LOG="$FAIRY/build.log"
 source_git() { git --git-dir="$SOURCE/.git" --work-tree="$SOURCE" "$@"; }
 
 # Whatever a run leaves half-made is removed when it ends: a fetch in
-# progress, or a new program not yet checked. Each signal has a trap of its
-# own, because a trapped signal makes bash wait for the command running in
-# the foreground (git or make) before it acts; untrapped, bash would clean
-# up at once and leave that command running, still writing. A signal sent
-# to this script alone would otherwise be ignored as well, when the command
-# exits normally. The trap cleans up, then raises the signal again with its
-# default action, so that the script dies by it and a command line around
-# it stops too.
+# progress, or a new program not yet checked. Signals are trapped because,
+# sent to this script alone while git or make runs in the foreground, an
+# untrapped TERM or HUP makes bash run the EXIT trap at once and leave that
+# command running, still writing, and an untrapped INT makes bash wait for
+# the command and then carry on if it exits normally. A trapped signal makes
+# bash wait for the command, then run the trap. Each signal has a trap of its
+# own so that it can clean up and then raise that same signal again, with
+# its default action, so that the script dies by it and a command line
+# around it stops too.
 FETCHING=""
 CANDIDATE=""
 remove_half_made() {
