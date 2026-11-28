@@ -2,6 +2,7 @@
 
 import {
   type QueryClient,
+  useIsMutating,
   useMutation,
   useQuery,
   useQueryClient,
@@ -18,6 +19,21 @@ import type {
 import type { Game, OpponentStrength } from './game-state'
 
 const gameKey = (id: string) => ['game', id] as const
+
+// The keys of the requests that can end a game, a move and a resignation,
+// which share the game's key as their prefix.
+const moveKey = (id: string) => [...gameKey(id), 'move'] as const
+const resignKey = (id: string) => [...gameKey(id), 'resign'] as const
+
+// Whether a move or a resignation is on its way in this game: the player is
+// acting on the game screen.
+export function useGameEndingRequestUnderway(id: string): boolean {
+  return (
+    useIsMutating({ mutationKey: moveKey(id) }) +
+      useIsMutating({ mutationKey: resignKey(id) }) >
+    0
+  )
+}
 
 // One of the signed-in player's games, or null when they have none with this
 // id: the API answers 404 alike for a game that does not exist and one that
@@ -97,6 +113,7 @@ export type MoveRequest = { uci: string; halfMoveNumber: number; fen: string }
 export function usePlayMove(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
+    mutationKey: moveKey(id),
     networkMode: 'always',
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: gameKey(id) })
@@ -134,6 +151,7 @@ export function usePlayMove(id: string) {
 export function useResign(id: string, onSettled?: () => void) {
   const queryClient = useQueryClient()
   return useMutation({
+    mutationKey: resignKey(id),
     networkMode: 'always',
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: gameKey(id) })

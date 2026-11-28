@@ -191,9 +191,16 @@ describe('GameRoute', () => {
     expect(highlighted()).toHaveTextContent('/games')
   })
 
-  it('keeps a move that is on its way when the player comes back by a link, and stays on the game screen when it does not end the game', async () => {
+  it('keeps a move that is on its way when the player comes back by a link, and the game screen with its result when that move ends the game', async () => {
     let settle!: (reply: Reply) => void
     const playing = COMPUTER_REPLIED_E5
+    const mated: typeof playing = {
+      ...playing,
+      status: 'finished',
+      result: 'whiteWins',
+      endReason: 'checkmate',
+      legalMoves: {},
+    }
     answer({
       [GAME_PATH]: ok(playing),
       [MOVES_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
@@ -203,12 +210,21 @@ describe('GameRoute', () => {
     act(() => board.props!.onMove!({ from: 'g1', to: 'f3' }))
     await waitFor(() => expect(board.props!.readOnly).toBe(true))
 
+    // The read on coming back is slower than the move's answer.
     rerender(routeIn('hidden'))
+    answer({
+      [GAME_PATH]: new Promise<Reply>(() => {}),
+      [MOVES_PATH]: new Promise<Reply>(() => {}),
+    })
     router.bfcacheId = 'second visit'
     rerender(routeIn('visible'))
 
     expect(board.props!.readOnly).toBe(true)
-    await act(async () => settle(ok(playing)))
+    await act(async () => settle(ok(mated)))
+
+    await waitFor(() => expect(heading()).toHaveTextContent('You won'), {
+      timeout: 3000,
+    })
     expect(screen.queryByRole('heading', { name: 'Replay' })).toBeNull()
   })
 

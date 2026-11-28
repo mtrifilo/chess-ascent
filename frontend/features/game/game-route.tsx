@@ -1,11 +1,11 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { ReplayScreen } from '@/features/replay/replay-screen'
 
-import { useGame } from './game-api'
+import { useGame, useGameEndingRequestUnderway } from './game-api'
 import { GameScreen } from './game-screen'
 
 // The game named by the address, /games/<id>. Each game gets a screen of its
@@ -30,14 +30,19 @@ export function GameRoute() {
 // On opening, the screen is chosen from the game as the server then has it:
 // a game the cache already holds as finished is replayed at once, since a
 // finished game stays finished; one it holds as still being played waits
-// for the read this opening asks for, on the game screen meanwhile, since
-// it may have ended elsewhere. The choice is made while rendering, in the
-// same pass in which the game arrives, so a finished game opened afresh
-// never shows the game screen first. The game screen shows nothing until
-// the game has loaded, and both read it with one request.
+// for the next read, on the game screen meanwhile, since it may have ended
+// elsewhere. Showing the page again reads a game the cache holds, as every
+// read of a game does once its answer is no longer fresh. A move or a
+// resignation the player sends meanwhile, or one still on its way when they
+// come back, settles it as the game screen: a game the player ends there
+// keeps that screen. The choice is made while rendering, in the same pass
+// in which the game arrives, so a finished game opened afresh never shows
+// the game screen first. The game screen shows nothing until the game has
+// loaded, and both read it with one request.
 function GameOrReplay({ id }: { id: string }) {
   const { bfcacheId } = useRouter()
-  const { data: game, dataUpdatedAt, refetch } = useGame(id)
+  const { data: game, dataUpdatedAt } = useGame(id)
+  const acting = useGameEndingRequestUnderway(id)
   const [opening, setOpening] = useState<Opening>({
     bfcacheId,
     readBefore: dataUpdatedAt,
@@ -47,16 +52,14 @@ function GameOrReplay({ id }: { id: string }) {
   if (opening.bfcacheId !== bfcacheId) {
     setOpening({ bfcacheId, readBefore: dataUpdatedAt, replay: undefined })
   } else if (opening.replay === undefined && game) {
-    const finished = game.status === 'finished'
-    if (finished || dataUpdatedAt > opening.readBefore) {
-      setOpening({ ...opening, replay: finished })
+    if (acting) setOpening({ ...opening, replay: false })
+    else {
+      const finished = game.status === 'finished'
+      if (finished || dataUpdatedAt > opening.readBefore) {
+        setOpening({ ...opening, replay: finished })
+      }
     }
   }
-
-  // Each opening reads the game, joining a read already on its way.
-  useEffect(() => {
-    void refetch({ cancelRefetch: false })
-  }, [bfcacheId, refetch])
 
   return opening.replay && game ? (
     <ReplayScreen game={game} />
