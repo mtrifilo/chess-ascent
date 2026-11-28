@@ -11,7 +11,8 @@
     "test": "vitest run",
     "format": "prettier --write . --ignore-path ../.gitignore",
     "format:check": "prettier --check . --ignore-path ../.gitignore",
-    "api:types": "../scripts/gen-api-types.sh"
+    "api:types": "../scripts/gen-api-types.sh",
+    "e2e": "../scripts/e2e.sh"
   },
   "dependencies": {
     "@lichess-org/chessground": "10.5.0",
@@ -29,6 +30,7 @@
     "tailwind-merge": "3.7.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.1",
     "@tailwindcss/turbopack": "4.3.5",
     "@testing-library/dom": "10.4.2",
     "@testing-library/jest-dom": "8.0.0",

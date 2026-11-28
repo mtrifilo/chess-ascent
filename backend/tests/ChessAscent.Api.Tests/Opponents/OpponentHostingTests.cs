@@ -4,7 +4,9 @@ using ChessAscent.Api.Opponents;
 using ChessAscent.Api.Tests.Engine;
 using ChessAscent.Api.Tests.Features.Games;
 using ChessAscent.Chess;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace ChessAscent.Api.Tests.Opponents;
@@ -41,6 +43,49 @@ public sealed class OpponentHostingTests(PostgresFixture postgres)
         {
             missing.Delete(recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task TheOpponentIsMaiaUnlessTheSettingSaysOtherwise()
+    {
+        await using var api = new ApiFactory(postgres);
+
+        api.Services.GetRequiredService<IOpponent>().Should().BeOfType<MaiaOpponent>();
+    }
+
+    [Fact]
+    public async Task InDevelopmentTheSettingMakesTheFirstLegalMoveTheComputersReplyAndSaysSoOnce()
+    {
+        var logs = new CapturingLoggerProvider();
+        await using var factory = new ApiFactory(postgres);
+        await using var api = factory.WithWebHostBuilder(host => host
+            .UseSetting(OpponentServices.UseFirstLegalMoveSetting, "true")
+            .ConfigureLogging(logging => logging.AddProvider(logs).AddFilter<CapturingLoggerProvider>(category: null, LogLevel.Trace)));
+        using var client = await api.SignedInClientAsync();
+        var game = await client.CreateComputerGameAsync("white");
+
+        var afterFirst = await client.PlayAsync(game.Id, "e2e4");
+
+        api.Services.GetRequiredService<IOpponent>().Should().BeOfType<FirstLegalMoveOpponent>();
+        afterFirst.Moves.Notation().Should().Equal((1, "e2e4", "e4"), (2, "a7a5", "a5"));
+        logs.Messages.Where(message => message.Contains(OpponentServices.UseFirstLegalMoveSetting, StringComparison.Ordinal))
+            .Should().ContainSingle().Which.Should().Contain("first legal move");
+    }
+
+    [Theory]
+    [InlineData("Production")]
+    [InlineData("Staging")]
+    public async Task OutsideDevelopmentTheSettingStopsStartUpAndNamesItself(string environment)
+    {
+        await using var factory = new ApiFactory(postgres);
+        await using var api = factory.WithWebHostBuilder(host => host
+            .UseEnvironment(environment)
+            .UseSetting(OpponentServices.UseFirstLegalMoveSetting, "true"));
+
+        var start = () => api.CreateClient();
+
+        start.Should().Throw<InvalidOperationException>()
+            .WithMessage($"{OpponentServices.UseFirstLegalMoveSetting} is true, but the environment is {environment}.*");
     }
 
     // LEARN: The real engine, opt-in in the same way as the chess project's

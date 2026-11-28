@@ -106,6 +106,16 @@ bun run api:types        # or scripts/gen-api-types.sh from the repository root
 
 It rewrites `backend/openapi/ChessAscent.Api.json` (the OpenAPI 3.1 document) and `frontend/types/api.d.ts`; commit both.
 
+The end-to-end test plays one game through the browser, against all three parts at once. It needs Docker and the .NET SDK, and starts and stops everything itself, on ports of its own (web app 3300, API 5300, database 5640), so it can run while your own API and database are up. Stop your own `bun run dev` in the same checkout first: Next.js runs one development server per directory.
+
+```sh
+cd frontend
+bun run playwright install chromium   # once: downloads Playwright's build of Chromium from Playwright's servers
+bun run e2e                            # or scripts/e2e.sh from the repository root
+```
+
+In the test the computer is a stand-in that plays the first legal move, so no engine is needed.
+
 ### Chess engines
 
 The computer opponent is Maia-3, a neural network that plays like a person of a chosen rating, run as a separate Python program. It is not in the repository; one script installs it, on Linux or on macOS 14 or later with Apple Silicon (the only Macs PyTorch 2.15 supports):

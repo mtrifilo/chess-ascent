@@ -54,7 +54,8 @@ builder.Configuration.AddFairyStockfishInstallation(builder.Environment.ContentR
 // cookie and authorization. AddGames registers the store that saves and
 // loads games, and the chess rules. AddOpponent registers the computer
 // opponent, and AddHints the source of hints, both of which play through the
-// engine pool.
+// engine pool; configuration can put the end-to-end test's stand-in, which
+// needs no engine, in place of the opponent (see OpponentServices).
 builder.Services.AddProblemDetails();
 builder.Services.AddValidation();
 builder.Services.AddJsonConventions();
@@ -64,7 +65,7 @@ builder.Services.AddEnginePool();
 builder.Services.AddApiDocument();
 builder.Services.AddAccounts();
 builder.Services.AddGames();
-builder.Services.AddOpponent();
+builder.Services.AddOpponent(builder.Configuration, builder.Environment);
 builder.Services.AddHints();
 
 // LEARN: Build() freezes the container: no services can be added after this
