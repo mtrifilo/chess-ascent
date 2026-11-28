@@ -5,8 +5,7 @@ import { createContext, useContext, useLayoutEffect, useState } from 'react'
 import type { NavHref } from './nav-links'
 
 // The navigation item a page says it belongs to, for a page whose path alone
-// does not say. One game's page is under Play while the game is being played
-// and under My games once it is over, at the same path.
+// does not say, such as one game's page, which is under Play.
 
 type PageNavItem = {
   href: NavHref | undefined

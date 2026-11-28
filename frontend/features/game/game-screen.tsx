@@ -38,14 +38,13 @@ import { PromotionPicker } from './promotion-picker'
 // One game: the board between the two players' bars, and beside it (below it
 // on phones) the game's status or result, the move list and the controls.
 //
-// Nothing shows until the game has loaded, so the page does not flash a
-// starting position. A game the player does not have shows the site's
-// not-found page.
+// It is under Play, as drawn, whether the game is being played or is over,
+// and from before the game has loaded. Nothing else shows until then, so the
+// page does not flash a starting position. A game the player does not have
+// shows the site's not-found page.
 export function GameScreen({ id }: { id: string }) {
+  useNavItemForPage('/play')
   const { data: game } = useGame(id)
-  useNavItemForPage(
-    game ? (game.status === 'finished' ? '/games' : '/play') : undefined
-  )
   if (game === null) notFound()
   if (!game) return null
   return <LoadedGame game={game} />

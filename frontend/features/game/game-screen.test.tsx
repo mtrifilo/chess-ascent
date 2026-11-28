@@ -151,6 +151,23 @@ describe('GameScreen', () => {
     ).toHaveTextContent('/play')
   })
 
+  it('highlights Play while the game is still loading', () => {
+    answer({ [GAME_PATH]: new Promise<Reply>(() => {}) })
+    renderWithQueries(
+      <PageNavItemProvider>
+        <NamedNavItem />
+        <GameScreen id={GAME_ID} />
+      </PageNavItemProvider>
+    )
+
+    expect(
+      screen.getByRole('status', { name: 'Highlighted' })
+    ).toHaveTextContent('/play')
+    expect(
+      screen.queryByRole('img', { name: 'Chess board' })
+    ).not.toBeInTheDocument()
+  })
+
   it('sends a move in UCI form and shows the position the API answers with', async () => {
     const sent = answer({ [GAME_PATH]: ok(game()), [MOVES_PATH]: ok(AFTER_E4) })
     await renderGame()
@@ -482,13 +499,13 @@ describe('GameScreen', () => {
       expect(board.props).toMatchObject({ check: 'e1', readOnly: true })
     })
 
-    it('highlights My games', async () => {
+    it('still highlights Play', async () => {
       answer({ [GAME_PATH]: ok(FOOLS_MATE) })
       await renderGame()
 
       expect(
         screen.getByRole('status', { name: 'Highlighted' })
-      ).toHaveTextContent('/games')
+      ).toHaveTextContent('/play')
     })
 
     it.each([
