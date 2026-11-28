@@ -23,10 +23,13 @@ import {
   checkSquare,
   destinations,
   END_REASON_TEXT,
+  hintText,
+  hintUsedText,
   lastMove,
   moveNumber,
   nextHalfMoveNumber,
   playerName,
+  playsComputer,
   promotionChoices,
   resultTitle,
   toMoveText,
@@ -34,6 +37,8 @@ import {
   type Game,
   type PromotionPiece,
 } from './game-state'
+import { useHint } from './hint'
+import { HintUsed } from './hint-used'
 import { MoveList } from './move-list'
 import { NewGameLink } from './new-game-link'
 import { PromotionPicker } from './promotion-picker'
@@ -111,6 +116,17 @@ function LoadedGame({ game }: { game: Game }) {
     setBoardKey(key => key + 1)
   }
   const promotion = !finished && pending?.fen === game.fen ? pending : undefined
+  // Only the player's turn has a use for a hint: not while a move is on its
+  // way or the computer thinks, nor while a resignation is on its way or a
+  // promotion waits for its piece.
+  const playersTurn =
+    !finished &&
+    !moveUnderway &&
+    !resigning &&
+    !promotion &&
+    game.sideToMove === game.playerSide
+  const hint = useHint(game, playersTurn)
+  const hintUsed = hintUsedText(game)
   const failedMove =
     !finished && playMove.isError && playMove.variables.fen === game.fen
       ? playMove.variables.uci
@@ -125,7 +141,9 @@ function LoadedGame({ game }: { game: Game }) {
         title: 'Your move',
         detail: promotion
           ? `Choose a piece for the pawn on ${promotion.move.to}.`
-          : toMoveText(game.sideToMove, moveNumber(game.fen)),
+          : hint.shown
+            ? hintText(hint.shown)
+            : toMoveText(game.sideToMove, moveNumber(game.fen)),
       }
 
   function send(uci: string) {
@@ -159,6 +177,7 @@ function LoadedGame({ game }: { game: Game }) {
   }
 
   function onMove(move: BoardMove) {
+    hint.clear()
     const pieces = promotionChoices(game, move)
     if (pieces) setPending({ move, pieces, fen: game.fen })
     else send(toUci(move))
@@ -183,6 +202,17 @@ function LoadedGame({ game }: { game: Game }) {
             destinations={destinations(game)}
             lastMove={shown.lastMove}
             check={shown.check}
+            hintSquares={
+              hint.shown &&
+              (hint.shown.step === 'move'
+                ? [hint.shown.from, hint.shown.to]
+                : [hint.shown.from])
+            }
+            arrows={
+              hint.shown?.step === 'move'
+                ? [{ from: hint.shown.from, to: hint.shown.to }]
+                : undefined
+            }
             readOnly={finished || moveUnderway || resigning}
             onMove={onMove}
           />
@@ -211,6 +241,7 @@ function LoadedGame({ game }: { game: Game }) {
       </div>
       <div className="flex flex-col gap-3 pt-4 md:w-90 md:shrink-0 md:gap-4 md:rounded-md md:border md:bg-card md:p-4">
         {finished ? <ResultPanel game={game} /> : <GameStatus {...status} />}
+        {hintUsed && <HintUsed className="self-start">{hintUsed}</HintUsed>}
         {failedMove && <MoveFailed onTryAgain={() => send(failedMove)} />}
         {/* The controls, or the resign confirmation in their place: below
             the move list from `md` up, above it on phones. A game that ends
@@ -226,6 +257,20 @@ function LoadedGame({ game }: { game: Game }) {
           />
         ) : (
           <div className="flex items-center gap-2 md:order-last md:h-25">
+            {/* Only a game against the computer has a hint, and only while
+                it is being played. Once the move is shown the control rests
+                until the player moves. */}
+            {playsComputer(game) && !finished && (
+              <Button
+                className="h-12.75 flex-1 md:h-8 md:flex-none md:px-2"
+                disabled={
+                  !playersTurn || hint.waiting || hint.shown?.step === 'move'
+                }
+                onClick={hint.press}
+              >
+                {hint.shown?.step === 'piece' ? 'Show move' : 'Hint'}
+              </Button>
+            )}
             {!finished && (
               <Button
                 ref={resignControl}

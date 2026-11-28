@@ -2,6 +2,7 @@ import {
   read as readFen,
   write as writePlacement,
 } from '@lichess-org/chessground/fen'
+import type { Role } from '@lichess-org/chessground/types'
 import { key2pos, pos2key } from '@lichess-org/chessground/util'
 
 import type {
@@ -205,6 +206,32 @@ export function resultTitle(game: Game, result: Result): string {
 export function winner(result: Result): Side | null {
   if (result === 'draw') return null
   return result === 'whiteWins' ? 'white' : 'black'
+}
+
+// The marker of a game in which a hint was used, or undefined for any other
+// game: the API counts the positions in which the player was given one.
+export function hintUsedText(
+  game: Pick<Game, 'hintCount'>
+): string | undefined {
+  return game.hintCount > 0 ? 'Hint used' : undefined
+}
+
+// A hint as the screen shows it: the move, the piece that makes it, and how
+// much of it has been revealed, first the piece and then the move.
+export type ShownHint = BoardMove & { piece: Role; step: 'piece' | 'move' }
+
+// The line under the heading while a hint is shown, such as "Hint: move the
+// knight on b1." and then "Hint: knight from b1 to d2.". Chessground names
+// each kind of piece by its English name, which is the word used here.
+export function hintText({ from, to, piece, step }: ShownHint): string {
+  return step === 'piece'
+    ? `Hint: move the ${piece} on ${from}.`
+    : `Hint: ${piece} from ${from} to ${to}.`
+}
+
+// The kind of piece on `square` in `fen`, if any.
+export function pieceOn(fen: string, square: Square): Role | undefined {
+  return readFen(fen).get(square)?.role
 }
 
 export const END_REASON_TEXT: Record<EndReason, string> = {

@@ -85,9 +85,12 @@ afterEach(() => {
 })
 
 // Renders with a query cache of its own, so no test sees another's session.
-// Failed queries are not retried, so a test sees a failure at once.
-export function renderWithQueries(ui: React.ReactElement) {
-  const queryClient = createQueryClient({ queries: { retry: false } })
+// Failed queries are not retried, so a test sees a failure at once, unless
+// the test passes a cache of its own, such as one with the app's settings.
+export function renderWithQueries(
+  ui: React.ReactElement,
+  queryClient = createQueryClient({ queries: { retry: false } })
+) {
   const result = render(ui, {
     wrapper: ({ children }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

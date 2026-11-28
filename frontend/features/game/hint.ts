@@ -1,0 +1,66 @@
+'use client'
+
+import { useState } from 'react'
+
+import { useAskForHint } from './game-api'
+import {
+  nextHalfMoveNumber,
+  pieceOn,
+  type Game,
+  type ShownHint,
+} from './game-state'
+
+// The hint for the player's move, revealed in two steps from one request:
+// the first press asks for it and shows the piece, the second shows the move.
+//
+// A hint belongs to the position it was asked for in. It is shown only while
+// `game` is still in that position and `playersTurn` holds, so it goes when
+// the game is read again and has moved on, when the game ends, and while the
+// player's move is on its way or the computer thinks; an answer that arrives
+// for a position the screen no longer shows is never drawn. `clear` drops it
+// for good, together with any answer still on its way, and is called when
+// the player moves, so it does not come back if that move is not played.
+//
+// Nothing about a hint is kept outside this component's memory.
+export function useHint(game: Game, playersTurn: boolean) {
+  const askForHint = useAskForHint(game.id)
+  // The position in which the second press revealed the move.
+  const [moveShownIn, setMoveShownIn] = useState<string>()
+
+  const answer = askForHint.data
+  const forThisPosition =
+    playersTurn &&
+    askForHint.variables?.fen === game.fen &&
+    typeof answer === 'object'
+      ? answer
+      : undefined
+  const piece = forThisPosition && pieceOn(game.fen, forThisPosition.from)
+  const shown: ShownHint | undefined =
+    forThisPosition && piece
+      ? {
+          ...forThisPosition,
+          piece,
+          step: moveShownIn === game.fen ? 'move' : 'piece',
+        }
+      : undefined
+
+  return {
+    shown,
+    // From the press until the API answers.
+    waiting: askForHint.isPending,
+    // The first press asks for the hint; the second, once the piece is
+    // shown, reveals the move without asking again.
+    press() {
+      if (shown) setMoveShownIn(game.fen)
+      else
+        askForHint.mutate({
+          halfMoveNumber: nextHalfMoveNumber(game),
+          fen: game.fen,
+        })
+    },
+    clear() {
+      askForHint.reset()
+      setMoveShownIn(undefined)
+    },
+  }
+}
