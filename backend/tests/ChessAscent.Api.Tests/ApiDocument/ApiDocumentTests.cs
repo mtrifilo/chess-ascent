@@ -58,9 +58,9 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
 
     // Every response the game endpoints declare, including the 401 the
     // group's authorization gives and the 403 of the cross-site refusal.
-    // The 415 that body binding gives for a body not sent as JSON is not
-    // declared, here or on the account endpoints: the typed client always
-    // sends JSON. GameEndpoints' remarks list it.
+    // The 415 that body binding gives to a POST whose body is not sent as
+    // JSON is not declared, here or on the account endpoints: the typed
+    // client always sends JSON. The move endpoint's remarks list it.
     [Theory]
     [InlineData("/games", "post", new[] { "201", "400", "401", "403" })]
     [InlineData("/games/{id}", "get", new[] { "200", "401", "404", "500" })]
@@ -153,8 +153,9 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
         }
     }
 
-    // Every response the account endpoints can give, including those that
-    // come from validation and from the refusal of cross-site requests.
+    // Every response the account endpoints declare, including those that
+    // come from validation and from the refusal of cross-site requests (for
+    // the undeclared 415, see the game endpoints' test above).
     [Theory]
     [InlineData("/auth/register", "post", new[] { "200", "400", "403", "409" })]
     [InlineData("/auth/sign-in", "post", new[] { "200", "400", "401", "403" })]
