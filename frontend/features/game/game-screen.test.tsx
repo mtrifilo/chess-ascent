@@ -1097,29 +1097,98 @@ describe('GameScreen', () => {
       expect(screen.queryByRole('alert')).toBeNull()
     })
 
-    it('cannot be used while a move is being sent and the computer thinks', async () => {
+    it('cannot be used while a move is being sent, nor while the computer is thinking after its reply', async () => {
       let settle!: (reply: Reply) => void
       const sent = answer({
         [GAME_PATH]: ok(computerGame()),
         [MOVES_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
       })
       await renderGame()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+      const pass = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms))
 
-      playOnBoard('e2', 'e4')
-      await waitFor(() =>
+      try {
+        playOnBoard('e2', 'e4')
+        await pass(0)
         expect(resignControl()).toHaveAttribute('aria-disabled', 'true')
-      )
+        fireEvent.click(resignControl())
+        expect(screen.queryByRole('group', { name: QUESTION })).toBeNull()
+
+        // The reply is in, and the computer is shown thinking for the rest
+        // of the minimum time.
+        settle(ok(COMPUTER_REPLIED_E5))
+        await pass(0)
+        expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+          'Maia 800 is thinking'
+        )
+        expect(resignControl()).toHaveAttribute('aria-disabled', 'true')
+        fireEvent.click(resignControl())
+        expect(screen.queryByRole('group', { name: QUESTION })).toBeNull()
+
+        await pass(MINIMUM_THINKING_MS)
+        expect(resignControl()).not.toHaveAttribute('aria-disabled', 'true')
+        expect(resignations(sent)).toEqual([])
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('holds the board and "Try again" while the resignation is on its way', async () => {
+      // The query cache reports the failed move to the console.
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {})
+      let settle!: (reply: Reply) => void
+      answer({
+        [GAME_PATH]: ok(computerGame(AFTER_E4_E5)),
+        [MOVES_PATH]: problem(500),
+      })
+      await renderGame()
+      playOnBoard('g1', 'f3')
+      await screen.findByRole('alert')
+      const sent = answer({
+        [GAME_PATH]: ok(computerGame(AFTER_E4_E5)),
+        [MOVES_PATH]: ok(COMPUTER_REPLIED_E5),
+        [RESIGN_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
+      })
+
       fireEvent.click(resignControl())
-
-      expect(screen.queryByRole('group', { name: QUESTION })).toBeNull()
-      expect(resignations(sent)).toEqual([])
-
-      settle(ok(COMPUTER_REPLIED_E5))
-      await waitFor(
-        () =>
-          expect(resignControl()).not.toHaveAttribute('aria-disabled', 'true'),
-        { timeout: MINIMUM_THINKING_MS + 1000 }
+      fireEvent.click(
+        within(confirmation()).getByRole('button', { name: 'Resign' })
       )
+      await waitFor(() => expect(board.props!.readOnly).toBe(true))
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+      settle(ok(RESIGNED))
+      await waitFor(() =>
+        expect(screen.getByText('You resigned.')).toBeInTheDocument()
+      )
+      expect(calls(sent)).toEqual([`POST ${RESIGN_PATH}`])
+      consoleError.mockRestore()
+    })
+
+    it('reads the game again after a resignation whose answer was lost, and shows the result when it was saved', async () => {
+      // The query cache reports the failure to the console.
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {})
+      await openConfirmation()
+      const sent = answer({
+        [GAME_PATH]: ok(RESIGNED),
+        [RESIGN_PATH]: unreachable(),
+      })
+
+      fireEvent.click(
+        within(confirmation()).getByRole('button', { name: 'Resign' })
+      )
+
+      await waitFor(() =>
+        expect(screen.getByText('You resigned.')).toBeInTheDocument()
+      )
+      expect(calls(sent)).toEqual([`POST ${RESIGN_PATH}`, `GET ${GAME_PATH}`])
+      expect(screen.queryByRole('group', { name: QUESTION })).toBeNull()
+      expect(screen.queryByRole('alert')).toBeNull()
+      consoleError.mockRestore()
     })
 
     it("refuses the confirmation's Resign while a move made meanwhile is being sent", async () => {

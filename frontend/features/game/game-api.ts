@@ -119,12 +119,17 @@ export function usePlayMove(id: string) {
 // Resigns the game. Its answer is recorded as a move's is (recordAnswer),
 // and a 409 means the game was already over, by another move, or resigned in
 // another tab or by an earlier press whose answer was lost. Any other
-// failure is thrown, and resigning again is safe, as the second answer is
-// that 409.
+// failure is thrown, and, as for a move, followed by a fresh read of the
+// game that is not waited for: a resignation whose answer was lost may have
+// been saved all the same, and the read then shows the result. Resigning
+// again is safe, as the second answer is that 409.
 export function useResign(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
     networkMode: 'always',
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: gameKey(id) })
+    },
     mutationFn: async () => {
       const answer = await api.POST('/games/{id}/resign', {
         params: { path: { id } },

@@ -36,7 +36,9 @@ public sealed class ResignStoreTests(ApiFactory factory, PostgresFixture postgre
         saved.EndReason.Should().Be(GameEndReason.Resignation);
         saved.Moves.Should().Equal(before!.Moves);
         saved.HintCount.Should().Be(1);
-        saved.UpdatedAt.Should().Be(resigned.UpdatedAt).And.BeOnOrAfter(before.UpdatedAt);
+        saved.UpdatedAt.Should().BeOnOrAfter(before.UpdatedAt);
+        // What the store answers with is the game as saved.
+        resigned.Game.Should().BeEquivalentTo(saved);
         saved.CreatedAt.Should().Be(before.CreatedAt);
     }
 
@@ -55,12 +57,22 @@ public sealed class ResignStoreTests(ApiFactory factory, PostgresFixture postgre
         (await postgres.SavedRowsAsync(game.Id)).Should().Be(saved);
     }
 
-    [Fact]
-    public async Task ResignInAnotherPlayersGameIsNotFoundJustAsForAGameThatDoesNotExistAndSavesNothing()
+    // Another player's finished game is not revealed either, as it would be
+    // if it were refused as finished.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ResignInAnotherPlayersGameIsNotFoundJustAsForAGameThatDoesNotExistAndSavesNothing(bool finished)
     {
         var owner = await factory.CreateOwnerAsync();
         var otherPlayer = await factory.CreateOwnerAsync();
         var game = await factory.CreateGameAsync(owner);
+        if (finished)
+        {
+            var (moves, status) = GameData.Rules.NewGame().Play(GameRequests.FoolsMate);
+            await factory.AppendAsync(owner, game.Id, 1, moves, status);
+        }
+
         var saved = await postgres.SavedRowsAsync(game.Id);
 
         var inOthers = await factory.WithStoreAsync(store => store.ResignAsync(otherPlayer, game.Id, Cancellation));
@@ -107,7 +119,7 @@ public sealed class ResignStoreTests(ApiFactory factory, PostgresFixture postgre
         var saved = await factory.LoadGameAsync(owner, game.Id);
 
         resignWaitedOnTheLock.Should().BeTrue("the resignation must have waited for the append's row lock");
-        appendOutcome.Value.Should().BeOfType<MovesAppended>();
+        var appended = appendOutcome.Value.Should().BeOfType<MovesAppended>().Subject;
         saved!.Moves.Should().Equal([.. opening, .. appendMoves]);
         saved.Status.Should().Be(GameProgress.Finished);
         if (appendMates)
@@ -121,7 +133,8 @@ public sealed class ResignStoreTests(ApiFactory factory, PostgresFixture postgre
             var resigned = resignOutcome.Value.Should().BeOfType<GameResigned>().Subject;
             saved.Result.Should().Be(GameResult.WhiteWins);
             saved.EndReason.Should().Be(GameEndReason.Resignation);
-            saved.UpdatedAt.Should().Be(resigned.UpdatedAt);
+            saved.UpdatedAt.Should().BeOnOrAfter(appended.UpdatedAt);
+            resigned.Game.Should().BeEquivalentTo(saved);
         }
     }
 
@@ -163,7 +176,7 @@ public sealed class ResignStoreTests(ApiFactory factory, PostgresFixture postgre
         saved.Status.Should().Be(GameProgress.Finished);
         saved.Result.Should().Be(GameResult.BlackWins);
         saved.EndReason.Should().Be(GameEndReason.Resignation);
-        saved.UpdatedAt.Should().Be(resigned.UpdatedAt);
+        resigned.Game.Should().BeEquivalentTo(saved);
     }
 
     private AppDbContext NewContext(params IInterceptor[] interceptors) =>

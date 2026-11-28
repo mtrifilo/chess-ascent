@@ -17,7 +17,8 @@ import { Button } from '@/components/ui/button'
 
 import { ColourSwatch } from './colour-swatch'
 import { useComputerThinking } from './computer-thinking'
-import { useGame, usePlayMove } from './game-api'
+import { TEXT_CONTROL_CLASS } from './controls'
+import { useGame, usePlayMove, useResign } from './game-api'
 import {
   checkSquare,
   destinations,
@@ -36,7 +37,7 @@ import {
 import { MoveList } from './move-list'
 import { NewGameLink } from './new-game-link'
 import { PromotionPicker } from './promotion-picker'
-import { RESIGN_BUTTON_CLASS, ResignConfirm } from './resign-confirm'
+import { ResignConfirm } from './resign-confirm'
 
 // One game: the board between the two players' bars, and beside it (below it
 // on phones) the game's status or result, the move list and the controls.
@@ -72,6 +73,11 @@ function LoadedGame({ game }: { game: Game }) {
   const [pending, setPending] = useState<PendingPromotion>()
   const [confirmingResign, setConfirmingResign] = useState(false)
   const resignControl = useRef<HTMLButtonElement>(null)
+  const resign = useResign(game.id)
+  // Set at the press itself, as the mutation reports itself pending only
+  // after React has rendered again, which a second press can come before.
+  // While it is set, the resignation is neither sent again nor cancelled.
+  const resignSent = useRef(false)
 
   const thinking = useComputerThinking(game, playMove)
   // While the computer thinks, the game is shown as it stood after the
@@ -87,6 +93,9 @@ function LoadedGame({ game }: { game: Game }) {
   // A move on its way, or the computer's reply to one, holds the board and
   // keeps the game from being resigned until it is shown.
   const moveUnderway = isThinking || playMove.isPending
+  // And a resignation on its way holds the board, so that no move is sent
+  // to race it.
+  const resigning = resign.isPending
   const opponentSide = opposite(game.playerSide)
   const orientation = flipped ? opponentSide : game.playerSide
   const promotion = pending?.fen === game.fen ? pending : undefined
@@ -120,6 +129,23 @@ function LoadedGame({ game }: { game: Game }) {
     )
   }
 
+  function confirmResign() {
+    if (moveUnderway || resignSent.current) return
+    resignSent.current = true
+    resign.mutate(undefined, {
+      onSettled: () => {
+        resignSent.current = false
+      },
+    })
+  }
+
+  function cancelResign() {
+    if (resignSent.current) return
+    // The Resign control is back in the page once this returns.
+    flushSync(() => setConfirmingResign(false))
+    resignControl.current?.focus()
+  }
+
   function onMove(move: BoardMove) {
     const pieces = promotionChoices(game, move)
     if (pieces) setPending({ move, pieces, fen: game.fen })
@@ -145,7 +171,7 @@ function LoadedGame({ game }: { game: Game }) {
             destinations={destinations(game)}
             lastMove={shown.lastMove}
             check={shown.check}
-            readOnly={finished || moveUnderway}
+            readOnly={finished || moveUnderway || resigning}
             onMove={onMove}
           />
           {promotion && (
@@ -169,20 +195,24 @@ function LoadedGame({ game }: { game: Game }) {
       </div>
       <div className="flex flex-col gap-3 pt-4 md:w-90 md:shrink-0 md:gap-4 md:rounded-md md:border md:bg-card md:p-4">
         {finished ? <ResultPanel game={game} /> : <GameStatus {...status} />}
-        {failedMove && <MoveFailed onTryAgain={() => send(failedMove)} />}
+        {failedMove && (
+          <MoveFailed
+            onTryAgain={() => {
+              if (!resigning) send(failedMove)
+            }}
+          />
+        )}
         {/* The controls, or the resign confirmation in their place: below
             the move list from `md` up, above it on phones. A game that ends
             while the confirmation is open, in another tab say, shows its
             result and no confirmation. */}
         {confirmingResign && !finished ? (
           <ResignConfirm
-            gameId={game.id}
             moveUnderway={moveUnderway}
-            onCancel={() => {
-              // The Resign control is back in the page once this returns.
-              flushSync(() => setConfirmingResign(false))
-              resignControl.current?.focus()
-            }}
+            sending={resigning}
+            onCancel={cancelResign}
+            onResign={confirmResign}
+            className="md:order-last"
           />
         ) : (
           <div className="flex items-center gap-2 md:order-last md:h-25">
@@ -191,7 +221,7 @@ function LoadedGame({ game }: { game: Game }) {
                 ref={resignControl}
                 variant="outline"
                 aria-disabled={moveUnderway}
-                className={RESIGN_BUTTON_CLASS}
+                className={TEXT_CONTROL_CLASS}
                 onClick={() => {
                   if (!moveUnderway) setConfirmingResign(true)
                 }}

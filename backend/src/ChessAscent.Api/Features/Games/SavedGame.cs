@@ -95,8 +95,8 @@ public union ResignResult(GameResigned, GameNotFound, GameFinished)
 }
 
 /// <summary>The game was ended by the player's resignation.</summary>
-/// <param name="UpdatedAt">The game's new update time.</param>
-public readonly record struct GameResigned(DateTimeOffset UpdatedAt);
+/// <param name="Game">The game as the resignation left it.</param>
+public readonly record struct GameResigned(SavedGame Game);
 
 /// <summary>
 /// No game with that id belongs to that player: either there is none, or it

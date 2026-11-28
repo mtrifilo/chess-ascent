@@ -350,14 +350,19 @@ public static partial class GameEndpoints
     }
 
     /// <summary>One of the signed-in player's games.</summary>
-    private static Task<Results<Ok<GameResponse>, ProblemHttpResult>> GetAsync(
+    private static async Task<Results<Ok<GameResponse>, ProblemHttpResult>> GetAsync(
         Guid id,
         ClaimsPrincipal principal,
         UserManager<IdentityUser> users,
         GameStore store,
         IChessRules rules,
-        CancellationToken cancellationToken) =>
-        ReadAsync(store, rules, PlayerId(principal, users), id, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        var game = await store.LoadAsync(PlayerId(principal, users), id, cancellationToken);
+        return game is null
+            ? NotFoundProblem()
+            : TypedResults.Ok(GameMapping.ToResponse(game, game.RebuildBoard(rules)));
+    }
 
     /// <summary>
     /// Resigns one of the signed-in player's games: it ends as a win for the
@@ -389,24 +394,16 @@ public static partial class GameEndpoints
         // for a request that saved something.
         game.RebuildBoard(rules);
 
-        // The game is read again after the resignation rather than built from
-        // the load above, since another request may have saved a move between
-        // the two. Once resigned, the game does not change again.
+        // The answer is the game the store read back under its row lock,
+        // not the one loaded above, since another request may have saved a
+        // move between the two.
         return await store.ResignAsync(playerId, id, cancellationToken) switch
         {
-            GameResigned => await ReadAsync(store, rules, playerId, id, cancellationToken),
+            GameResigned resigned => TypedResults.Ok(
+                GameMapping.ToResponse(resigned.Game, resigned.Game.RebuildBoard(rules))),
             GameNotFound => NotFoundProblem(),
             GameFinished => FinishedProblem(),
         };
-    }
-
-    private static async Task<Results<Ok<GameResponse>, ProblemHttpResult>> ReadAsync(
-        GameStore store, IChessRules rules, string playerId, Guid id, CancellationToken cancellationToken)
-    {
-        var game = await store.LoadAsync(playerId, id, cancellationToken);
-        return game is null
-            ? NotFoundProblem()
-            : TypedResults.Ok(GameMapping.ToResponse(game, game.RebuildBoard(rules)));
     }
 
     /// <summary>

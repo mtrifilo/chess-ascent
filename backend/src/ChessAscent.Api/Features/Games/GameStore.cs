@@ -558,7 +558,8 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
     /// happened is always reported as one.
     /// </param>
     /// <returns>
-    /// <see cref="GameResigned"/>; <see cref="GameNotFound"/> when no game
+    /// <see cref="GameResigned"/> with the game as the resignation left it,
+    /// read under the same row lock; <see cref="GameNotFound"/> when no game
     /// with <paramref name="gameId"/> belongs to <paramref name="ownerId"/>;
     /// or <see cref="GameFinished"/> when the game is already over. In the
     /// last two cases nothing is changed.
@@ -590,7 +591,10 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // is, which EF Core translates to CASE WHEN "PlayerSide" = 'White'
         // THEN 'BlackWins' ELSE 'WhiteWins' END. So the winner is decided
         // from the row this statement has locked and found ongoing, and no
-        // earlier read of the game can be out of date.
+        // earlier read of the game can be out of date. The update time is
+        // read from the row too: `now` was taken before this statement
+        // waited for any lock, so an append that saved meanwhile can have a
+        // later time, which is kept rather than moved back.
         var updated = await database.Games
             .Where(g => g.Id == gameId && g.OwnerId == ownerId && g.Status == GameProgress.Ongoing)
             .ExecuteUpdateAsync(
@@ -600,7 +604,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
                         g => g.Result,
                         g => g.PlayerSide == Side.White ? GameResult.BlackWins : GameResult.WhiteWins)
                     .SetProperty(g => g.EndReason, GameEndReason.Resignation)
-                    .SetProperty(g => g.UpdatedAt, now),
+                    .SetProperty(g => g.UpdatedAt, g => g.UpdatedAt > now ? g.UpdatedAt : now),
                 cancellationToken);
         if (updated == 0)
         {
@@ -612,10 +616,16 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
             return owned ? new GameFinished() : new GameNotFound();
         }
 
+        // Read before the commit, while the row lock keeps out any move, so
+        // the caller can answer with the game as resigned and has nothing
+        // left to fail once the resignation is saved.
+        var resigned = await LoadAsync(ownerId, gameId, cancellationToken)
+            ?? throw new InvalidOperationException($"Game {gameId} was resigned but could not be read back.");
+
         // Not cancellable: a commit cancelled after the server has applied it
         // would report a resignation that happened as one that did not.
         await transaction.CommitAsync(CancellationToken.None);
-        return new GameResigned(now);
+        return new GameResigned(resigned);
     }
 
     // Whether the game has exactly the moves before halfMoveNumber, so that
