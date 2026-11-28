@@ -24,3 +24,13 @@ class PageRelativeRequest extends Request {
   }
 }
 globalThis.Request = PageRelativeRequest
+
+// jsdom has no layout, so it has no ResizeObserver either. A stand-in that
+// never reports a resize lets components that observe one render; a test
+// that needs a resize installs its own.
+class InertResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+globalThis.ResizeObserver ??= InertResizeObserver

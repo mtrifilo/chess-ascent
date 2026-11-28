@@ -12,7 +12,8 @@ export type NavHref = (typeof NAV_ITEMS)[number]['href']
 // The item whose page is showing. Only an exact path matches, so nothing is
 // highlighted on a path below an item, such as one game's page. The designs
 // highlight Play on a game being played and My games on one being replayed,
-// which the path does not tell apart.
+// which the path does not tell apart, so such a page names its item itself
+// (page-nav-item.tsx).
 export function activeNavHref(pathname: string): NavHref | undefined {
   return NAV_ITEMS.find(item => item.href === pathname)?.href
 }

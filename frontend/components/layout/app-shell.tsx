@@ -11,6 +11,9 @@ import { SessionControls } from './session-controls'
 // The bar's 1px top padding balances its 1px bottom border, so its items
 // centre on the full 56px as drawn. account-menu.tsx derives the menu's
 // offset from this height: change the two together.
+//
+// The game screen (features/game/game-screen.tsx) takes back the page area's
+// 16px top padding on phones: change the two together.
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <>

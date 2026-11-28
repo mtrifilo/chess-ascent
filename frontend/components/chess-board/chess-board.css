@@ -80,10 +80,28 @@
   );
 }
 
+/* A piece off the board (chess-piece.tsx) fills its box, where chessground
+ * places its pieces absolutely, an eighth of the board each. The extra class
+ * outranks chessground's `.cg-wrap piece` whatever the stylesheet order. */
+.chess-piece.cg-wrap {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.chess-piece.cg-wrap piece {
+  position: static;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 /* On a phone the pieces are drawn at 88% of the square, so the coordinates
- * in the edge squares overlap them less. `md` is the width at which the app
- * shell switches from its phone to its desktop layout. */
-.chess-board .cg-wrap piece {
+ * in the edge squares overlap them less; pieces off the board match. `md` is
+ * the width at which the app shell switches from its phone to its desktop
+ * layout. */
+.chess-board .cg-wrap piece,
+.chess-piece.cg-wrap piece {
   @variant max-md {
     background-size: 88%;
     background-repeat: no-repeat;

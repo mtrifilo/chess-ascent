@@ -144,6 +144,10 @@
   --text-product-name: 0.9375rem;
   --text-product-name--line-height: 1.25rem;
 
+  /* The letter spacing of the move list's column heads (0.96px on 12px
+   * capitals), which the design sets directly. */
+  --tracking-column-head: 0.08em;
+
   /* The one shadow: overlays such as menus. Everything else uses borders. */
   --shadow-popover: 0 2px 8px rgb(0 0 0 / 0.08);
 }
