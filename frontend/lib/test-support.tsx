@@ -22,10 +22,10 @@ export function signedInAs(email: string): Reply {
 
 let answerMiddleware: Middleware | undefined
 
-// A reply, or a function that picks one from the request's query, for a path
-// whose answers depend on it.
+// A reply, or a function that picks one from the request, for a path whose
+// answers depend on its method or query.
 type ReplyFor =
-  Reply | Promise<Reply> | ((query: URLSearchParams) => Reply | Promise<Reply>)
+  Reply | Promise<Reply> | ((request: Request) => Reply | Promise<Reply>)
 
 // Answers each request from `replies`, by path, instead of sending it:
 // openapi-fetch hands every request to its middleware first, and a Response
@@ -48,7 +48,7 @@ export function answer(replies: Record<string, ReplyFor>): Sent[] {
       if (!(path in replies)) throw new Error(`unexpected request to ${path}`)
       const replyFor = replies[path]
       const reply = await unlessAborted(
-        typeof replyFor === 'function' ? replyFor(url.searchParams) : replyFor,
+        typeof replyFor === 'function' ? replyFor(request) : replyFor,
         request.signal
       )
       return new Response(

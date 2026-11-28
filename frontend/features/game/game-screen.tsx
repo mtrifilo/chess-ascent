@@ -2,7 +2,6 @@
 
 import { opposite } from '@lichess-org/chessground/util'
 import { ArrowUpDownIcon, CircleAlertIcon } from 'lucide-react'
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { useState } from 'react'
 
@@ -34,6 +33,7 @@ import {
   type PromotionPiece,
 } from './game-state'
 import { MoveList } from './move-list'
+import { NewGameLink } from './new-game-link'
 import { PromotionPicker } from './promotion-picker'
 
 // One game: the board between the two players' bars, and beside it (below it
@@ -231,12 +231,7 @@ function ResultPanel({ game }: { game: Game }) {
           {game.endReason && END_REASON_TEXT[game.endReason]}
         </p>
       </div>
-      <Button
-        asChild
-        className="h-12.75 w-full md:h-8 md:w-auto md:self-start md:px-2"
-      >
-        <Link href="/play">New game</Link>
-      </Button>
+      <NewGameLink />
     </div>
   )
 }

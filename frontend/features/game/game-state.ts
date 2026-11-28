@@ -197,8 +197,14 @@ export function playerName(game: Players, side: Side): string {
 
 // The heading of the result panel.
 export function resultTitle(game: Game, result: Result): string {
-  if (result === 'draw') return 'Draw'
-  return `${playerName(game, result === 'whiteWins' ? 'white' : 'black')} won`
+  const side = winner(result)
+  return side ? `${playerName(game, side)} won` : 'Draw'
+}
+
+// The side that won, or null for a draw.
+export function winner(result: Result): Side | null {
+  if (result === 'draw') return null
+  return result === 'whiteWins' ? 'white' : 'black'
 }
 
 export const END_REASON_TEXT: Record<EndReason, string> = {

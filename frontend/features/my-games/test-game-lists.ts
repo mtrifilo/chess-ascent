@@ -1,3 +1,4 @@
+import { MAIA_800 } from '@/features/game/test-games'
 import type { components } from '@/types/api'
 
 import type { GameSummary } from './game-row-text'
@@ -23,7 +24,7 @@ export function unfinishedGame(
   return {
     id: gameId(),
     playerSide: 'white',
-    opponent: { kind: 'computer', strength: 800 },
+    opponent: MAIA_800,
     status: 'ongoing',
     result: null,
     endReason: null,

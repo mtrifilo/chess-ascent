@@ -7,6 +7,7 @@ import {
   calls,
   type Reply,
   renderWithQueries,
+  type Sent,
 } from '@/lib/test-support'
 
 import { dateText } from './game-row-text'
@@ -29,7 +30,8 @@ function lists(replies: {
   pages?: Record<string, Reply>
 }) {
   return answer({
-    [GAMES_PATH]: query => {
+    [GAMES_PATH]: request => {
+      const query = new URL(request.url).searchParams
       const cursor = query.get('cursor')
       if (cursor) return replies.pages?.[cursor] ?? problem(400)
       const status = query.get('status') as 'ongoing' | 'finished'
@@ -40,16 +42,11 @@ function lists(replies: {
 
 // An IntersectionObserver that reports what the test says is near the
 // window.
-const observed = new Set<{
-  target: Element
-  report: IntersectionObserverCallback
-}>()
+type Observed = { target: Element; report: IntersectionObserverCallback }
+const observed = new Set<Observed>()
 
 class TestIntersectionObserver {
-  private readonly entries: {
-    target: Element
-    report: IntersectionObserverCallback
-  }[] = []
+  private readonly entries: Observed[] = []
   constructor(private readonly callback: IntersectionObserverCallback) {}
   observe(target: Element) {
     const entry = { target, report: this.callback }
@@ -86,12 +83,15 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 const table = (name: string) => screen.getByRole('table', { name })
 const phoneList = (name: string) => screen.getByRole('list', { name })
 const section = (name: string) =>
   screen.getByRole('heading', { level: 2, name }).parentElement!
+const listHeadings = () =>
+  screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent)
 
 // Each body row of a table, as the text of its cells.
 function tableRows(name: string) {
@@ -127,9 +127,7 @@ describe('MyGamesScreen', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
       'My games'
     )
-    expect(
-      screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent)
-    ).toEqual(['Unfinished', 'Finished'])
+    expect(listHeadings()).toEqual(['Unfinished', 'Finished'])
     expect(calls(sent).sort()).toEqual([FINISHED, ONGOING])
   })
 
@@ -225,9 +223,7 @@ describe('MyGamesScreen', () => {
       renderWithQueries(<MyGamesScreen />)
 
       await screen.findByRole('table', { name: shown })
-      expect(
-        screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent)
-      ).toEqual([shown])
+      expect(listHeadings()).toEqual([shown])
       expect(screen.queryByText('No games yet.')).not.toBeInTheDocument()
     }
   )
@@ -259,10 +255,6 @@ describe('MyGamesScreen', () => {
       vi.spyOn(console, 'error').mockImplementation(() => {})
     })
 
-    afterEach(() => {
-      vi.mocked(console.error).mockRestore()
-    })
-
     it('leaves that list out, shows the other, and reports why', async () => {
       lists({
         ongoing: problem(500),
@@ -271,9 +263,7 @@ describe('MyGamesScreen', () => {
       renderWithQueries(<MyGamesScreen />)
 
       await screen.findByRole('table', { name: 'Finished' })
-      expect(
-        screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent)
-      ).toEqual(['Finished'])
+      expect(listHeadings()).toEqual(['Finished'])
       expect(console.error).toHaveBeenCalledWith(
         new Error('GET /games answered 500.')
       )
@@ -301,6 +291,9 @@ describe('MyGamesScreen', () => {
         pages: { 'page-2': next },
       })
     }
+
+    const pageTwoCalls = (sent: Sent[]) =>
+      calls(sent).filter(call => call.includes('cursor=page-2'))
 
     const unfinishedLinks = () =>
       within(table('Unfinished'))
@@ -349,9 +342,7 @@ describe('MyGamesScreen', () => {
       await waitFor(() => expect(unfinishedLinks()).toHaveLength(2))
       scrollToEndOf(section('Unfinished'))
 
-      expect(
-        calls(sent).filter(call => call.includes('cursor=page-2'))
-      ).toHaveLength(1)
+      expect(pageTwoCalls(sent)).toHaveLength(1)
     })
 
     it('keeps the rows it has, and stops, when the next page fails', async () => {
@@ -365,10 +356,7 @@ describe('MyGamesScreen', () => {
       scrollToEndOf(section('Unfinished'))
 
       expect(unfinishedLinks()).toEqual([`/games/${first.id}`])
-      expect(
-        calls(sent).filter(call => call.includes('cursor=page-2'))
-      ).toHaveLength(1)
-      vi.mocked(console.error).mockRestore()
+      expect(pageTwoCalls(sent)).toHaveLength(1)
     })
   })
 
