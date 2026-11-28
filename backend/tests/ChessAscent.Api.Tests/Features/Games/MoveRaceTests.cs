@@ -43,6 +43,6 @@ public sealed class MoveRaceTests(ApiFactory factory) : IClassFixture<ApiFactory
         firstResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         secondResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await secondResponse.ReadProblemAsync()).Detail.Should().Be(GameEndpoints.MoveConflictDetail);
-        (await client.ReadGameAsync(game.Id)).Moves.Should().Equal(new MoveResponse(1, "e2e4", "e4"));
+        (await client.ReadGameAsync(game.Id)).Moves.Notation().Should().Equal((1, "e2e4", "e4"));
     }
 }

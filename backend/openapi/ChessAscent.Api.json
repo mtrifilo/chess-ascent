@@ -860,7 +860,8 @@
           "moves",
           "legalMoves",
           "promotions",
-          "hintCount"
+          "hintCount",
+          "lastActivityAt"
         ],
         "type": "object",
         "properties": {
@@ -939,6 +940,11 @@
             "type": "integer",
             "description": "The number of positions in which the player was given a hint. Asking\nagain in the same position does not add to it. Above 0, the game is one\nin which a hint was used.",
             "format": "int32"
+          },
+          "lastActivityAt": {
+            "type": "string",
+            "description": "When the game was created or last had a move saved, as an ISO 8601 time\nin UTC, as the list of games gives it.",
+            "format": "date-time"
           }
         },
         "description": "A game as the game screen shows it."
@@ -1102,7 +1108,8 @@
         "required": [
           "halfMoveNumber",
           "uci",
-          "san"
+          "san",
+          "fen"
         ],
         "type": "object",
         "properties": {
@@ -1118,6 +1125,10 @@
           "san": {
             "type": "string",
             "description": "The move in standard algebraic notation, such as `e4` or `e8=Q+`."
+          },
+          "fen": {
+            "type": "string",
+            "description": "The position after the move, as six-field FEN. The last move's is the\ngame's `fen`."
           }
         },
         "description": "A move that has been played."

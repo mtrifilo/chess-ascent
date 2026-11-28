@@ -23,6 +23,16 @@ internal static class GameRequests
     // Fool's mate: Black mates on the fourth half-move.
     public static readonly string[] FoolsMate = ["f2f3", "e7e5", "g2g4", "d8h4"];
 
+    // A game with an en passant capture (exf6), castling on each side (O-O-O
+    // for Black, O-O for White), a promotion (gxh8=Q) and an under-promotion
+    // (bxa1=N), which White wins by checkmate (Qxf8#).
+    public static readonly string[] SpecialMoves =
+    [
+        "e2e4", "d7d5", "e4e5", "f7f5", "e5f6", "b8c6", "f6g7", "c8e6", "g1f3", "d8d6",
+        "f1e2", "e8c8", "e1g1", "a7a5", "g7h8q", "a5a4", "d2d3", "a4a3", "b1c3", "a3b2",
+        "c1e3", "b2a1n", "h8g8", "d8d7", "g8h8", "c8d8", "h8f8",
+    ];
+
     // The serializer settings the API reads and writes bodies with, built by
     // the API's own registration.
     private static readonly JsonSerializerOptions ApiJson = new ServiceCollection()
@@ -157,6 +167,13 @@ internal static class GameRequests
 
         return pages;
     }
+
+    /// <summary>
+    /// Each move's half-move number, UCI and SAN, leaving out the position
+    /// after it, for a test about the moves rather than the positions.
+    /// </summary>
+    public static IEnumerable<(int HalfMoveNumber, string Uci, string San)> Notation(this IEnumerable<MoveResponse> moves) =>
+        moves.Select(move => (move.HalfMoveNumber, move.Uci, move.San));
 
     /// <summary>The half-move number the game's next move has.</summary>
     public static int NextHalfMoveNumber(this GameResponse game) => game.Moves.Count + 1;

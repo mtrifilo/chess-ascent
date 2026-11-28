@@ -27,6 +27,15 @@ internal static class GameMapping
     /// </remarks>
     public static GameResponse ToResponse(SavedGame game, IChessGame board)
     {
+        // The positions are the ones the board wrote down as it played the
+        // moves, so they cost no second replay of the game.
+        var positions = board.PositionsAfterMoves;
+        if (positions.Count != game.Moves.Count)
+        {
+            throw new InvalidOperationException(
+                $"The board for game {game.Id} has played {positions.Count} moves, but the game has {game.Moves.Count}.");
+        }
+
         var legalMoves = game.Status == GameProgress.Ongoing ? board.LegalMoves() : [];
         return new GameResponse(
             game.Id,
@@ -37,10 +46,11 @@ internal static class GameMapping
             game.Status,
             game.Result,
             game.EndReason,
-            [.. game.Moves.Select((move, index) => new MoveResponse(index + 1, move.Uci, move.San))],
+            [.. game.Moves.Select((move, index) => new MoveResponse(index + 1, move.Uci, move.San, positions[index]))],
             DestinationsByOrigin(legalMoves),
             Promotions(legalMoves),
-            game.HintCount);
+            game.HintCount,
+            game.UpdatedAt);
     }
 
     /// <summary>The page as the list of games sends it.</summary>

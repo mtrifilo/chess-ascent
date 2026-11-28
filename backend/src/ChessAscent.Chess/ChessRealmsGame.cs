@@ -32,16 +32,21 @@ internal sealed class ChessRealmsGame : IChessGame
     // before each move is played, so the history with both notations is kept here.
     private readonly List<PlayedMove> history;
 
-    private ChessRealmsGame(Realms.ChessGame game, List<PlayedMove> history)
+    // The library keeps only the current position, so the one after each move
+    // is written down as the move is played, while it is at hand.
+    private readonly List<string> positions;
+
+    private ChessRealmsGame(Realms.ChessGame game, List<PlayedMove> history, List<string> positions)
     {
         this.game = game;
         this.history = history;
+        this.positions = positions;
     }
 
     /// <summary>Wraps a newly created library game, ending it at once if a draw rule already applies.</summary>
     internal static ChessRealmsGame Start(Realms.ChessGame game)
     {
-        var wrapped = new ChessRealmsGame(game, []);
+        var wrapped = new ChessRealmsGame(game, [], []);
         wrapped.EndByDrawRuleIfAvailable();
         return wrapped;
     }
@@ -53,6 +58,8 @@ internal sealed class ChessRealmsGame : IChessGame
     public GameStatus Status => ToStatus(game.Outcome);
 
     public IReadOnlyList<PlayedMove> History => history.ToArray();
+
+    public IReadOnlyList<string> PositionsAfterMoves => positions.ToArray();
 
     public IReadOnlyList<LegalMove> LegalMoves() => Describe(game.GetLegalMoves());
 
@@ -90,11 +97,12 @@ internal sealed class ChessRealmsGame : IChessGame
 
         var played = new PlayedMove(move.ToString(), san);
         history.Add(played);
+        positions.Add(game.ToFen());
         EndByDrawRuleIfAvailable();
         return new MovePlayed(played, Status);
     }
 
-    public IChessGame Branch() => new ChessRealmsGame(game.Clone(), [.. history]);
+    public IChessGame Branch() => new ChessRealmsGame(game.Clone(), [.. history], [.. positions]);
 
     public PgnExportResult ToPgn(PgnTags tags, DeclaredResult? declaredResult)
     {
