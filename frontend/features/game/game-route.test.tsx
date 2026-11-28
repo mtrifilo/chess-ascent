@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { notFound } from 'next/navigation'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -10,7 +10,7 @@ import {
 import { answer, type Reply, renderWithQueries } from '@/lib/test-support'
 
 import { GameRoute } from './game-route'
-import { FOOLS_MATE, game, GAME_ID } from './test-games'
+import { COMPUTER_REPLIED_E5, FOOLS_MATE, game, GAME_ID } from './test-games'
 
 // A stand-in for the board, which records what it is given.
 const board = vi.hoisted(() => ({
@@ -31,6 +31,7 @@ vi.mock('@/lib/page-load', () => ({ loadPage: vi.fn(), reloadPage: vi.fn() }))
 
 const GAME_PATH = `/api/games/${GAME_ID}`
 const MOVES_PATH = `${GAME_PATH}/moves`
+const RESIGN_PATH = `${GAME_PATH}/resign`
 
 const ok = (body: unknown): Reply => ({ status: 200, body })
 
@@ -104,6 +105,41 @@ describe('GameRoute', () => {
     renderRoute()
 
     await waitFor(() => expect(heading()).toHaveTextContent('Replay'))
+  })
+
+  it('keeps the game screen and its result when the player resigns there, and replays the game when the page opens again', async () => {
+    const playing = COMPUTER_REPLIED_E5
+    const resigned: typeof playing = {
+      ...playing,
+      status: 'finished',
+      result: 'blackWins',
+      endReason: 'resignation',
+      legalMoves: {},
+    }
+    answer({ [GAME_PATH]: ok(playing), [RESIGN_PATH]: ok(resigned) })
+    const first = renderRoute()
+    await waitFor(() => expect(heading()).toHaveTextContent('Your move'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resign' }))
+    fireEvent.click(
+      within(
+        screen.getByRole('group', {
+          name: 'Resign this game? This cannot be undone.',
+        })
+      ).getByRole('button', { name: 'Resign' })
+    )
+
+    await waitFor(() => expect(heading()).toHaveTextContent('Maia 800 won'))
+    expect(screen.getByText('You resigned.')).toBeInTheDocument()
+
+    first.unmount()
+    answer({ [GAME_PATH]: ok(resigned) })
+    renderRoute()
+
+    await waitFor(() => expect(heading()).toHaveTextContent('Replay'))
+    expect(
+      screen.getByText(/^You resigned against Maia 800 · /)
+    ).toBeInTheDocument()
   })
 
   it('highlights nothing and shows nothing while the game loads', () => {

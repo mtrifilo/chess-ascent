@@ -239,6 +239,30 @@ describe('ReplayScreen', () => {
     expectStep(LAST)
   })
 
+  it('ends a resigned game on the position it was resigned in', () => {
+    // The game as if Black had resigned after 7. O-O: the moves and
+    // positions the API sent up to there.
+    const resigned: Game = {
+      ...SPECIAL_MOVES_GAME,
+      playerSide: 'black',
+      fen: MOVES[12].fen,
+      sideToMove: 'black',
+      result: 'whiteWins',
+      endReason: 'resignation',
+      moves: MOVES.slice(0, 13),
+    }
+    renderReplay(resigned)
+
+    expect(board.props).toMatchObject({
+      fen: MOVES[12].fen,
+      lastMove: squaresOf(MOVES[12].uci),
+      orientation: 'black',
+    })
+    expect(marked()).toEqual(['O-O'])
+    expect(control('Next')).toBeDisabled()
+    expect(screen.getByText(/^You resigned · /)).toBeInTheDocument()
+  })
+
   it('shows the starting position, with nothing to step to, for a game without moves', () => {
     renderReplay(
       game({
