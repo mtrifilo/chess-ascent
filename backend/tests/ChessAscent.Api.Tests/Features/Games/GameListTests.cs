@@ -27,8 +27,8 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
     [Fact]
     public async Task TheListHoldsOnlyTheCallersGames()
     {
-        using var player = await SignedInClientAsync();
-        using var otherPlayer = await SignedInClientAsync();
+        using var player = await factory.SignedInClientAsync();
+        using var otherPlayer = await factory.SignedInClientAsync();
         var first = await player.CreateGameAsync();
         var second = await player.CreateGameAsync("black");
         var others = await otherPlayer.CreateGameAsync();
@@ -43,7 +43,7 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
     [Fact]
     public async Task GamesAreListedMostRecentActivityFirst()
     {
-        using var client = await SignedInClientAsync();
+        using var client = await factory.SignedInClientAsync();
         var oldest = await client.CreateGameAsync();
         var middle = await client.CreateGameAsync();
         var newest = await client.CreateGameAsync();
@@ -62,7 +62,7 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
     [Fact]
     public async Task GamesWithTheSameLastActivityAreInTheSameOrderOnEveryRequestAndEveryPage()
     {
-        using var client = await SignedInClientAsync();
+        using var client = await factory.SignedInClientAsync();
         var ids = new List<Guid>();
         for (var index = 0; index < 4; index++)
         {
@@ -89,7 +89,7 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
     [InlineData(5)]
     public async Task PagesTogetherHoldEveryGameOnceInListOrder(int pageSize)
     {
-        using var client = await SignedInClientAsync();
+        using var client = await factory.SignedInClientAsync();
         var created = new List<Guid>();
         for (var index = 0; index < 5; index++)
         {
@@ -115,7 +115,7 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
     [Fact]
     public async Task AGameWithAMoveSinceThePreviousPageIsNotOnTheNextPage()
     {
-        using var client = await SignedInClientAsync();
+        using var client = await factory.SignedInClientAsync();
         var oldest = await client.CreateGameAsync();
         var older = await client.CreateGameAsync();
         var newer = await client.CreateGameAsync();
@@ -136,7 +136,7 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
     [Fact]
     public async Task EachStatusListsOnlyTheGamesWithThatStatus()
     {
-        using var client = await SignedInClientAsync();
+        using var client = await factory.SignedInClientAsync();
         var ongoing = await client.CreateGameAsync();
         var mated = await client.CreateGameAsync();
         await client.PlayAsync(mated.Id, GameRequests.FoolsMate);
@@ -169,7 +169,7 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
     [InlineData(Finished)]
     public async Task APlayerWithNoGamesGetsAnEmptyLastPage(string status)
     {
-        using var client = await SignedInClientAsync();
+        using var client = await factory.SignedInClientAsync();
 
         var page = await client.ListGamesAsync(status);
 
@@ -183,11 +183,9 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
     [Fact]
     public async Task ARowIsWrittenWithCamelCaseNamesAndTheSavedTimeInUtc()
     {
-        var email = AccountData.NewEmail();
-        using var client = factory.CreateClient();
-        await client.RegisterNewAsync(email);
-        var saved = await factory.CreateGameAsync(
-            await factory.AccountIdAsync(email), Opponent.Computer(1200), Side.Black);
+        var player = await factory.SignedInPlayerAsync();
+        using var client = player.Client;
+        var saved = await factory.CreateGameAsync(player.OwnerId, Opponent.Computer(1200), Side.Black);
 
         using var response = await client.GetGameListAsync("?status=ongoing");
         var body = JsonNode.Parse(await response.Content.ReadAsStringAsync(Cancellation))!.AsObject();
@@ -212,13 +210,11 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
     [Fact]
     public async Task WithoutAPageSizeAPageHoldsTheDefaultNumberOfGames()
     {
-        var email = AccountData.NewEmail();
-        using var client = factory.CreateClient();
-        await client.RegisterNewAsync(email);
-        var ownerId = await factory.AccountIdAsync(email);
+        var player = await factory.SignedInPlayerAsync();
+        using var client = player.Client;
         for (var index = 0; index <= GameEndpoints.DefaultPageSize; index++)
         {
-            await factory.CreateGameAsync(ownerId);
+            await factory.CreateGameAsync(player.OwnerId);
         }
 
         var page = await client.ListGamesAsync(Ongoing);
@@ -232,7 +228,7 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
     [InlineData(GameEndpoints.MaxPageSize, 2, false)]
     public async Task PageSizesAtTheBoundsAreAccepted(int pageSize, int listed, bool hasNext)
     {
-        using var client = await SignedInClientAsync();
+        using var client = await factory.SignedInClientAsync();
         await client.CreateGameAsync();
         await client.CreateGameAsync();
 
@@ -249,7 +245,7 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
     [InlineData("2147483647")]
     public async Task PageSizesBeyondTheBoundsAreRefused(string pageSize)
     {
-        using var client = await SignedInClientAsync();
+        using var client = await factory.SignedInClientAsync();
 
         using var response = await client.GetGameListAsync($"?status=ongoing&pageSize={pageSize}");
 
@@ -271,7 +267,7 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
     [InlineData("?status=%20ongoing")]
     public async Task AMissingOrUnknownStatusIsRefused(string query)
     {
-        using var client = await SignedInClientAsync();
+        using var client = await factory.SignedInClientAsync();
 
         using var response = await client.GetGameListAsync(query);
 
@@ -295,7 +291,7 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
     [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
     public async Task ACursorTheListDidNotSendIsRefused(string cursor)
     {
-        using var client = await SignedInClientAsync();
+        using var client = await factory.SignedInClientAsync();
 
         using var response = await client.GetGameListAsync($"?status=ongoing&cursor={Uri.EscapeDataString(cursor)}");
 
@@ -343,12 +339,5 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
         {
             sql.Should().NotContain(unlisted);
         }
-    }
-
-    private async Task<HttpClient> SignedInClientAsync()
-    {
-        var client = factory.CreateClient();
-        await client.RegisterNewAsync(AccountData.NewEmail());
-        return client;
     }
 }

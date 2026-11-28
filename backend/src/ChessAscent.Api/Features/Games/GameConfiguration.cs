@@ -79,8 +79,10 @@ internal sealed class GameConfiguration : IEntityTypeConfiguration<Game>
 
         // "My games" lists one player's games, most recent activity first.
         // With this index PostgreSQL finds a player's rows already in that
-        // order, so the list needs neither a scan of the table nor a sort,
-        // and a page of it reads only the rows it returns. It also serves
+        // order, starting at a page's cursor, so the list needs no scan of the
+        // table. It still reads past the player's games of the other status,
+        // and sorts games with the same time by id, which is a small sort of
+        // the rows it is about to return (see GameStore.ListAsync). It also serves
         // the owner foreign key, which a cascading delete of an account
         // looks rows up by.
         game.HasIndex(g => new { g.OwnerId, g.UpdatedAt }).IsDescending(false, true);

@@ -5,8 +5,9 @@ namespace ChessAscent.Api.Json;
 
 public static class JsonServices
 {
-    /// <summary>How an enumeration member's name is written: <c>Side.White</c> as <c>white</c>.</summary>
-    public static readonly JsonNamingPolicy EnumNamingPolicy = JsonNamingPolicy.CamelCase;
+    // Settings with nothing but the enum converter the API uses, for
+    // WireName, which then writes a member exactly as a body would.
+    private static readonly JsonSerializerOptions EnumNames = new() { Converters = { EnumConverter() } };
 
     /// <summary>
     /// Sets how every request and response body is read and written: a
@@ -29,21 +30,30 @@ public static class JsonServices
             // front end's generated types turn into number | string. Strict
             // reads and writes a number only as a JSON number.
             options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
-
-            // LEARN: System.Text.Json writes an enum as its number unless a
-            // converter says otherwise, where Jackson writes its name. A C#
-            // enum is a named integer (see GameStore), so a number would also
-            // be read into a value that names no member. This converter
-            // writes "white" for Side.White, and the document lists the names
-            // as each enum's allowed values. Reading is looser than the
-            // document: allowIntegerValues: false refuses 0 and "7", but a
-            // name is matched without regard to case or surrounding spaces,
-            // and a comma-separated list of names is read as the members
-            // combined bit by bit, as for a [Flags] enum, so "white,black"
-            // reads as Black (0 | 1). Jackson by default matches the exact,
-            // case-sensitive name, and reads a JSON integer as the member at
-            // that ordinal unless FAIL_ON_NUMBERS_FOR_ENUMS is enabled.
-            options.SerializerOptions.Converters.Add(
-                new JsonStringEnumConverter(EnumNamingPolicy, allowIntegerValues: false));
+            options.SerializerOptions.Converters.Add(EnumConverter());
         });
+
+    /// <summary>
+    /// The name a body is written with for <paramref name="member"/>, such
+    /// as <c>white</c> for <c>Side.White</c>.
+    /// </summary>
+    public static string WireName<TEnum>(TEnum member)
+        where TEnum : struct, Enum =>
+        JsonSerializer.Deserialize<string>(JsonSerializer.Serialize(member, EnumNames))!;
+
+    // LEARN: System.Text.Json writes an enum as its number unless a
+    // converter says otherwise, where Jackson writes its name. A C#
+    // enum is a named integer (see GameStore), so a number would also
+    // be read into a value that names no member. This converter
+    // writes "white" for Side.White, and the document lists the names
+    // as each enum's allowed values. Reading is looser than the
+    // document: allowIntegerValues: false refuses 0 and "7", but a
+    // name is matched without regard to case or surrounding spaces,
+    // and a comma-separated list of names is read as the members
+    // combined bit by bit, as for a [Flags] enum, so "white,black"
+    // reads as Black (0 | 1). Jackson by default matches the exact,
+    // case-sensitive name, and reads a JSON integer as the member at
+    // that ordinal unless FAIL_ON_NUMBERS_FOR_ENUMS is enabled.
+    private static JsonStringEnumConverter EnumConverter() =>
+        new(JsonNamingPolicy.CamelCase, allowIntegerValues: false);
 }

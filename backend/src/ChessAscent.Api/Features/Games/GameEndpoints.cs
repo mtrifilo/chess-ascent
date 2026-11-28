@@ -113,10 +113,15 @@ public static class GameEndpoints
     /// <summary>The most games a page of the list can hold; a larger page size is refused with 400.</summary>
     public const int MaxPageSize = 100;
 
+    // The status names the list accepts: exactly the names the game response
+    // writes, matched as they are written, so "Ongoing" and "0" are refused.
+    // Declared before the message that lists them, because static fields are
+    // initialized in the order they are written.
+    private static readonly Dictionary<string, GameProgress> ListStatuses = Enum.GetValues<GameProgress>()
+        .ToDictionary(JsonServices.WireName, StringComparer.Ordinal);
+
     /// <summary>The validation message for a list request with no status, or one that names no status.</summary>
-    // A property rather than a field: static fields are initialized in the
-    // order they are written, and ListStatuses comes after this.
-    public static string UnknownStatusMessage =>
+    public static readonly string UnknownStatusMessage =
         $"Give the status of the games to list: {string.Join(" or ", ListStatuses.Keys)}.";
 
     /// <summary>The validation message for a cursor the API did not send.</summary>
@@ -130,11 +135,6 @@ public static class GameEndpoints
     // The list's query parameters, which are also the keys of its validation errors.
     private const string StatusParameter = "status";
     private const string CursorParameter = "cursor";
-
-    // The status names the list accepts: exactly the names the game response
-    // writes, matched as they are written, so "Ongoing" and "0" are refused.
-    private static readonly Dictionary<string, GameProgress> ListStatuses = Enum.GetValues<GameProgress>()
-        .ToDictionary(progress => JsonServices.EnumNamingPolicy.ConvertName(progress.ToString()), StringComparer.Ordinal);
 
     public static IEndpointRouteBuilder MapGameEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -191,23 +191,8 @@ public static class GameEndpoints
     /// recent activity first.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <c>status</c> is required and is <c>ongoing</c> or <c>finished</c>,
-    /// the names the game's own <c>status</c> uses; a request without it, or
-    /// with any other value, is refused with 400. <c>pageSize</c> is from 1 to
-    /// <see cref="MaxPageSize"/>, and <see cref="DefaultPageSize"/> when left
-    /// out; any other number is refused with 400. <c>cursor</c> is the
-    /// <c>nextCursor</c> of the previous page, unchanged, and is left out for
-    /// the first page; anything else is refused with 400.
-    /// </para>
-    /// <para>
-    /// A page after a cursor holds the games that come after the previous
-    /// page's last game as the list stands when the page is asked for. A
-    /// game that has had a move since then is at the top of the list, above
-    /// the cursor, so a later page does not hold it, and a game that has
-    /// finished is in the other list; every other game is on exactly one
-    /// page.
-    /// </para>
+    /// The class remarks list its answers, and <see cref="GameListResponse.NextCursor"/>
+    /// says what a page after a cursor holds.
     /// </remarks>
     // LEARN: A handler parameter of a simple type (a string, a number, an
     // enum) that is not part of the route is read from the query string, as
