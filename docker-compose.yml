@@ -9,7 +9,9 @@
 #
 # ComposeFileTests in the API tests fails if the image, the default port, the
 # user, the password or the database here stop matching
-# appsettings.Development.json and the tests' PostgresFixture. By hand,
+# appsettings.Development.json and the tests' PostgresFixture, or the user,
+# the password or the database stop matching the end-to-end test's
+# connection string in frontend/playwright.config.ts. By hand,
 # README.md and THIRD-PARTY-NOTICES.md also name the image version, and
 # README.md and CLAUDE.md the default port.
 services:

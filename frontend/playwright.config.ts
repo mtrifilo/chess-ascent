@@ -55,6 +55,10 @@ export default defineConfig({
         // The computer plays the first legal move, so it needs no engine
         // and the test knows its reply (Opponents/OpponentServices.cs).
         Opponent__UseFirstLegalMove: 'true',
+        // The API logs to standard output, which Playwright drops; from
+        // warnings up it writes to standard error instead, which Playwright
+        // shows, so the cause of a failure is in the run's output.
+        Logging__Console__LogToStandardErrorThreshold: 'Warning',
       },
       ...startedHere,
     },

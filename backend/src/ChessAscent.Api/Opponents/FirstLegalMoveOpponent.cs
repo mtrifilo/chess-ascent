@@ -16,8 +16,9 @@ namespace ChessAscent.Api.Opponents;
 /// is true, and only in the Development environment.
 /// </para>
 /// <para>
-/// It keeps the contract of <see cref="IOpponent"/> as <see cref="MaiaOpponent"/>
-/// does, with the same checks before a move is chosen: it refuses a strength
+/// It keeps the contract of <see cref="IOpponent"/>, which leaves open
+/// whether a reply is always the same, with the same checks as
+/// <see cref="MaiaOpponent"/> before a move is chosen: it refuses a strength
 /// that is not offered, and the game is rebuilt by
 /// <see cref="LegalMoveSearch.Rebuild"/>, which refuses a move list that is
 /// not a legal game and a finished game. The game endpoints check the move

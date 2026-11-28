@@ -3,15 +3,19 @@ namespace ChessAscent.Api.Opponents;
 /// <summary>The computer opponent: given a game and a strength, it chooses the computer's next move.</summary>
 /// <remarks>
 /// <para>
-/// The interface says nothing about how the opponent runs. Today it is a
-/// neural network in a separate program (<see cref="MaiaOpponent"/>); the
-/// same model is expected to run inside this process later, behind the same
-/// interface.
+/// The interface says nothing about how the opponent runs. The computer
+/// opponent is a neural network in a separate program (<see cref="MaiaOpponent"/>);
+/// the same model is expected to run inside this process later, behind the
+/// same interface. In the Development environment, configuration can put
+/// <see cref="FirstLegalMoveOpponent"/>, which needs no engine, in its place
+/// (see <see cref="OpponentServices"/>).
 /// </para>
 /// <para>
-/// The move it returns is legal in the position, checked by the chess rules,
-/// but it is not chosen deterministically: the same game at the same strength
-/// can get a different reply each time, as a human opponent's would.
+/// The move it returns is legal in the position, checked by the chess rules.
+/// The interface does not promise the same reply to the same game: Maia's
+/// can differ each time, as a human opponent's would, while
+/// <see cref="FirstLegalMoveOpponent"/>'s is always the same, which is what
+/// the end-to-end test needs.
 /// </para>
 /// <para>
 /// Implementations may be called from several requests at once.

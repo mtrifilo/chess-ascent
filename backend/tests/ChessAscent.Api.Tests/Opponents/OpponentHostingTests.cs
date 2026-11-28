@@ -53,6 +53,29 @@ public sealed class OpponentHostingTests(PostgresFixture postgres)
         api.Services.GetRequiredService<IOpponent>().Should().BeOfType<MaiaOpponent>();
     }
 
+    // False is what the refusal outside Development tells an operator to set.
+    [Fact]
+    public async Task SetToFalseOutsideDevelopmentTheOpponentIsMaia()
+    {
+        await using var factory = new ApiFactory(postgres);
+        await using var api = factory.WithWebHostBuilder(host => host
+            .UseEnvironment("Production")
+            .UseSetting(OpponentServices.UseFirstLegalMoveSetting, "false"));
+
+        api.Services.GetRequiredService<IOpponent>().Should().BeOfType<MaiaOpponent>();
+    }
+
+    [Fact]
+    public async Task AValueThatIsNotTrueOrFalseStopsStartUpAndNamesTheSetting()
+    {
+        await using var factory = new ApiFactory(postgres);
+        await using var api = factory.WithWebHostBuilder(host => host.UseSetting(OpponentServices.UseFirstLegalMoveSetting, "yes"));
+
+        var start = () => api.CreateClient();
+
+        start.Should().Throw<InvalidOperationException>().WithMessage($"*{OpponentServices.UseFirstLegalMoveSetting}*");
+    }
+
     [Fact]
     public async Task InDevelopmentTheSettingMakesTheFirstLegalMoveTheComputersReplyAndSaysSoOnce()
     {
