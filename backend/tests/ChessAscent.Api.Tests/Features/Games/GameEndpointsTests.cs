@@ -507,7 +507,12 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
     [Fact]
     public async Task AFinishedGameWhoseSavedFormIsBrokenRefusesAMoveAsFinishedAndFailsToRead()
     {
-        using var client = await SignedInClientAsync();
+        var logs = new CapturingLoggerProvider();
+        using var logged = factory.WithWebHostBuilder(host => host.ConfigureLogging(logging => logging
+            .AddProvider(logs)
+            .AddFilter<CapturingLoggerProvider>(category: null, LogLevel.Trace)));
+        using var client = logged.CreateClient();
+        await client.RegisterNewAsync(AccountData.NewEmail());
         var game = await client.CreateGameAsync();
         (await postgres.ExecuteAsync(
             """
@@ -522,6 +527,9 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         move.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await move.ReadProblemAsync()).Detail.Should().Be(GameEndpoints.GameFinishedDetail);
         read.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+        (await read.ReadProblemAsync()).Detail.Should().BeNull();
+        logs.Messages.Where(message => message.StartsWith("Saved game", StringComparison.Ordinal))
+            .Should().Equal($"Saved game {game.Id} cannot be rebuilt: half-move 1 is illegal.");
     }
 
     // Bodies the move endpoint cannot bind at all, as its remarks list them.

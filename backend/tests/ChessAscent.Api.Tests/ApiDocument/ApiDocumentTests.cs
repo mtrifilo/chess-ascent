@@ -56,8 +56,11 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
             "get /health/ready", "get /version");
     }
 
-    // Every response the game endpoints can give, including the 401 the
+    // Every response the game endpoints declare, including the 401 the
     // group's authorization gives and the 403 of the cross-site refusal.
+    // The 415 that body binding gives for a body not sent as JSON is not
+    // declared, here or on the account endpoints: the typed client always
+    // sends JSON. GameEndpoints' remarks list it.
     [Theory]
     [InlineData("/games", "post", new[] { "201", "400", "401", "403" })]
     [InlineData("/games/{id}", "get", new[] { "200", "401", "404", "500" })]
@@ -118,14 +121,14 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
     // use a form this test does not read, so a schema of another shape fails
     // here rather than passing unread.
     [Theory]
-    [InlineData("CreateGameRequest", "playerSide", false, true)]
-    [InlineData("OpponentRequest", "kind", false, true)]
-    [InlineData("GameResponse", "result", true, true)]
-    [InlineData("GameResponse", "endReason", true, true)]
-    [InlineData("GameResponse", "playerSide", false, true)]
-    [InlineData("OpponentResponse", "strength", true, false)]
+    [InlineData("CreateGameRequest", "playerSide", false, "Side")]
+    [InlineData("OpponentRequest", "kind", false, "OpponentKind")]
+    [InlineData("GameResponse", "result", true, "GameResult")]
+    [InlineData("GameResponse", "endReason", true, "GameEndReason")]
+    [InlineData("GameResponse", "playerSide", false, "Side")]
+    [InlineData("OpponentResponse", "strength", true, null)]
     public async Task DocumentAllowsNullOnlyWhereTheApiSendsOrAcceptsIt(
-        string schema, string property, bool nullable, bool isEnum)
+        string schema, string property, bool nullable, string? enumSchema)
     {
         var document = await GetDocumentAsync();
 
@@ -138,9 +141,11 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
         (nullInOneOf || nullInTypes).Should().Be(nullable);
 
         var references = choices.Select(choice => choice?["$ref"]).Append(described["$ref"]).OfType<JsonNode>();
-        if (isEnum)
+        if (enumSchema is not null)
         {
-            references.Should().ContainSingle("an enum property refers to its enum's shared schema");
+            references.Should().ContainSingle("an enum property refers to its enum's shared schema")
+                .Which.GetValue<string>().Should().Be($"#/components/schemas/{enumSchema}");
+            document["components"]!["schemas"]![enumSchema]!["enum"].Should().NotBeNull();
         }
         else
         {
