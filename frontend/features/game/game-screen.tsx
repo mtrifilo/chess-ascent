@@ -1,5 +1,6 @@
 'use client'
 
+import { opposite } from '@lichess-org/chessground/util'
 import { ArrowUpDownIcon, CircleAlertIcon } from 'lucide-react'
 import { notFound } from 'next/navigation'
 import { useState } from 'react'
@@ -12,6 +13,7 @@ import {
 import { useNavItemForPage } from '@/components/layout/page-nav-item'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 import { useGame, usePlayMove } from './game-api'
 import {
@@ -48,9 +50,14 @@ export function GameScreen({ id }: { id: string }) {
   return <LoadedGame game={game} />
 }
 
-// A promotion waiting for the player's choice, in the position it was made
-// in, so that a new position read meanwhile (from another tab, say) drops it.
-type PendingPromotion = { move: BoardMove; fen: string }
+// A promotion waiting for the player's choice of piece, in the position it
+// was made in, so that a new position read meanwhile (from another tab, say)
+// drops it.
+type PendingPromotion = {
+  move: BoardMove
+  pieces: PromotionPiece[]
+  fen: string
+}
 
 function LoadedGame({ game }: { game: Game }) {
   const playMove = usePlayMove(game.id)
@@ -63,7 +70,7 @@ function LoadedGame({ game }: { game: Game }) {
 
   const finished = game.status === 'finished'
   const orientation = flipped ? opposite(game.playerSide) : game.playerSide
-  const promotion = pending?.fen === game.fen ? pending.move : undefined
+  const promotion = pending?.fen === game.fen ? pending : undefined
 
   function send(uci: string) {
     const resetBoard = () => setBoardKey(key => key + 1)
@@ -76,14 +83,9 @@ function LoadedGame({ game }: { game: Game }) {
   }
 
   function onMove(move: BoardMove) {
-    if (promotionChoices(game, move)) setPending({ move, fen: game.fen })
+    const pieces = promotionChoices(game, move)
+    if (pieces) setPending({ move, pieces, fen: game.fen })
     else send(toUci(move))
-  }
-
-  function onChoose(piece: PromotionPiece) {
-    if (!promotion) return
-    setPending(undefined)
-    send(toUci(promotion, piece))
   }
 
   const failedMove = playMove.isError ? playMove.variables : undefined
@@ -105,11 +107,14 @@ function LoadedGame({ game }: { game: Game }) {
           />
           {promotion && (
             <PromotionPicker
-              square={promotion.to}
+              square={promotion.move.to}
               side={game.sideToMove}
               orientation={orientation}
-              pieces={promotionChoices(game, promotion) ?? []}
-              onChoose={onChoose}
+              pieces={promotion.pieces}
+              onChoose={piece => {
+                setPending(undefined)
+                send(toUci(promotion.move, piece))
+              }}
             />
           )}
         </div>
@@ -122,7 +127,7 @@ function LoadedGame({ game }: { game: Game }) {
           <GameStatus
             detail={
               promotion
-                ? `Choose a piece for the pawn on ${promotion.to}.`
+                ? `Choose a piece for the pawn on ${promotion.move.to}.`
                 : `${sideLabel(game.sideToMove)} to move · move ${moveNumber(game.fen)}`
             }
           />
@@ -150,11 +155,10 @@ function PlayerBar({ game, side }: { game: Game; side: Side }) {
     <div className="flex h-10 items-center gap-2">
       <span
         aria-hidden
-        className={
-          side === 'white'
-            ? 'size-3.5 rounded-sm border border-separator bg-piece-white'
-            : 'size-3.5 rounded-sm border border-separator bg-piece-black'
-        }
+        className={cn(
+          'size-3.5 rounded-sm border border-separator',
+          side === 'white' ? 'bg-piece-white' : 'bg-piece-black'
+        )}
       />
       <span className="text-sm font-semibold">{playerName(game, side)}</span>
     </div>
@@ -210,8 +214,4 @@ function MoveFailed({ onTryAgain }: { onTryAgain: () => void }) {
       </AlertDescription>
     </Alert>
   )
-}
-
-function opposite(side: Side): Side {
-  return side === 'white' ? 'black' : 'white'
 }

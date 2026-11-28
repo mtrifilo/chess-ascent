@@ -22,6 +22,12 @@ function rowsOf(table: HTMLElement) {
   )
 }
 
+// The cells marked as the latest move.
+const markedCells = () =>
+  screen
+    .getAllByRole('cell')
+    .filter(cell => cell.getAttribute('aria-current') === 'step')
+
 describe('MoveList', () => {
   it('heads its two columns White and Black', () => {
     render(<MoveList moves={OPENING} />)
@@ -50,9 +56,7 @@ describe('MoveList', () => {
   it("marks the latest move, in White's column", () => {
     render(<MoveList moves={OPENING} />)
 
-    const marked = screen
-      .getAllByRole('cell')
-      .filter(cell => cell.getAttribute('aria-current') === 'step')
+    const marked = markedCells()
     expect(marked.map(cell => cell.textContent)).toEqual(['Bc4'])
     expect(marked[0]).toHaveClass('bg-accent')
   })
@@ -60,9 +64,7 @@ describe('MoveList', () => {
   it("marks the latest move, in Black's column", () => {
     render(<MoveList moves={OPENING.slice(0, 4)} />)
 
-    const marked = screen
-      .getAllByRole('cell')
-      .filter(cell => cell.getAttribute('aria-current') === 'step')
+    const marked = markedCells()
     expect(marked.map(cell => cell.textContent)).toEqual(['Nc6'])
   })
 
@@ -76,10 +78,7 @@ describe('MoveList', () => {
     ]
     render(<MoveList moves={repeated} />)
 
-    const cells = screen.getAllByRole('cell')
-    const marked = cells.filter(
-      cell => cell.getAttribute('aria-current') === 'step'
-    )
+    const marked = markedCells()
     expect(marked).toHaveLength(1)
     expect(rowsOf(screen.getByRole('table'))[2]).toEqual(['3.', 'Nf3', ''])
     expect(within(screen.getAllByRole('row')[3]).getAllByRole('cell')[1]).toBe(

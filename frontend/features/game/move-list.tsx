@@ -64,7 +64,7 @@ export function MoveList({
                   {row.number}.
                 </td>
                 {[row.white, row.black].map((move, column) => {
-                  const isLatest = move !== undefined && move === latest
+                  const isLatest = move === latest
                   return (
                     <td
                       key={column}

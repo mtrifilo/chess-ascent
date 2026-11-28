@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { notFound } from 'next/navigation'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ChessBoardProps } from '@/components/chess-board/chess-board'
 import {
@@ -92,8 +92,11 @@ function unreachable(): Promise<Reply> {
   return failure
 }
 
+// The bodies of the moves posted.
 const sentMoves = (sent: ReturnType<typeof answer>) =>
-  sent.filter(request => request.call === `POST ${MOVES_PATH}`)
+  sent
+    .filter(request => request.call === `POST ${MOVES_PATH}`)
+    .map(request => request.body)
 
 describe('GameScreen', () => {
   it("shows the position, whose move it is, and the player's colour at the bottom", async () => {
@@ -152,9 +155,7 @@ describe('GameScreen', () => {
     playOnBoard('e2', 'e4')
 
     await waitFor(() => expect(board.props!.fen).toBe(AFTER_E4.fen))
-    expect(sentMoves(sent).map(request => request.body)).toEqual([
-      { uci: 'e2e4' },
-    ])
+    expect(sentMoves(sent)).toEqual([{ uci: 'e2e4' }])
     expect(board.props!.lastMove).toEqual({ from: 'e2', to: 'e4' })
     expect(screen.getByText('Black to move · move 1')).toBeInTheDocument()
     expect(screen.getByRole('cell', { name: 'e4' })).toHaveAttribute(
@@ -218,11 +219,7 @@ describe('GameScreen', () => {
 
       fireEvent.click(within(picker).getByRole('button', { name: 'Knight' }))
 
-      await waitFor(() =>
-        expect(sentMoves(sent).map(request => request.body)).toEqual([
-          { uci: 'e7e8n' },
-        ])
-      )
+      await waitFor(() => expect(sentMoves(sent)).toEqual([{ uci: 'e7e8n' }]))
       expect(screen.queryByRole('group')).not.toBeInTheDocument()
     })
 
@@ -236,25 +233,27 @@ describe('GameScreen', () => {
       playOnBoard('e1', 'd1')
 
       expect(screen.queryByRole('group')).not.toBeInTheDocument()
-      await waitFor(() =>
-        expect(sentMoves(sent).map(request => request.body)).toEqual([
-          { uci: 'e1d1' },
-        ])
-      )
+      await waitFor(() => expect(sentMoves(sent)).toEqual([{ uci: 'e1d1' }]))
     })
   })
 
   describe('a move that is not played', () => {
+    // The query cache reports each failure to the console.
+    beforeEach(() => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+    })
+    afterEach(() => {
+      vi.mocked(console.error).mockRestore()
+    })
+
     it.each([
-      ['refuses it', problem(422)],
-      ['fails', problem(500)],
+      ['refuses it', () => problem(422)],
+      ['fails', () => problem(500)],
+      ['cannot be reached', unreachable],
     ])(
       'puts the board back and shows the error when the API %s',
       async (_, reply) => {
-        const consoleError = vi
-          .spyOn(console, 'error')
-          .mockImplementation(() => {})
-        answer({ [GAME_PATH]: ok(game()), [MOVES_PATH]: reply })
+        answer({ [GAME_PATH]: ok(game()), [MOVES_PATH]: reply() })
         await renderGame()
 
         playOnBoard('e2', 'e4')
@@ -266,33 +265,10 @@ describe('GameScreen', () => {
         )
         expect(board.mounts).toBe(2)
         expect(board.props!.fen).toBe(game().fen)
-        consoleError.mockRestore()
       }
     )
 
-    it('shows the same error when the API cannot be reached', async () => {
-      const consoleError = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => {})
-      answer({
-        [GAME_PATH]: ok(game()),
-        [MOVES_PATH]: unreachable(),
-      })
-      await renderGame()
-
-      playOnBoard('e2', 'e4')
-
-      expect(await screen.findByRole('alert')).toHaveTextContent(
-        'Your move was not sent'
-      )
-      expect(board.mounts).toBe(2)
-      consoleError.mockRestore()
-    })
-
     it('sends the same move again on "Try again"', async () => {
-      const consoleError = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => {})
       const sent = answer({
         [GAME_PATH]: ok(game()),
         [MOVES_PATH]: problem(500),
@@ -305,11 +281,8 @@ describe('GameScreen', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
 
       await waitFor(() => expect(board.props!.fen).toBe(AFTER_E4.fen))
-      expect(sentMoves(sent).map(request => request.body)).toEqual([
-        { uci: 'e2e4' },
-      ])
+      expect(sentMoves(sent)).toEqual([{ uci: 'e2e4' }])
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-      consoleError.mockRestore()
     })
 
     it('loads the game again, without the error, when it is no longer where the screen thought', async () => {

@@ -27,7 +27,8 @@ export function useGame(id: string) {
 }
 
 // Starts a game in which the signed-in player moves both sides, as White,
-// and records it, so the game's page opens without asking for it again.
+// and records it, so the game's page shows it at once rather than waiting
+// for its own read of the game.
 export function useCreateGame() {
   const queryClient = useQueryClient()
   return useMutation({

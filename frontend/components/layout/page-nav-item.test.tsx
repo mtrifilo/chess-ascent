@@ -17,13 +17,17 @@ function Page({ item }: { item?: NavHref }) {
   return null
 }
 
+// The top bar's links and a page, under one provider. `rerenderWith` swaps
+// the page and keeps the provider.
 function renderWith(page: React.ReactNode) {
-  return render(
+  const tree = (current: React.ReactNode) => (
     <PageNavItemProvider>
       <ActiveNavLinks />
-      {page}
+      {current}
     </PageNavItemProvider>
   )
+  const { rerender } = render(tree(page))
+  return { rerenderWith: (next: React.ReactNode) => rerender(tree(next)) }
 }
 
 const current = () =>
@@ -40,26 +44,17 @@ describe('a page that names its navigation item', () => {
   })
 
   it('changes the highlight when it names another item', () => {
-    const { rerender } = renderWith(<Page item="/play" />)
+    const { rerenderWith } = renderWith(<Page item="/play" />)
 
-    rerender(
-      <PageNavItemProvider>
-        <ActiveNavLinks />
-        <Page item="/games" />
-      </PageNavItemProvider>
-    )
+    rerenderWith(<Page item="/games" />)
 
     expect(current()).toEqual(['My games'])
   })
 
   it('leaves the highlight to the path once it is gone', () => {
-    const { rerender } = renderWith(<Page item="/play" />)
+    const { rerenderWith } = renderWith(<Page item="/play" />)
 
-    rerender(
-      <PageNavItemProvider>
-        <ActiveNavLinks />
-      </PageNavItemProvider>
-    )
+    rerenderWith(null)
 
     expect(current()).toEqual([])
   })
