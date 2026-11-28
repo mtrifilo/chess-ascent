@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { MoveList } from './move-list'
@@ -132,6 +132,63 @@ describe('MoveList', () => {
     } finally {
       vi.unstubAllGlobals()
     }
+  })
+
+  it('marks the move it is given rather than the latest', () => {
+    render(<MoveList moves={OPENING} current={OPENING[1]} />)
+
+    expect(markedCells().map(cell => cell.textContent)).toEqual(['e5'])
+  })
+
+  it('makes each move a button that reports it, marking the current one', () => {
+    const onSelect = vi.fn()
+    render(
+      <MoveList moves={OPENING} current={OPENING[2]} onSelect={onSelect} />
+    )
+
+    const buttons = screen.getAllByRole('button')
+    expect(buttons.map(button => button.textContent)).toEqual([
+      'e4',
+      'e5',
+      'Nf3',
+      'Nc6',
+      'Bc4',
+    ])
+    expect(
+      buttons.filter(button => button.getAttribute('aria-current') === 'step')
+    ).toEqual([buttons[2]])
+    fireEvent.click(buttons[3])
+    expect(onSelect).toHaveBeenCalledWith(OPENING[3])
+  })
+
+  it('has no buttons when nothing is told of a click', () => {
+    render(<MoveList moves={OPENING} />)
+
+    expect(screen.queryAllByRole('button')).toEqual([])
+  })
+
+  it('scrolls a marked move above its box down into view, below the heading', () => {
+    const { container } = render(
+      <MoveList moves={OPENING} current={OPENING[4]} onSelect={() => {}} />
+    )
+    const scroller = container.firstElementChild as HTMLElement
+    // jsdom has no layout, so the boxes are given: the list's box from 0 to
+    // 100 with a 20px heading, scrolled so that the marked move sits above it.
+    const box = (top: number, height: number) =>
+      ({ top, bottom: top + height, height }) as DOMRect
+    scroller.getBoundingClientRect = () => box(0, 100)
+    container.querySelector('thead')!.getBoundingClientRect = () => box(0, 20)
+    const cellAt = (index: number) =>
+      screen.getAllByRole('button')[index].closest('td')!
+    cellAt(0).getBoundingClientRect = () => box(-30, 28)
+    scroller.scrollTop = 200
+
+    render(
+      <MoveList moves={OPENING} current={OPENING[0]} onSelect={() => {}} />,
+      { container }
+    )
+
+    expect(scroller.scrollTop).toBe(150)
   })
 
   it('scrolls to the latest move as moves are added', () => {
