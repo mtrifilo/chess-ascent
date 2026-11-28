@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using ChessAscent.Api.Engine;
 using ChessAscent.Chess;
 
 namespace ChessAscent.Api.Opponents;
@@ -17,9 +17,11 @@ namespace ChessAscent.Api.Opponents;
 /// </para>
 /// <para>
 /// It keeps the contract of <see cref="IOpponent"/> as <see cref="MaiaOpponent"/>
-/// does: it refuses a strength that is not offered, a move list that is not a
-/// legal game and a finished game, and the game endpoints check the move it
-/// returns with the chess rules, as they check Maia's.
+/// does, with the same checks before a move is chosen: it refuses a strength
+/// that is not offered, and the game is rebuilt by
+/// <see cref="LegalMoveSearch.Rebuild"/>, which refuses a move list that is
+/// not a legal game and a finished game. The game endpoints check the move
+/// it returns with the chess rules, as they check Maia's.
 /// </para>
 /// </remarks>
 public sealed class FirstLegalMoveOpponent(IChessRules rules) : IOpponent
@@ -33,12 +35,12 @@ public sealed class FirstLegalMoveOpponent(IChessRules rules) : IOpponent
             return Task.FromResult<OpponentReply>(new StrengthNotOffered(strength));
         }
 
-        OpponentReply reply = rules.Load(rules.NewGame().Fen, moves) switch
+        OpponentReply reply = LegalMoveSearch.Rebuild(rules, moves) switch
         {
+            // LegalMoves() is ordered by UCI text, and an ongoing game has at least one.
+            OngoingGame { Game: var game } => new OpponentMove(game.LegalMoves()[0].Uci),
             InvalidMoveInHistory invalid => invalid,
-            GameLoaded { Game.Status: not Ongoing and var status } => new GameAlreadyOver(status),
-            GameLoaded { Game: var game } => new OpponentMove(game.LegalMoves().Select(move => move.Uci).Order(StringComparer.Ordinal).First()),
-            InvalidStartingPosition => throw new UnreachableException("The standard starting position was refused."),
+            GameAlreadyOver over => over,
         };
         return Task.FromResult(reply);
     }

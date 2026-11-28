@@ -8,6 +8,15 @@ const apiPort = port('CHESS_ASCENT_E2E_API_PORT')
 const webPort = port('CHESS_ASCENT_E2E_WEB_PORT')
 const databasePort = port('CHESS_ASCENT_E2E_DB_PORT')
 
+// Each server is started for the run and stopped when it ends. Neither is
+// reused: if something already answers on its port, the run stops before
+// the test, rather than test or change a server it did not start.
+const startedHere = {
+  reuseExistingServer: false,
+  timeout: 120_000,
+  gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
+} as const
+
 export default defineConfig({
   testDir: './e2e',
   // A retry would hide a test that fails only some of the time.
@@ -28,9 +37,6 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-  // Each server is started here and stopped when the run ends. Neither is
-  // reused: if something already answers on its port, the run stops before
-  // the test, rather than test or change a server it did not start.
   webServer: [
     {
       name: 'API',
@@ -50,9 +56,7 @@ export default defineConfig({
         // and the test knows its reply (Opponents/OpponentServices.cs).
         Opponent__UseFirstLegalMove: 'true',
       },
-      reuseExistingServer: false,
-      timeout: 120_000,
-      gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
+      ...startedHere,
     },
     {
       name: 'Web',
@@ -65,9 +69,7 @@ export default defineConfig({
       // the test starts.
       url: `http://127.0.0.1:${webPort}/sign-up`,
       env: { CHESS_ASCENT_API_URL: `http://127.0.0.1:${apiPort}` },
-      reuseExistingServer: false,
-      timeout: 120_000,
-      gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
+      ...startedHere,
     },
   ],
 })

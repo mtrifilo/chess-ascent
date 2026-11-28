@@ -2,7 +2,7 @@
 # Runs the end-to-end test (frontend/e2e/) against the whole application:
 #   1. starts PostgreSQL in a Docker Compose project of its own, on an empty
 #      volume;
-#   2. builds the API;
+#   2. builds the API, at the same time;
 #   3. runs Playwright, which starts the API and the web app's development
 #      server (frontend/playwright.config.ts), runs the test in Chromium,
 #      and stops both;
@@ -39,6 +39,8 @@ fi
 
 # The API reads the engines directory from this variable. An empty one means
 # no engine starts, here as on CI, even where the set-up scripts have run.
+# It is a new directory that only this user can write to, rather than a
+# fixed path, because the API runs whatever program it finds there.
 CHESS_ASCENT_ENGINES_DIR="$(mktemp -d "${TMPDIR:-/tmp}/chess-ascent-e2e-engines.XXXXXX")"
 export CHESS_ASCENT_ENGINES_DIR
 
@@ -48,6 +50,8 @@ compose() {
 }
 
 cleanup() {
+  # A database still starting, when the build has failed, finishes first.
+  wait || true
   compose down --volumes --remove-orphans || true
   rm -rf "$CHESS_ASCENT_ENGINES_DIR"
 }
@@ -57,14 +61,15 @@ step() {
   echo "e2e: $1 took $((SECONDS - $2))s"
 }
 
+# The database starts while the API builds; neither needs the other.
 started=$SECONDS
 compose down --volumes --remove-orphans
-compose up --detach --wait
-step "starting the database" "$started"
-
-started=$SECONDS
+compose up --detach --wait &
+database=$!
 dotnet build "$ROOT/backend/src/ChessAscent.Api" --nologo -v:q
 step "building the API" "$started"
+wait "$database"
+step "starting the database and building the API" "$started"
 
 started=$SECONDS
 cd "$ROOT/frontend"

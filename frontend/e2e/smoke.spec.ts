@@ -1,5 +1,7 @@
 import { expect, test, type Locator } from '@playwright/test'
 
+import type { Square } from '@/components/chess-board/chess-board'
+
 // The whole application, once through: sign up, play a move against the
 // computer and see its reply, resign, and find the game in My games. The
 // screens are driven by the names and labels they show, as a person would
@@ -13,9 +15,22 @@ const password = 'Smoke-test-1' // gitleaks:allow (made up for this test)
 test('a new player plays the computer, resigns and finds the game in My games', async ({
   page,
 }) => {
+  // Typing waits until the page's script has taken over the form. Under
+  // `next dev`, React's Strict Mode attaches the form's ref twice as it
+  // hydrates, and the ref's clean-up clears the form (auth-form.tsx), so
+  // text typed into the server's HTML before then is lost. The page asks
+  // the API who is signed in only once React has mounted it.
+  const sessionChecked = page.waitForResponse(
+    response => new URL(response.url()).pathname === '/api/auth/me'
+  )
   await page.goto('/sign-up')
-  await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Password').fill(password)
+  await sessionChecked
+  const emailField = page.getByLabel('Email')
+  const passwordField = page.getByLabel('Password')
+  await emailField.fill(email)
+  await passwordField.fill(password)
+  await expect(emailField).toHaveValue(email)
+  await expect(passwordField).toHaveValue(password)
   await page.getByRole('button', { name: 'Sign up' }).click()
 
   await expect(page.getByRole('heading', { name: 'New game' })).toBeVisible()
@@ -77,51 +92,39 @@ test('a new player plays the computer, resigns and finds the game in My games', 
 // bottom, files a to h run left to right, and each square is an eighth of
 // the board.
 
-type Square =
-  `${'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h'}${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8}`
-
 async function clickSquare(board: Locator, square: Square) {
-  const box = await boundingBox(board)
-  const { x, y } = centreOf(square, box)
+  const { x, y } = await centreOf(board, square)
   await board.page().mouse.click(x, y)
 }
 
-// The piece drawn on `square`, such as "black pawn", or undefined for an
-// empty square. Chessground draws each piece as an element whose classes
-// are its colour and kind.
+// The piece on `square`, such as "black pawn", or undefined for an empty
+// square, as the board's own test reads it (chess-board.render.test.tsx):
+// chessground keeps each piece element's square in its `cgKey` property
+// and its colour and kind in its classes. A ghost, left behind while a
+// piece is dragged, and a captured piece fading out are not on the board.
 async function pieceOn(
   board: Locator,
   square: Square
 ): Promise<string | undefined> {
-  const box = await boundingBox(board)
-  const { x, y } = centreOf(square, box)
-  const pieces = await board.locator('piece').evaluateAll(elements =>
-    elements.map(element => {
-      const rect = element.getBoundingClientRect()
-      return {
-        name: element.className,
-        left: rect.left,
-        top: rect.top,
-        right: rect.right,
-        bottom: rect.bottom,
-      }
-    })
-  )
-  return pieces.find(
-    piece =>
-      piece.left <= x && x < piece.right && piece.top <= y && y < piece.bottom
-  )?.name
+  return board
+    .locator('piece:not(.ghost):not(.fading)')
+    .evaluateAll((pieces, square) => {
+      const piece = pieces.find(
+        element => (element as Element & { cgKey?: string }).cgKey === square
+      )
+      if (!piece) return undefined
+      const classes = [...piece.classList]
+      const colour = classes.find(name => name === 'white' || name === 'black')
+      const kind = classes.find(name =>
+        ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king'].includes(name)
+      )
+      return `${colour} ${kind}`
+    }, square)
 }
 
-type Box = { x: number; y: number; width: number; height: number }
-
-async function boundingBox(board: Locator): Promise<Box> {
+async function centreOf(board: Locator, square: Square) {
   const box = await board.boundingBox()
   if (!box) throw new Error('The board is not on the page.')
-  return box
-}
-
-function centreOf(square: Square, box: Box) {
   const file = square.charCodeAt(0) - 'a'.charCodeAt(0)
   const rank = Number(square[1])
   return {
