@@ -56,7 +56,7 @@ export default function config(phase: string): NextConfig {
   return {
     ...nextConfig,
     async rewrites() {
-      return [{ source: '/api/:path*', destination: `${apiUrl}/broken/:path*` }]
+      return [{ source: '/api/:path*', destination: `${apiUrl}/:path*` }]
     },
   }
 }
