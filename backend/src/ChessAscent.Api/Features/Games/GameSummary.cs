@@ -11,6 +11,7 @@ namespace ChessAscent.Api.Features.Games;
 /// <param name="Result">How the game ended; <c>null</c> while it is ongoing.</param>
 /// <param name="EndReason">Why the game ended; <c>null</c> while it is ongoing.</param>
 /// <param name="HalfMoveCount">The number of half-moves saved.</param>
+/// <param name="HintCount">The number of positions the player was given a hint in.</param>
 /// <param name="UpdatedAt">When the game was created or last had a move saved.</param>
 // The opponent is the two stored columns, not an Opponent, so a row saved
 // with a computer and no strength is listed as it is, rather than failing
@@ -24,6 +25,7 @@ public sealed record GameSummary(
     GameResult? Result,
     GameEndReason? EndReason,
     int HalfMoveCount,
+    int HintCount,
     DateTimeOffset UpdatedAt);
 
 /// <summary>One page of a player's games, and where the next one starts.</summary>

@@ -91,6 +91,25 @@ internal sealed class ComputerGameFaultException(Guid? gameId, string reason)
     public string Reason { get; } = reason;
 }
 
+/// <summary>
+/// What the hint engine answered about a game means the server is at fault:
+/// the engine is broken, or the game it was given is wrong. Not something the
+/// player did.
+/// </summary>
+/// <remarks>
+/// <see cref="SavedGameFaultFilter"/> turns it into a 500, as it does
+/// <see cref="UnrebuildableGameException"/>.
+/// </remarks>
+/// <param name="gameId">The game the hint was for.</param>
+/// <param name="reason">What is wrong, without any text the game or the engine holds.</param>
+internal sealed class HintFaultException(Guid gameId, string reason)
+    : Exception($"No hint can be given in game {gameId}: {reason}.")
+{
+    public Guid GameId { get; } = gameId;
+
+    public string Reason { get; } = reason;
+}
+
 // LEARN: An endpoint filter wraps an endpoint's handler: InvokeAsync runs
 // before it, calls `next` to run it (and any filters added after this one),
 // and can then inspect or replace what it returned, or catch what it threw.
@@ -103,9 +122,9 @@ internal sealed class ComputerGameFaultException(Guid? gameId, string reason)
 // so it sees the matched endpoint and its bound arguments in the invocation
 // context.
 /// <summary>
-/// Answers 500 when a handler finds a saved game it cannot rebuild, or a
-/// computer game it cannot play, after logging which game it was. The game
-/// is left as it is.
+/// Answers 500 when a handler finds a saved game it cannot rebuild, a
+/// computer game it cannot play, or a hint it cannot give, after logging
+/// which game it was. The game is left as it is.
 /// </summary>
 internal sealed partial class SavedGameFaultFilter(ILogger<SavedGameFaultFilter> logger) : IEndpointFilter
 {
@@ -133,6 +152,11 @@ internal sealed partial class SavedGameFaultFilter(ILogger<SavedGameFaultFilter>
 
             return TypedResults.Problem(statusCode: StatusCodes.Status500InternalServerError);
         }
+        catch (HintFaultException exception)
+        {
+            LogNoHint(logger, exception.GameId, exception.Reason);
+            return TypedResults.Problem(statusCode: StatusCodes.Status500InternalServerError);
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Saved game {GameId} cannot be rebuilt: {Reason}.")]
@@ -143,4 +167,7 @@ internal sealed partial class SavedGameFaultFilter(ILogger<SavedGameFaultFilter>
 
     [LoggerMessage(Level = LogLevel.Error, Message = "A computer game cannot be started: {Reason}.")]
     private static partial void LogUnstartable(ILogger logger, string reason);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "No hint can be given in game {GameId}: {Reason}.")]
+    private static partial void LogNoHint(ILogger logger, Guid gameId, string reason);
 }

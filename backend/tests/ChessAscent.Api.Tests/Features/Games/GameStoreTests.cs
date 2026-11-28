@@ -121,7 +121,7 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         loaded.EndReason.Should().BeNull();
         loaded.UpdatedAt.Should().Be(appended.UpdatedAt).And.BeAfter(game.CreatedAt);
         loaded.MovesNumberedInOrder.Should().BeTrue();
-        appended.Should().Be(new MovesAppended(loaded.UpdatedAt, loaded.Status, loaded.Result, loaded.EndReason));
+        appended.Should().Be(new MovesAppended(loaded.UpdatedAt, loaded.Status, loaded.Result, loaded.EndReason, loaded.HintCount));
         loaded.CreatedAt.Should().Be(game.CreatedAt);
         loaded.Rebuild().Fen.Should().Be(board.Fen);
     }
@@ -136,7 +136,7 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         var appended = await factory.AppendAsync(owner, game.Id, 1, foolsMate, afterMate);
         var loaded = await factory.LoadGameAsync(owner, game.Id);
 
-        appended.Value.Should().Be(new MovesAppended(loaded!.UpdatedAt, loaded.Status, loaded.Result, loaded.EndReason));
+        appended.Value.Should().Be(new MovesAppended(loaded!.UpdatedAt, loaded.Status, loaded.Result, loaded.EndReason, loaded.HintCount));
         loaded.Status.Should().Be(GameProgress.Finished);
         loaded.Result.Should().Be(GameResult.BlackWins);
         loaded.EndReason.Should().Be(GameEndReason.Checkmate);
@@ -310,6 +310,110 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         await noMoves.Should().ThrowAsync<ArgumentException>().WithParameterName("moves");
         await emptyMove.Should().ThrowAsync<ArgumentException>().WithParameterName("moves");
         await halfMoveZero.Should().ThrowAsync<ArgumentOutOfRangeException>().WithParameterName("firstHalfMoveNumber");
+    }
+
+    [Fact]
+    public async Task CountingAHintTwiceInOnePositionCountsItOnceAndAHintInTheNextCountsAgain()
+    {
+        var owner = await factory.CreateOwnerAsync();
+        var game = await factory.CreateGameAsync(owner, Opponent.Computer(800));
+
+        var first = await factory.CountHintAsync(owner, game.Id, 1);
+        var again = await factory.CountHintAsync(owner, game.Id, 1);
+        var afterTwo = await factory.LoadGameAsync(owner, game.Id);
+        var (moves, status) = GameData.Rules.NewGame().Play("e2e4", "e7e5");
+        await factory.AppendAsync(owner, game.Id, 1, moves, status);
+        var next = await factory.CountHintAsync(owner, game.Id, 3);
+        var afterNext = await factory.LoadGameAsync(owner, game.Id);
+
+        first.Value.Should().BeOfType<HintCounted>();
+        again.Value.Should().BeOfType<HintCounted>();
+        afterTwo!.HintCount.Should().Be(1);
+        afterTwo.UpdatedAt.Should().Be(game.UpdatedAt, "a hint is not a move");
+        next.Value.Should().BeOfType<HintCounted>();
+        afterNext!.HintCount.Should().Be(2);
+    }
+
+    // Counted at half-move 1, which the game has since left; and asked at
+    // half-move 3 of a game with no moves.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AHintForAPositionTheGameIsNotInIsAConflictAndChangesNothing(bool countedBefore)
+    {
+        var owner = await factory.CreateOwnerAsync();
+        var game = await factory.CreateGameAsync(owner, Opponent.Computer(800));
+        var halfMoveNumber = 3;
+        if (countedBefore)
+        {
+            await factory.CountHintAsync(owner, game.Id, 1);
+            var (moves, status) = GameData.Rules.NewGame().Play("e2e4", "e7e5");
+            await factory.AppendAsync(owner, game.Id, 1, moves, status);
+            halfMoveNumber = 1;
+        }
+
+        var before = await postgres.SavedRowsAsync(game.Id);
+
+        var outcome = await factory.CountHintAsync(owner, game.Id, halfMoveNumber);
+
+        outcome.Value.Should().BeOfType<HalfMoveConflict>();
+        (await postgres.SavedRowsAsync(game.Id)).Should().Be(before);
+    }
+
+    [Fact]
+    public async Task AHintInAFinishedGameIsRefusedAndChangesNothing()
+    {
+        var owner = await factory.CreateOwnerAsync();
+        var game = await factory.CreateGameAsync(owner, Opponent.Computer(800));
+        var (moves, status) = GameData.Rules.NewGame().Play(GameRequests.FoolsMate);
+        await factory.AppendAsync(owner, game.Id, 1, moves, status);
+        var before = await postgres.SavedRowsAsync(game.Id);
+
+        var outcome = await factory.CountHintAsync(owner, game.Id, 5);
+
+        outcome.Value.Should().BeOfType<GameFinished>();
+        (await postgres.SavedRowsAsync(game.Id)).Should().Be(before);
+    }
+
+    // Only a game the player owns is reported as finished, so even another
+    // player's finished game is not found.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AHintInAnotherPlayersGameIsNotFoundJustAsForAGameThatDoesNotExistAndChangesNothing(bool finished)
+    {
+        var owner = await factory.CreateOwnerAsync();
+        var otherPlayer = await factory.CreateOwnerAsync();
+        var game = await factory.CreateGameAsync(owner, Opponent.Computer(800));
+        var halfMoveNumber = 1;
+        if (finished)
+        {
+            var (moves, status) = GameData.Rules.NewGame().Play(GameRequests.FoolsMate);
+            await factory.AppendAsync(owner, game.Id, 1, moves, status);
+            halfMoveNumber = 5;
+        }
+
+        var before = await postgres.SavedRowsAsync(game.Id);
+
+        var othersGame = await factory.CountHintAsync(otherPlayer, game.Id, halfMoveNumber);
+        var noSuchGame = await factory.CountHintAsync(owner, Guid.NewGuid(), halfMoveNumber);
+
+        othersGame.Value.Should().BeOfType<GameNotFound>();
+        noSuchGame.Value.Should().BeOfType<GameNotFound>();
+        (await postgres.SavedRowsAsync(game.Id)).Should().Be(before);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task CountingAHintRefusesAHalfMoveNumberBelowOne(int halfMoveNumber)
+    {
+        var owner = await factory.CreateOwnerAsync();
+        var game = await factory.CreateGameAsync(owner, Opponent.Computer(800));
+
+        var count = () => factory.CountHintAsync(owner, game.Id, halfMoveNumber);
+
+        await count.Should().ThrowAsync<ArgumentOutOfRangeException>();
     }
 
     // SaveChanges saves everything the context tracks, so a save that began

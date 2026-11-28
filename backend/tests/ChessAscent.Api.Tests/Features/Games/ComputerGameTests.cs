@@ -2,18 +2,12 @@ using System.Net;
 using System.Text.Json.Nodes;
 using ChessAscent.Api.Features.Games;
 using ChessAscent.Api.Opponents;
-using ChessAscent.Api.Tests.Features.Accounts;
 using ChessAscent.Chess;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Logging;
 using static ChessAscent.Api.Tests.Features.Games.GameRequests;
-using AccountData = ChessAscent.Api.Tests.Features.Accounts.Accounts;
 
 namespace ChessAscent.Api.Tests.Features.Games;
 
@@ -31,8 +25,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     public async Task AsWhiteTheComputerRepliesToEachMoveUntilThePlayerMates()
     {
         var opponent = FakeOpponent.Playing("e7e5", "b8c6", "g8f6");
-        using var api = ApiWith(opponent);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(opponent);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
 
         var afterFirst = await client.PlayAsync(game.Id, "e2e4");
@@ -68,8 +62,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     public async Task AsBlackTheComputerMovesFirstWhenTheGameIsCreatedAndRepliesUntilThePlayerMates()
     {
         var opponent = FakeOpponent.Playing("f2f3", "g2g4");
-        using var api = ApiWith(opponent);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(opponent);
+        using var client = await api.SignedInClientAsync();
 
         using var response = await client.PostComputerGameAsync("black", 1200);
         var created = await response.ReadGameAsync();
@@ -98,8 +92,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     public async Task AReplyThatEndsTheGameIsSavedWithTheResultAndNothingMoreCanBePlayed()
     {
         var opponent = FakeOpponent.Playing("e7e5", "d8h4");
-        using var api = ApiWith(opponent);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(opponent);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
         await client.PlayAsync(game.Id, "f2f3");
 
@@ -121,8 +115,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     public async Task WhenTheComputerGivesNoReplyNothingIsSavedAndTheSameMoveThenSucceeds()
     {
         var opponent = FakeOpponent.FailingOnceThenPlaying("e7e5", reasonForTheLog: "secret-reason-for-the-log");
-        using var api = ApiWith(opponent);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(opponent);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
         var before = await postgres.SavedRowsAsync(game.Id);
 
@@ -144,8 +138,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     public async Task WhenTheComputerGivesNoFirstMoveAsWhiteNoGameIsCreatedAndTryingAgainCreatesOne()
     {
         var opponent = FakeOpponent.FailingOnceThenPlaying("e2e4", reasonForTheLog: "secret-reason-for-the-log");
-        using var api = ApiWith(opponent);
-        var (signedIn, ownerId) = await SignedInPlayerAsync(api);
+        using var api = factory.WithFakes(opponent);
+        var (signedIn, ownerId) = await api.SignedInPlayerAsync();
         using var client = signedIn;
 
         using var failed = await client.PostComputerGameAsync("black", 800);
@@ -180,8 +174,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     {
         var opponent = new FakeOpponent { Answer = (_, _) => Task.FromResult(FaultyReply(reply)) };
         var logs = new CapturingLoggerProvider();
-        using var api = ApiWith(opponent, logs);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(opponent, logs: logs);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
         var before = await postgres.SavedRowsAsync(game.Id);
 
@@ -200,8 +194,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
         // A move for Black, when White moves first.
         var opponent = new FakeOpponent { Answer = (_, _) => Task.FromResult<OpponentReply>(new OpponentMove("e7e5")) };
         var logs = new CapturingLoggerProvider();
-        using var api = ApiWith(opponent, logs);
-        var (signedIn, ownerId) = await SignedInPlayerAsync(api);
+        using var api = factory.WithFakes(opponent, logs: logs);
+        var (signedIn, ownerId) = await api.SignedInPlayerAsync();
         using var client = signedIn;
 
         using var response = await client.PostComputerGameAsync("black", 800);
@@ -219,8 +213,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     {
         var opponent = new FakeOpponent();
         var logs = new CapturingLoggerProvider();
-        using var api = ApiWith(opponent, logs);
-        var (signedIn, ownerId) = await SignedInPlayerAsync(api);
+        using var api = factory.WithFakes(opponent, logs: logs);
+        var (signedIn, ownerId) = await api.SignedInPlayerAsync();
         using var client = signedIn;
         var game = await factory.CreateGameAsync(ownerId, Opponent.Computer(800), Side.White);
         var (e4, afterE4) = GameData.Rules.NewGame().Play("e2e4");
@@ -242,8 +236,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     {
         var opponent = new FakeOpponent();
         var logs = new CapturingLoggerProvider();
-        using var api = ApiWith(opponent, logs);
-        var (signedIn, ownerId) = await SignedInPlayerAsync(api);
+        using var api = factory.WithFakes(opponent, logs: logs);
+        var (signedIn, ownerId) = await api.SignedInPlayerAsync();
         using var client = signedIn;
         var game = await factory.CreateGameAsync(
             ownerId, Opponent.Computer(800), Side.White, startingFen: "k7/8/8/8/8/8/8/KR6 w - - 0 1");
@@ -263,8 +257,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     public async Task AMoveSentTwiceInARowIsPlayedAndRepliedToOnce()
     {
         var opponent = FakeOpponent.Playing("e7e5");
-        using var api = ApiWith(opponent);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(opponent);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
 
         using var first = await client.PostMoveAsync(game.Id, "e2e4", 1);
@@ -299,8 +293,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
                 return new OpponentMove("e7e5");
             },
         };
-        using var api = ApiWith(opponent);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(opponent);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
 
         var first = client.PostMoveAsync(game.Id, "e2e4", 1);
@@ -323,8 +317,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     public async Task AMoveForAnotherHalfMoveThanTheNextIsRefusedWith409AndTheComputerIsNotAsked(int halfMoveNumber)
     {
         var opponent = FakeOpponent.Playing("e7e5");
-        using var api = ApiWith(opponent);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(opponent);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
         var afterFirst = await client.PlayAsync(game.Id, "e2e4");
 
@@ -340,10 +334,10 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     public async Task AnotherPlayersComputerGameIsNotFoundAndTheComputerIsNotAsked()
     {
         var opponent = new FakeOpponent();
-        using var api = ApiWith(opponent);
-        using var owner = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(opponent);
+        using var owner = await api.SignedInClientAsync();
         var game = await owner.CreateComputerGameAsync("white");
-        using var otherPlayer = await SignedInClientAsync(api);
+        using var otherPlayer = await api.SignedInClientAsync();
 
         using var read = await otherPlayer.GetGameAsync(game.Id);
         using var move = await otherPlayer.PostMoveAsync(game.Id, "e2e4", 1);
@@ -359,8 +353,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     public async Task AGameWithNoOpponentNeverAsksTheComputer()
     {
         var opponent = new FakeOpponent();
-        using var api = ApiWith(opponent);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(opponent);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateGameAsync("black");
 
         var played = await client.PlayAsync(game.Id, "e2e4", "e7e5");
@@ -377,8 +371,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     public async Task EveryOfferedStrengthIsSavedReadBackAndPlayedAt(int strength)
     {
         var opponent = FakeOpponent.Playing("e7e5");
-        using var api = ApiWith(opponent);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(opponent);
+        using var client = await api.SignedInClientAsync();
 
         var created = await client.CreateComputerGameAsync("white", strength);
         var read = await client.ReadGameAsync(created.Id);
@@ -395,8 +389,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     public async Task AComputerGameWithNoStrengthIsPlayedAt800(string body)
     {
         var opponent = FakeOpponent.Playing("e2e4");
-        using var api = ApiWith(opponent);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(opponent);
+        using var client = await api.SignedInClientAsync();
 
         using var response = await client.PostAsync("/games", JsonBody(body), Cancellation);
 
@@ -417,8 +411,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     public async Task AStrengthTheComputerDoesNotOfferIsRefusedUnderTheStrengthFieldBeforeTheComputerIsAsked(int strength)
     {
         var opponent = new FakeOpponent();
-        using var api = ApiWith(opponent);
-        var (signedIn, ownerId) = await SignedInPlayerAsync(api);
+        using var api = factory.WithFakes(opponent);
+        var (signedIn, ownerId) = await api.SignedInPlayerAsync();
         using var client = signedIn;
 
         using var response = await client.PostComputerGameAsync("black", strength);
@@ -434,8 +428,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     [Fact]
     public async Task AStrengthForAnOpponentOfKindNoneIsRefusedUnderTheStrengthField()
     {
-        using var api = ApiWith(new FakeOpponent());
-        var (signedIn, ownerId) = await SignedInPlayerAsync(api);
+        using var api = factory.WithFakes(new FakeOpponent());
+        var (signedIn, ownerId) = await api.SignedInPlayerAsync();
         using var client = signedIn;
 
         using var response = await client.PostGameAsync(new { playerSide = "white", opponent = new { kind = "none", strength = 800 } });
@@ -455,8 +449,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     public async Task AStrengthThatIsNotAWholeJsonNumberIsRefused(string body)
     {
         var opponent = new FakeOpponent();
-        using var api = ApiWith(opponent);
-        var (signedIn, ownerId) = await SignedInPlayerAsync(api);
+        using var api = factory.WithFakes(opponent);
+        var (signedIn, ownerId) = await api.SignedInPlayerAsync();
         using var client = signedIn;
 
         using var response = await client.PostAsync("/games", JsonBody(body), Cancellation);
@@ -470,8 +464,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     [Fact]
     public async Task TheComputerAndItsStrengthAreWrittenAsTheOpponent()
     {
-        using var api = ApiWith(new FakeOpponent());
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(new FakeOpponent());
+        using var client = await api.SignedInClientAsync();
 
         using var response = await client.PostComputerGameAsync("white", 1000);
         var body = JsonNode.Parse(await response.Content.ReadAsStringAsync(Cancellation))!.AsObject();
@@ -512,8 +506,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
             },
         };
         var abandoned = new AbandonedRequests();
-        using var api = ApiWith(opponent, configure: services => services.AddSingleton<IStartupFilter>(abandoned));
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(opponent, configure: services => services.AddSingleton<IStartupFilter>(abandoned));
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
         var before = await postgres.SavedRowsAsync(game.Id);
 
@@ -561,8 +555,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
             },
         };
         var abandoned = new AbandonedRequests();
-        using var api = ApiWith(opponent, configure: services => services.AddSingleton<IStartupFilter>(abandoned));
-        var (signedIn, ownerId) = await SignedInPlayerAsync(api);
+        using var api = factory.WithFakes(opponent, configure: services => services.AddSingleton<IStartupFilter>(abandoned));
+        var (signedIn, ownerId) = await api.SignedInPlayerAsync();
         using var client = signedIn;
 
         using var browser = CancellationTokenSource.CreateLinkedTokenSource(Cancellation);
@@ -592,48 +586,6 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
         "game over" => new GameAlreadyOver(new Checkmate(Side.White)),
         _ => throw new ArgumentOutOfRangeException(nameof(reply), reply, null),
     };
-
-    // LEARN: ConfigureTestServices runs after Program.cs has registered the
-    // application's services, so what it registers replaces what the
-    // application chose, for this test's host only. It is the counterpart of
-    // @MockitoBean (formerly @MockBean), or of a @TestConfiguration bean
-    // marked @Primary, with two differences. Nothing is a mock unless the
-    // test makes it one: here it is a hand-written fake. And there is no
-    // @Primary to pick between two registrations; resolving a service that
-    // is registered twice gives the last registration, so RemoveAll first
-    // makes the fake the only one, rather than relying on that order.
-    // WithWebHostBuilder builds a separate host from the class's factory, so
-    // tests that replace the opponent differently can run at the same time.
-    private WebApplicationFactory<Program> ApiWith(
-        FakeOpponent opponent, CapturingLoggerProvider? logs = null, Action<IServiceCollection>? configure = null) =>
-        factory.WithWebHostBuilder(host =>
-        {
-            host.ConfigureTestServices(services =>
-            {
-                services.RemoveAll<IOpponent>();
-                services.AddSingleton<IOpponent>(opponent);
-                configure?.Invoke(services);
-            });
-            if (logs is not null)
-            {
-                host.ConfigureLogging(logging => logging
-                    .AddProvider(logs)
-                    .AddFilter<CapturingLoggerProvider>(category: null, LogLevel.Trace));
-            }
-        });
-
-    private async Task<HttpClient> SignedInClientAsync(WebApplicationFactory<Program> api) =>
-        (await SignedInPlayerAsync(api)).Client;
-
-    // A browser signed in to a new account, and the account's id.
-    private async Task<(HttpClient Client, string OwnerId)> SignedInPlayerAsync(WebApplicationFactory<Program> api)
-    {
-        var client = api.CreateClient();
-        var email = AccountData.NewEmail();
-        await client.RegisterNewAsync(email);
-        return (client, await factory.AccountIdAsync(email));
-    }
-
 
     // Counts requests that the server has finished with after their client
     // gave up on them, so a test can wait for the server to be done with one

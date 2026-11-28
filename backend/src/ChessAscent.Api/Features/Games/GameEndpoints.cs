@@ -72,8 +72,18 @@ namespace ChessAscent.Api.Features.Games;
 /// because the binder leaves it at 0, which validation refuses, and in
 /// Development as a plain problem); and 401.
 /// </para>
+/// <para>
+/// Asking for a hint is in GameEndpoints.Hints.cs, with its answers.
+/// </para>
 /// </remarks>
-public static class GameEndpoints
+// LEARN: `partial` lets one class be written across several files, which the
+// compiler joins into a single class: the hint endpoint lives in
+// GameEndpoints.Hints.cs and shares this file's private helpers, such as
+// PlayerId and NotFoundProblem, without making them visible to the rest of
+// the project. Java has no counterpart; a Java class is one file, and
+// sharing private helpers between two classes means widening them to
+// package-private.
+public static partial class GameEndpoints
 {
     /// <summary>The detail of the 404 for a game that does not exist or belongs to another player.</summary>
     public const string GameNotFoundDetail = "There is no game with this id.";
@@ -179,6 +189,17 @@ public static class GameEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status500InternalServerError);
         games.MapPost("/{id:guid}/moves", PlayMoveAsync)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+            .ProducesProblem(StatusCodes.Status500InternalServerError)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
+        // The handler never returns the 400 itself: validation refuses a
+        // body without a half-move number before the handler runs.
+        games.MapPost("/{id:guid}/hints", GiveHintAsync)
+            .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
@@ -458,7 +479,8 @@ public static class GameEndpoints
     // the board is left in, in one transaction, and answers with the game as
     // saved, built from what this request played rather than read back, so a
     // move another request saves just after this one does not appear in this
-    // answer.
+    // answer. The hint count is the one the save read under its lock, since
+    // a hint can be counted in this position while the computer thinks.
     private static async Task<Results<Ok<GameResponse>, ValidationProblem, ProblemHttpResult>> SaveAsync(
         GameStore store,
         string playerId,
@@ -486,6 +508,7 @@ public static class GameEndpoints
             Result = saved.Result,
             EndReason = saved.EndReason,
             UpdatedAt = saved.UpdatedAt,
+            HintCount = saved.HintCount,
             Moves = [.. game.Moves, .. moves],
         };
 

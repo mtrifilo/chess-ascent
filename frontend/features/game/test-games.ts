@@ -26,6 +26,7 @@ export function game(overrides: Partial<Game> = {}): Game {
     moves: [],
     legalMoves: { e2: ['e3', 'e4'], g1: ['f3', 'h3'] },
     promotions: [],
+    hintCount: 0,
     ...overrides,
   }
 }

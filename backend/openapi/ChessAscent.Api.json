@@ -517,6 +517,126 @@
         }
       }
     },
+    "/games/{id}/hints": {
+      "post": {
+        "tags": [
+          "GameEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HintRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HintResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/ready": {
       "get": {
         "summary": "Whether the API is ready to serve: every readiness check passes.",
@@ -659,7 +779,8 @@
           "endReason",
           "moves",
           "legalMoves",
-          "promotions"
+          "promotions",
+          "hintCount"
         ],
         "type": "object",
         "properties": {
@@ -733,6 +854,11 @@
               "$ref": "#/components/schemas/PromotionResponse"
             },
             "description": "The moves in LegalMoves that promote a pawn, each with\nthe pieces it may become. Such a move is sent with the piece's letter.\nEmpty when there are none, and once the game is over."
+          },
+          "hintCount": {
+            "type": "integer",
+            "description": "The number of positions in which the player was given a hint. Asking\nagain in the same position does not add to it. Above 0, the game is one\nin which a hint was used.",
+            "format": "int32"
           }
         },
         "description": "A game as the game screen shows it."
@@ -753,6 +879,7 @@
           "result",
           "endReason",
           "halfMoveCount",
+          "hintCount",
           "lastActivityAt"
         ],
         "type": "object",
@@ -801,6 +928,11 @@
             "description": "The number of half-moves played so far, by both sides: the number of\nmoves the game's own response lists.",
             "format": "int32"
           },
+          "hintCount": {
+            "type": "integer",
+            "description": "The number of positions in which the player was given a hint, as the\ngame's own response gives it. Above 0, the game is one in which a hint was\nused.",
+            "format": "int32"
+          },
           "lastActivityAt": {
             "type": "string",
             "description": "When the game was created or last had a move saved, as an ISO 8601 time\nin UTC.",
@@ -808,6 +940,38 @@
           }
         },
         "description": "A game as the list of games shows it, without its moves."
+      },
+      "HintRequest": {
+        "required": [
+          "halfMoveNumber"
+        ],
+        "type": "object",
+        "properties": {
+          "halfMoveNumber": {
+            "type": "integer",
+            "description": "The half-move number the hinted move would have, as a move request gives\nit: one more than the number of moves in the game the client is showing.\nAny other number is refused with 409 before a hint is looked for, so a\nhint always belongs to the position the client is showing.",
+            "format": "int32"
+          }
+        },
+        "description": "The body of `POST /games/{id}/hints`."
+      },
+      "HintResponse": {
+        "required": [
+          "from",
+          "to"
+        ],
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "The square of the piece to move, such as `b1`."
+          },
+          "to": {
+            "type": "string",
+            "description": "The square it moves to, such as `d2`. A castling move is given as the\nking's move. A move that promotes a pawn is given by its two squares only."
+          }
+        },
+        "description": "The hint: the move the hint engine finds best for the player, which is\nnot played."
       },
       "HttpValidationProblemDetails": {
         "type": "object",
