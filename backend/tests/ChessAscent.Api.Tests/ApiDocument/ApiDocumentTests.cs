@@ -54,7 +54,7 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
             .SelectMany(path => path.Value!.AsObject().Select(operation => $"{operation.Key} {path.Key}"));
         operations.Should().BeEquivalentTo(
             "post /auth/register", "post /auth/sign-in", "post /auth/sign-out", "get /auth/me",
-            "get /games", "post /games", "get /games/{id}", "post /games/{id}/moves",
+            "get /games", "post /games", "get /games/{id}", "post /games/{id}/moves", "post /games/{id}/hints",
             "get /health/ready", "get /version");
     }
 
@@ -68,6 +68,7 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
     [InlineData("/games", "post", new[] { "201", "400", "401", "403", "500", "503" })]
     [InlineData("/games/{id}", "get", new[] { "200", "401", "404", "500" })]
     [InlineData("/games/{id}/moves", "post", new[] { "200", "400", "401", "403", "404", "409", "422", "500", "503" })]
+    [InlineData("/games/{id}/hints", "post", new[] { "200", "400", "401", "403", "404", "409", "422", "500", "503" })]
     public async Task DocumentListsEveryResponseOfTheGameEndpoints(string path, string method, string[] statuses)
     {
         var document = await GetDocumentAsync();
@@ -80,10 +81,13 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
     // integer only, not also as a string of digits.
     [Theory]
     [InlineData("GameSummaryResponse", "halfMoveCount", new[] { "integer" })]
+    [InlineData("GameSummaryResponse", "hintCount", new[] { "integer" })]
     [InlineData("MoveResponse", "halfMoveNumber", new[] { "integer" })]
     [InlineData("OpponentResponse", "strength", new[] { "null", "integer" })]
     [InlineData("OpponentRequest", "strength", new[] { "null", "integer" })]
     [InlineData("PlayMoveRequest", "halfMoveNumber", new[] { "integer" })]
+    [InlineData("HintRequest", "halfMoveNumber", new[] { "integer" })]
+    [InlineData("GameResponse", "hintCount", new[] { "integer" })]
     [InlineData("ProblemDetails", "status", new[] { "null", "integer" })]
     public async Task DocumentDescribesIntegersAsJsonIntegersOnly(string schema, string property, string[] types)
     {
@@ -136,10 +140,13 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
     [InlineData("GameSummaryResponse", "status", false, "GameProgress")]
     [InlineData("GameSummaryResponse", "result", true, "GameResult")]
     [InlineData("GameSummaryResponse", "endReason", true, "GameEndReason")]
+    [InlineData("GameSummaryResponse", "hintCount", false, null)]
     [InlineData("GameListResponse", "nextCursor", true, null)]
     [InlineData("OpponentResponse", "strength", true, null)]
     [InlineData("OpponentRequest", "strength", true, null)]
     [InlineData("PlayMoveRequest", "halfMoveNumber", false, null)]
+    [InlineData("HintRequest", "halfMoveNumber", false, null)]
+    [InlineData("GameResponse", "hintCount", false, null)]
     public async Task DocumentAllowsNullOnlyWhereTheApiSendsOrAcceptsIt(
         string schema, string property, bool nullable, string? enumSchema)
     {
@@ -213,6 +220,7 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
     [InlineData("CreateGameRequest", new[] { "playerSide", "opponent" })]
     [InlineData("OpponentRequest", new[] { "kind" })]
     [InlineData("PlayMoveRequest", new[] { "uci", "halfMoveNumber" })]
+    [InlineData("HintRequest", new[] { "halfMoveNumber" })]
     public async Task DocumentRequiresExactlyTheRequestFieldsTheApiRequires(string schema, string[] required)
     {
         var document = await GetDocumentAsync();

@@ -61,7 +61,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
 
         body.Select(property => property.Key).Should().Equal(
             "id", "playerSide", "opponent", "fen", "sideToMove", "status", "result", "endReason",
-            "moves", "legalMoves", "promotions");
+            "moves", "legalMoves", "promotions", "hintCount");
         body["id"]!.GetValue<string>().Should().Be(game.Id.ToString());
         body["playerSide"]!.GetValue<string>().Should().Be("black");
         body["opponent"]!.ToJsonString().Should().Be("""{"kind":"none","strength":null}""");
@@ -71,6 +71,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         body["endReason"].Should().BeNull();
         body["moves"]!.ToJsonString().Should().Be("""[{"halfMoveNumber":1,"uci":"e2e4","san":"e4"}]""");
         body["legalMoves"]!["g8"]!.ToJsonString().Should().Be("""["f6","h6"]""");
+        body["hintCount"]!.ToJsonString().Should().Be("0");
     }
 
     [Fact]

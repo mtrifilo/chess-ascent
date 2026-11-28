@@ -69,6 +69,26 @@ public sealed record PlayMoveRequest(
     public const int UciLength = 5;
 }
 
+/// <summary>The body of <c>POST /games/{id}/hints</c>.</summary>
+/// <param name="HalfMoveNumber">
+/// The half-move number the hinted move would have, as a move request gives
+/// it: one more than the number of moves in the game the client is showing.
+/// Any other number is refused with 409 before a hint is looked for, so a
+/// hint always belongs to the position the client is showing.
+/// </param>
+public sealed record HintRequest([property: Required] int? HalfMoveNumber);
+
+/// <summary>
+/// The hint: the move the hint engine finds best for the player, which is
+/// not played.
+/// </summary>
+/// <param name="From">The square of the piece to move, such as <c>b1</c>.</param>
+/// <param name="To">
+/// The square it moves to, such as <c>d2</c>. A castling move is given as the
+/// king's move. A move that promotes a pawn is given by its two squares only.
+/// </param>
+public sealed record HintResponse(string From, string To);
+
 /// <summary>A game as the game screen shows it.</summary>
 /// <param name="Id">The game's id.</param>
 /// <param name="PlayerSide">The side the signed-in player has.</param>
@@ -90,6 +110,11 @@ public sealed record PlayMoveRequest(
 /// the pieces it may become. Such a move is sent with the piece's letter.
 /// Empty when there are none, and once the game is over.
 /// </param>
+/// <param name="HintCount">
+/// The number of positions in which the player was given a hint. Asking
+/// again in the same position does not add to it. Above 0, the game is one
+/// in which a hint was used.
+/// </param>
 public sealed record GameResponse(
     Guid Id,
     Side PlayerSide,
@@ -101,7 +126,8 @@ public sealed record GameResponse(
     GameEndReason? EndReason,
     IReadOnlyList<MoveResponse> Moves,
     IReadOnlyDictionary<string, IReadOnlyList<string>> LegalMoves,
-    IReadOnlyList<PromotionResponse> Promotions);
+    IReadOnlyList<PromotionResponse> Promotions,
+    int HintCount);
 
 /// <summary>Who plays the side the player does not.</summary>
 /// <param name="Kind">The kind of opponent.</param>
@@ -143,6 +169,11 @@ public sealed record GameListResponse(IReadOnlyList<GameSummaryResponse> Games, 
 /// The number of half-moves played so far, by both sides: the number of
 /// moves the game's own response lists.
 /// </param>
+/// <param name="HintCount">
+/// The number of positions in which the player was given a hint, as the
+/// game's own response gives it. Above 0, the game is one in which a hint was
+/// used.
+/// </param>
 /// <param name="LastActivityAt">
 /// When the game was created or last had a move saved, as an ISO 8601 time
 /// in UTC.
@@ -155,6 +186,7 @@ public sealed record GameSummaryResponse(
     GameResult? Result,
     GameEndReason? EndReason,
     int HalfMoveCount,
+    int HintCount,
     DateTimeOffset LastActivityAt);
 
 /// <summary>A pawn move to the last rank, which needs the piece the pawn becomes.</summary>

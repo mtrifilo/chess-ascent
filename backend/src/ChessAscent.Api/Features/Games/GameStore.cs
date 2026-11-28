@@ -21,11 +21,13 @@ namespace ChessAscent.Api.Features.Games;
 /// <para>
 /// Scoped, like the <see cref="AppDbContext"/> it uses, and like it not safe
 /// for concurrent calls: await each call before the next.
-/// <see cref="AppendMovesAsync"/> begins and commits a transaction of its
-/// own, so call it while the context has no transaction open; EF Core throws
-/// if it already has one. And because SaveChanges saves everything a context
-/// tracks, both writes refuse to start while the context holds changes the
-/// caller has not saved, rather than save them along with the game.
+/// <see cref="AppendMovesAsync"/> and <see cref="CountHintAsync"/> begin and
+/// commit a transaction of their own, so call them while the context has no
+/// transaction open; EF Core throws if it already has one. And because
+/// SaveChanges saves everything a context tracks, the writes that call it
+/// (creating a game and appending moves) refuse to start while the context
+/// holds changes the caller has not saved, rather than save them along with
+/// the game.
 /// </para>
 /// </remarks>
 // LEARN: TimeProvider is .NET's counterpart of java.time.Clock: code asks it
@@ -274,6 +276,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
                 g.Result,
                 g.EndReason,
                 g.Moves.Count,
+                g.HintCount,
                 g.UpdatedAt))
             .ToListAsync(cancellationToken);
 
@@ -412,6 +415,104 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         return new MovesAppended(now, progress, result, endReason);
     }
 
+    /// <summary>
+    /// Counts a hint in the position before half-move
+    /// <paramref name="halfMoveNumber"/>, unless that position has been
+    /// counted already, provided the game is still in that position. Nothing
+    /// else about the game changes, its update time included.
+    /// </summary>
+    /// <param name="ownerId">The id of the account the game belongs to.</param>
+    /// <param name="gameId">The game.</param>
+    /// <param name="halfMoveNumber">
+    /// The half-move the hint is for: the
+    /// <see cref="SavedGame.NextHalfMoveNumber"/> of the game the caller loaded
+    /// and found the hint in.
+    /// </param>
+    /// <param name="cancellationToken">
+    /// Cancels the count, which then changes nothing. Once the commit has been
+    /// sent it is no longer cancelled, so a count that has happened is always
+    /// reported as one.
+    /// </param>
+    /// <returns>
+    /// <see cref="HintCounted"/>, also when an earlier call counted the same
+    /// position; <see cref="GameNotFound"/> when no game with
+    /// <paramref name="gameId"/> belongs to <paramref name="ownerId"/>;
+    /// <see cref="GameFinished"/> when the game is over; or
+    /// <see cref="HalfMoveConflict"/> when the game does not have exactly
+    /// <c><paramref name="halfMoveNumber"/> - 1</c> moves. In the last three
+    /// cases nothing is changed.
+    /// </returns>
+    public async Task<HintCountResult> CountHintAsync(
+        string ownerId, Guid gameId, int halfMoveNumber, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(halfMoveNumber, 1);
+
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+
+        // LEARN: The second SetProperty is given an expression of the row,
+        // not a value, so the database computes the new count: the statement
+        // is UPDATE "Games" SET "HintCount" = "HintCount" + 1 ... WHERE ....
+        // The JPA habit would be load-modify-save: load the entity, increment
+        // the field, and let the flush write the new number. Two requests
+        // that both loaded a count of 2 would then both write 3, losing one,
+        // unless the entity has a version that the update checks: @Version in
+        // JPA, or in EF Core a property marked as a concurrency token
+        // (IsConcurrencyToken(), or the [ConcurrencyCheck] attribute), which
+        // makes SaveChanges add "AND <token> = <value as loaded>" to its
+        // WHERE and throw DbUpdateConcurrencyException, EF Core's
+        // OptimisticLockException, when no row matches. The caller would
+        // then reload and try again. Here there is nothing to retry: the
+        // conditions and the increment are read and written by one statement,
+        // against the row as it stands once the statement holds its lock.
+        //
+        // Moves are only ever added at the end of a game, so a position is
+        // named by the number of the half-move to be played from it, and a
+        // number at or below the last one counted has been counted. Of two
+        // requests for the same position, the second waits at this
+        // statement for the first to commit, then finds the number counted
+        // and changes nothing. The update also leaves the game's row locked
+        // until the transaction ends, so no move can be saved before the
+        // count of moves below.
+        var counted = await database.Games
+            .Where(g => g.Id == gameId
+                && g.OwnerId == ownerId
+                && g.Status == GameProgress.Ongoing
+                && g.LastHintedHalfMoveNumber < halfMoveNumber)
+            .ExecuteUpdateAsync(
+                game => game
+                    .SetProperty(g => g.LastHintedHalfMoveNumber, halfMoveNumber)
+                    .SetProperty(g => g.HintCount, g => g.HintCount + 1),
+                cancellationToken);
+        if (counted == 0)
+        {
+            // Only a game the player owns is reported as finished, so this
+            // says nothing about anyone else's games. An ongoing game that
+            // the update left alone has this position counted already.
+            var status = await database.Games
+                .Where(g => g.Id == gameId && g.OwnerId == ownerId)
+                .Select(g => (GameProgress?)g.Status)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (status is not GameProgress.Ongoing)
+            {
+                return status is null ? new GameNotFound() : new GameFinished();
+            }
+        }
+
+        // A move saved since the caller loaded the game means the hint is
+        // for a position the game has left, so it is not counted. Disposing
+        // the transaction without committing undoes the update above.
+        var saved = await database.Moves.CountAsync(m => m.GameId == gameId, cancellationToken);
+        if (saved != halfMoveNumber - 1)
+        {
+            return new HalfMoveConflict();
+        }
+
+        // Not cancellable: a commit cancelled after the server has applied it
+        // would report a count that happened as one that did not.
+        await transaction.CommitAsync(CancellationToken.None);
+        return new HintCounted();
+    }
+
     private static List<Move> MoveRows(Guid gameId, int firstHalfMoveNumber, IReadOnlyList<PlayedMove> moves) =>
     [
         .. moves.Select((move, index) => new Move
@@ -511,6 +612,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         game.EndReason,
         game.CreatedAt,
         game.UpdatedAt,
+        game.HintCount,
         [.. game.Moves.Select(move => new PlayedMove(move.Uci, move.San))],
         game.Moves.Select((move, index) => move.HalfMoveNumber == index + 1).All(inOrder => inOrder));
 }

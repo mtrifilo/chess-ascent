@@ -71,6 +71,20 @@ internal static class GameData
             gameId,
             command => command.ExecuteScalarAsync(TestContext.Current.CancellationToken)) as string;
 
+    /// <summary>
+    /// Like <see cref="SavedRowsAsync"/>, but without the game's two hint
+    /// columns, so that two reads are equal when a hint is all that changed.
+    /// </summary>
+    public static async Task<string?> SavedRowsApartFromHintsAsync(this PostgresFixture postgres, Guid gameId) =>
+        await postgres.RunAsync(
+            """
+            SELECT ((SELECT to_jsonb(g) - 'HintCount' - 'LastHintedHalfMoveNumber' FROM "Games" g WHERE g."Id" = @id)::text)
+                || (SELECT coalesce(json_agg(m ORDER BY m."HalfMoveNumber"), '[]')::text FROM "Moves" m WHERE m."GameId" = @id)
+            """,
+            "id",
+            gameId,
+            command => command.ExecuteScalarAsync(TestContext.Current.CancellationToken)) as string;
+
     /// <summary>The number of games the account owns, read from the database directly.</summary>
     public static async Task<long> CountGamesAsync(this PostgresFixture postgres, string ownerId) =>
         (long)(await postgres.RunAsync(

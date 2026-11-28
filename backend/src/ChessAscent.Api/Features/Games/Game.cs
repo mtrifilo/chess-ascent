@@ -55,5 +55,14 @@ internal sealed class Game
     /// <summary>When the game was created or last had a move saved.</summary>
     public DateTimeOffset UpdatedAt { get; set; }
 
+    /// <summary>The number of positions the player was given a hint in.</summary>
+    public int HintCount { get; set; }
+
+    /// <summary>
+    /// The half-move number the last counted hint was for, or 0 before the
+    /// first. A hint for this number or a lower one is not counted again.
+    /// </summary>
+    public int LastHintedHalfMoveNumber { get; set; }
+
     public List<Move> Moves { get; } = [];
 }

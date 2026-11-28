@@ -559,6 +559,119 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/games/{id}/hints': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: {
+      parameters: {
+        query?: never
+        header?: never
+        path: {
+          id: string
+        }
+        cookie?: never
+      }
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['HintRequest']
+        }
+      }
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/json': components['schemas']['HintResponse']
+          }
+        }
+        /** @description Bad Request */
+        400: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['HttpValidationProblemDetails']
+          }
+        }
+        /** @description Unauthorized */
+        401: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Forbidden */
+        403: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Not Found */
+        404: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Conflict */
+        409: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Unprocessable Entity */
+        422: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Internal Server Error */
+        500: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+        /** @description Service Unavailable */
+        503: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+      }
+    }
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/health/ready': {
     parameters: {
       query?: never
@@ -697,6 +810,13 @@ export interface components {
        *     Empty when there are none, and once the game is over.
        */
       promotions: components['schemas']['PromotionResponse'][]
+      /**
+       * Format: int32
+       * @description The number of positions in which the player was given a hint. Asking
+       *     again in the same position does not add to it. Above 0, the game is one
+       *     in which a hint was used.
+       */
+      hintCount: number
     }
     /** @enum {unknown} */
     GameResult: 'whiteWins' | 'blackWins' | 'draw'
@@ -722,11 +842,42 @@ export interface components {
        */
       halfMoveCount: number
       /**
+       * Format: int32
+       * @description The number of positions in which the player was given a hint, as the
+       *     game's own response gives it. Above 0, the game is one in which a hint was
+       *     used.
+       */
+      hintCount: number
+      /**
        * Format: date-time
        * @description When the game was created or last had a move saved, as an ISO 8601 time
        *     in UTC.
        */
       lastActivityAt: string
+    }
+    /** @description The body of `POST /games/{id}/hints`. */
+    HintRequest: {
+      /**
+       * Format: int32
+       * @description The half-move number the hinted move would have, as a move request gives
+       *     it: one more than the number of moves in the game the client is showing.
+       *     Any other number is refused with 409 before a hint is looked for, so a
+       *     hint always belongs to the position the client is showing.
+       */
+      halfMoveNumber: number
+    }
+    /**
+     * @description The hint: the move the hint engine finds best for the player, which is
+     *     not played.
+     */
+    HintResponse: {
+      /** @description The square of the piece to move, such as `b1`. */
+      from: string
+      /**
+       * @description The square it moves to, such as `d2`. A castling move is given as the
+       *     king's move. A move that promotes a pawn is given by its two squares only.
+       */
+      to: string
     }
     HttpValidationProblemDetails: {
       type?: null | string

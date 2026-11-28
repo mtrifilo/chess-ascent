@@ -2,6 +2,7 @@ using System.Reflection;
 using ChessAscent.Api.Database;
 using ChessAscent.Api.Database.Migrations;
 using ChessAscent.Api.Features.Games;
+using ChessAscent.Api.Tests.Features.Games;
 using ChessAscent.Chess;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -40,6 +41,36 @@ public sealed class MigrationUpgradeTests(PostgresFixture postgres)
         var store = new GameStore(context, TimeProvider.System);
         var game = await store.CreateAsync(account.Id, Side.White, Opponent.None, "8/8/8/8/8/8/8/K6k w - - 0 1", Cancellation);
         (await store.LoadAsync(account.Id, game.Id, Cancellation)).Should().BeEquivalentTo(game);
+    }
+
+    // The game is written with SQL, since the model already has the columns
+    // the schema it is written into lacks.
+    [Fact]
+    public async Task TheHintMigrationStartsEveryExistingGameWithNoHints()
+    {
+        var hintMigration = typeof(_20261128022216_AddHintCount).GetCustomAttribute<MigrationAttribute>()!.Id;
+        await using var context = await NewDatabaseAsync();
+        var migrations = context.Database.GetMigrations().ToList();
+        var previousSchema = migrations[migrations.IndexOf(hintMigration) - 1];
+        var migrator = context.GetService<IMigrator>();
+
+        await migrator.MigrateAsync(previousSchema, Cancellation);
+        var account = new IdentityUser { UserName = "hints@example.com", Email = "hints@example.com" };
+        context.Users.Add(account);
+        await context.SaveChangesAsync(Cancellation);
+        var gameId = Guid.CreateVersion7();
+        await context.Database.ExecuteSqlAsync(
+            $"""
+            INSERT INTO "Games" ("Id", "OwnerId", "PlayerSide", "OpponentKind", "OpponentStrength", "StartingFen", "Status", "CreatedAt", "UpdatedAt")
+            VALUES ({gameId}, {account.Id}, 'White', 'Computer', 800, {GameData.StartingFen}, 'Ongoing', now(), now())
+            """,
+            Cancellation);
+        await migrator.MigrateAsync(cancellationToken: Cancellation);
+
+        var store = new GameStore(context, TimeProvider.System);
+        (await store.LoadAsync(account.Id, gameId, Cancellation))!.HintCount.Should().Be(0);
+        (await store.CountHintAsync(account.Id, gameId, 1, Cancellation)).Value.Should().BeOfType<HintCounted>();
+        (await store.LoadAsync(account.Id, gameId, Cancellation))!.HintCount.Should().Be(1);
     }
 
     private async Task<AppDbContext> NewDatabaseAsync()

@@ -39,7 +39,8 @@ internal static class GameMapping
             game.EndReason,
             [.. game.Moves.Select((move, index) => new MoveResponse(index + 1, move.Uci, move.San))],
             DestinationsByOrigin(legalMoves),
-            Promotions(legalMoves));
+            Promotions(legalMoves),
+            game.HintCount);
     }
 
     /// <summary>The page as the list of games sends it.</summary>
@@ -52,6 +53,7 @@ internal static class GameMapping
             game.Result,
             game.EndReason,
             game.HalfMoveCount,
+            game.HintCount,
             game.UpdatedAt))],
         page.Next?.Encode());
 

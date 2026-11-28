@@ -175,6 +175,7 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
             null,
             null,
             0,
+            0,
             ongoingPage.Games[0].LastActivityAt));
         finishedPage.Games.Should().ContainSingle().Which.Should().Be(new GameSummaryResponse(
             mated.Id,
@@ -184,6 +185,7 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
             GameResult.BlackWins,
             GameEndReason.Checkmate,
             4,
+            0,
             finishedPage.Games[0].LastActivityAt));
     }
 
@@ -217,7 +219,7 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
         body["nextCursor"].Should().BeNull();
         var row = body["games"]!.AsArray().Should().ContainSingle().Subject!.AsObject();
         row.Select(property => property.Key).Should().Equal(
-            "id", "playerSide", "opponent", "status", "result", "endReason", "halfMoveCount", "lastActivityAt");
+            "id", "playerSide", "opponent", "status", "result", "endReason", "halfMoveCount", "hintCount", "lastActivityAt");
         row["id"]!.GetValue<string>().Should().Be(saved.Id.ToString());
         row["playerSide"]!.GetValue<string>().Should().Be("black");
         row["opponent"]!.ToJsonString().Should().Be("""{"kind":"computer","strength":1200}""");
@@ -225,6 +227,7 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
         row["result"].Should().BeNull();
         row["endReason"].Should().BeNull();
         row["halfMoveCount"]!.GetValue<int>().Should().Be(0);
+        row["hintCount"]!.ToJsonString().Should().Be("0");
         var lastActivity = row["lastActivityAt"]!.GetValue<string>();
         lastActivity.Should().EndWith("+00:00");
         DateTimeOffset.Parse(lastActivity, System.Globalization.CultureInfo.InvariantCulture).Should().Be(saved.UpdatedAt);
@@ -387,7 +390,10 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
             .Where(message => message.StartsWith("Executed DbCommand", StringComparison.Ordinal))
             .Should().ContainSingle().Subject;
         sql.Should().Contain("""FROM "Games" """).And.Contain("LIMIT");
-        foreach (var unlisted in new[] { "\"Uci\"", "\"San\"", "\"StartingFen\"", "\"CreatedAt\"" })
+
+        // The hint count is the game's own column, read in the same query.
+        sql.Should().Contain("\"HintCount\"");
+        foreach (var unlisted in new[] { "\"Uci\"", "\"San\"", "\"StartingFen\"", "\"CreatedAt\"", "\"LastHintedHalfMoveNumber\"" })
         {
             sql.Should().NotContain(unlisted);
         }

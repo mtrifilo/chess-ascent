@@ -54,6 +54,21 @@ internal static class GameRequests
     public static Task<HttpResponseMessage> PostMoveAsync(this HttpClient client, Guid gameId, string? uci, int halfMoveNumber) =>
         client.PostAsJsonAsync($"/games/{gameId}/moves", new { uci, halfMoveNumber }, Cancellation);
 
+    public static Task<HttpResponseMessage> PostHintAsync(this HttpClient client, Guid gameId, int halfMoveNumber) =>
+        client.PostAsJsonAsync($"/games/{gameId}/hints", new { halfMoveNumber }, Cancellation);
+
+    /// <summary>Asks for a hint for the game's next half-move, checking that it answered 200, and returns it.</summary>
+    public static async Task<HintResponse> HintAsync(this HttpClient client, GameResponse game)
+    {
+        using var response = await client.PostHintAsync(game.Id, game.NextHalfMoveNumber());
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        return await response.ReadHintAsync();
+    }
+
+    /// <summary>Reads a hint body with the serializer settings the API writes it with.</summary>
+    public static Task<HintResponse> ReadHintAsync(this HttpResponseMessage response) =>
+        response.ReadBodyAsync<HintResponse>();
+
     /// <summary>Creates a game, checking that it answered 201, and returns it.</summary>
     public static async Task<GameResponse> CreateGameAsync(this HttpClient client, string playerSide = "white")
     {
