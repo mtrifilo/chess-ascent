@@ -189,6 +189,18 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
             finishedPage.Games[0].LastActivityAt));
     }
 
+    [Fact]
+    public async Task AGameGivesTheSameLastActivityAsItsRowInTheList()
+    {
+        using var client = await factory.SignedInClientAsync();
+        var game = await client.CreateGameAsync();
+        await client.PlayAsync(game.Id, GameRequests.FoolsMate);
+
+        var row = (await client.ListGamesAsync(Finished)).Games.Should().ContainSingle().Subject;
+
+        (await client.ReadGameAsync(game.Id)).LastActivityAt.Should().Be(row.LastActivityAt);
+    }
+
     [Theory]
     [InlineData(Ongoing)]
     [InlineData(Finished)]

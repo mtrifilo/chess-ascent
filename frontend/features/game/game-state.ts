@@ -208,6 +208,16 @@ export function winner(result: Result): Side | null {
   return result === 'whiteWins' ? 'white' : 'black'
 }
 
+// How a finished game ended for the player who had `playerSide`.
+export function outcomeFor(
+  playerSide: Side,
+  result: Result
+): 'won' | 'lost' | 'draw' {
+  const side = winner(result)
+  if (!side) return 'draw'
+  return side === playerSide ? 'won' : 'lost'
+}
+
 // The marker of a game in which a hint was used, or undefined for any other
 // game: the API counts the positions in which the player was given one.
 export function hintUsedText(

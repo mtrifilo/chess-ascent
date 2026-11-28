@@ -115,6 +115,10 @@ public sealed record HintResponse(string From, string To);
 /// again in the same position does not add to it. Above 0, the game is one
 /// in which a hint was used.
 /// </param>
+/// <param name="LastActivityAt">
+/// When the game was created, last had a move saved, or was resigned, as an
+/// ISO 8601 time in UTC. The list of games gives the same time.
+/// </param>
 public sealed record GameResponse(
     Guid Id,
     Side PlayerSide,
@@ -127,7 +131,8 @@ public sealed record GameResponse(
     IReadOnlyList<MoveResponse> Moves,
     IReadOnlyDictionary<string, IReadOnlyList<string>> LegalMoves,
     IReadOnlyList<PromotionResponse> Promotions,
-    int HintCount);
+    int HintCount,
+    DateTimeOffset LastActivityAt);
 
 /// <summary>Who plays the side the player does not.</summary>
 /// <param name="Kind">The kind of opponent.</param>
@@ -141,7 +146,11 @@ public sealed record OpponentResponse(OpponentKind Kind, int? Strength);
 /// </param>
 /// <param name="Uci">The move in UCI coordinate form, such as <c>e2e4</c> or <c>e7e8q</c>.</param>
 /// <param name="San">The move in standard algebraic notation, such as <c>e4</c> or <c>e8=Q+</c>.</param>
-public sealed record MoveResponse(int HalfMoveNumber, string Uci, string San);
+/// <param name="Fen">
+/// The position after the move, as six-field FEN. The last move's is the
+/// game's <c>fen</c>.
+/// </param>
+public sealed record MoveResponse(int HalfMoveNumber, string Uci, string San, string Fen);
 
 /// <summary>One page of the signed-in player's games, most recent activity first.</summary>
 /// <param name="Games">

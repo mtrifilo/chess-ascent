@@ -7,8 +7,16 @@ export const GAME_ID = '3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
 export const START_FEN =
   'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
-export function move(halfMoveNumber: number, uci: string, san: string) {
-  return { halfMoveNumber, uci, san }
+// A move as the API lists it. The position after it is left empty unless
+// given: the game screen never reads it, and the tests of what the replay
+// shows use a game the API played (features/replay/test-replay-game.ts).
+export function move(
+  halfMoveNumber: number,
+  uci: string,
+  san: string,
+  fen = ''
+) {
+  return { halfMoveNumber, uci, san, fen }
 }
 
 // A both-sides game at the starting position, with some of White's legal
@@ -27,6 +35,7 @@ export function game(overrides: Partial<Game> = {}): Game {
     legalMoves: { e2: ['e3', 'e4'], g1: ['f3', 'h3'] },
     promotions: [],
     hintCount: 0,
+    lastActivityAt: '2026-11-25T18:30:00+00:00',
     ...overrides,
   }
 }

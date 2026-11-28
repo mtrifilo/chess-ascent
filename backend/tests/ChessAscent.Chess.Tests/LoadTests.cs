@@ -14,6 +14,18 @@ public sealed class LoadTests
     }
 
     [Fact]
+    public void ARebuiltGameGivesThePositionAfterEachMove()
+    {
+        var game = Games.Play("e2e4", "e7e5", "g1f3");
+
+        game.PositionsAfterMoves.Should().Equal(
+            "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+            "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2",
+            game.Fen);
+        Games.Play().PositionsAfterMoves.Should().BeEmpty();
+    }
+
+    [Fact]
     public void CustomStartingPositionKeepsItsSideToMoveAndCounters()
     {
         var game = Games.Load("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", "e7e5");

@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json.Nodes;
 using ChessAscent.Api.Features.Games;
 using ChessAscent.Api.Security;
+using ChessAscent.Api.Tests.Engine;
 using ChessAscent.Api.Tests.Features.Accounts;
 using ChessAscent.Chess;
 using Microsoft.AspNetCore.Hosting;
@@ -61,7 +62,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
 
         body.Select(property => property.Key).Should().Equal(
             "id", "playerSide", "opponent", "fen", "sideToMove", "status", "result", "endReason",
-            "moves", "legalMoves", "promotions", "hintCount");
+            "moves", "legalMoves", "promotions", "hintCount", "lastActivityAt");
         body["id"]!.GetValue<string>().Should().Be(game.Id.ToString());
         body["playerSide"]!.GetValue<string>().Should().Be("black");
         body["opponent"]!.ToJsonString().Should().Be("""{"kind":"none","strength":null}""");
@@ -69,7 +70,8 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         body["status"]!.GetValue<string>().Should().Be("ongoing");
         body["result"].Should().BeNull();
         body["endReason"].Should().BeNull();
-        body["moves"]!.ToJsonString().Should().Be("""[{"halfMoveNumber":1,"uci":"e2e4","san":"e4"}]""");
+        body["moves"]!.ToJsonString().Should().Be(
+            """[{"halfMoveNumber":1,"uci":"e2e4","san":"e4","fen":"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"}]""");
         body["legalMoves"]!["g8"]!.ToJsonString().Should().Be("""["f6","h6"]""");
         body["hintCount"]!.ToJsonString().Should().Be("0");
     }
@@ -87,15 +89,53 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         mated.EndReason.Should().Be(GameEndReason.Checkmate);
         mated.SideToMove.Should().Be(Side.White);
         mated.Fen.Should().Be("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3");
-        mated.Moves.Should().Equal(
-            new MoveResponse(1, "f2f3", "f3"),
-            new MoveResponse(2, "e7e5", "e5"),
-            new MoveResponse(3, "g2g4", "g4"),
-            new MoveResponse(4, "d8h4", "Qh4#"));
+        mated.Moves.Notation().Should().Equal(
+            (1, "f2f3", "f3"),
+            (2, "e7e5", "e5"),
+            (3, "g2g4", "g4"),
+            (4, "d8h4", "Qh4#"));
         mated.LegalMoves.Should().BeEmpty();
         mated.Promotions.Should().BeEmpty();
         (await client.ReadGameAsync(game.Id)).Should().BeEquivalentTo(mated, InStrictOrder);
     }
+
+    // The front end's replay tests use the API's answer for this game, saved
+    // in the file below, which also holds the game's only list of its moves:
+    // an en passant capture, castling on each side, a promotion and an
+    // under-promotion, every kind of move that moves a second piece, takes
+    // one from another square or changes one. Played again here, the answer
+    // must still be the file's, apart from the game's id and time, and each
+    // position must be the chess interface's own for the game up to that move.
+    [Fact]
+    public async Task EachMoveGivesThePositionAfterIt()
+    {
+        var saved = JsonNode.Parse(await File.ReadAllTextAsync(SpecialMovesGamePath, Cancellation))!.AsObject();
+        string[] uciMoves = [.. saved["moves"]!.AsArray().Select(move => move!["uci"]!.GetValue<string>())];
+        using var client = await SignedInClientAsync();
+        var game = await client.CreateGameAsync();
+
+        var mated = await client.PlayAsync(game.Id, uciMoves);
+        using var response = await client.GetGameAsync(game.Id);
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync(Cancellation))!.AsObject();
+        var read = await client.ReadGameAsync(game.Id);
+
+        read.Moves.Select(move => move.San).Should().Contain(["exf6", "O-O-O", "O-O", "gxh8=Q", "bxa1=N"]);
+        read.Moves.Select(move => move.Fen).Should().Equal(PositionsAfterEachMove(uciMoves));
+        read.Moves[^1].Fen.Should().Be(read.Fen);
+        read.Status.Should().Be(GameProgress.Finished);
+        mated.Should().BeEquivalentTo(read, InStrictOrder);
+        foreach (var varying in (string[])["id", "lastActivityAt"])
+        {
+            saved.Remove(varying);
+            body.Remove(varying);
+        }
+
+        JsonNode.DeepEquals(body, saved).Should().BeTrue(
+            "the API's answer should match {0}; if the change to it is intended, save the new answer there", SpecialMovesGamePath);
+    }
+
+    private static string SpecialMovesGamePath => Path.Combine(
+        SetUpScripts.RepositoryRoot, "frontend", "features", "replay", "special-moves-game.json");
 
     [Fact]
     public async Task EachMoveAnswersWithTheGameAsItThenReads()
@@ -184,7 +224,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
             [new PromotionResponse("b7", "a8", everyPiece), new PromotionResponse("b7", "b8", everyPiece)],
             options => options.WithStrictOrdering());
         withoutPiece.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
-        promoted.Moves[^1].Should().Be(new MoveResponse(9, "b7a8n", "bxa8=N"));
+        promoted.Moves.Notation().Last().Should().Be((9, "b7a8n", "bxa8=N"));
         promoted.Promotions.Should().BeEmpty();
     }
 
@@ -293,7 +333,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         first.StatusCode.Should().Be(HttpStatusCode.OK);
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await second.ReadProblemAsync()).Detail.Should().Be(GameEndpoints.MoveConflictDetail);
-        (await client.ReadGameAsync(game.Id)).Moves.Should().Equal(new MoveResponse(1, "e2e4", "e4"));
+        (await client.ReadGameAsync(game.Id)).Moves.Notation().Should().Equal((1, "e2e4", "e4"));
     }
 
     // After e4, e7e5 is legal as the next move, half-move 2. Sent with any
@@ -624,4 +664,18 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         return client;
     }
 
+    // The chess interface's position after each of the moves, played one by
+    // one from the start.
+    private static List<string> PositionsAfterEachMove(string[] uciMoves)
+    {
+        var board = GameData.Rules.NewGame();
+        var positions = new List<string>();
+        foreach (var uci in uciMoves)
+        {
+            board.Play(uci);
+            positions.Add(board.Fen);
+        }
+
+        return positions;
+    }
 }

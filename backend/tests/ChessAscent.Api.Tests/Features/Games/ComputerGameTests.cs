@@ -36,7 +36,7 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
 
         game.Moves.Should().BeEmpty();
         game.Opponent.Should().Be(new OpponentResponse(OpponentKind.Computer, 800));
-        afterFirst.Moves.Should().Equal(new MoveResponse(1, "e2e4", "e4"), new MoveResponse(2, "e7e5", "e5"));
+        afterFirst.Moves.Notation().Should().Equal((1, "e2e4", "e4"), (2, "e7e5", "e5"));
         afterFirst.SideToMove.Should().Be(Side.White);
         afterFirst.Status.Should().Be(GameProgress.Ongoing);
         afterFirst.LegalMoves.Should().ContainKey("f1");
@@ -74,7 +74,7 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         created.PlayerSide.Should().Be(Side.Black);
         created.Opponent.Should().Be(new OpponentResponse(OpponentKind.Computer, 1200));
-        created.Moves.Should().Equal(new MoveResponse(1, "f2f3", "f3"));
+        created.Moves.Notation().Should().Equal((1, "f2f3", "f3"));
         created.SideToMove.Should().Be(Side.Black);
         created.Fen.Should().Be("rnbqkbnr/pppppppp/8/8/8/5P2/PPPPP1PP/RNBQKBNR b KQkq - 0 1");
         created.LegalMoves.Should().ContainKey("e7");
@@ -152,7 +152,7 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
         failed.Headers.Location.Should().BeNull();
         gamesAfterFailure.Should().Be(0);
         retried.StatusCode.Should().Be(HttpStatusCode.Created);
-        (await retried.ReadGameAsync()).Moves.Should().Equal(new MoveResponse(1, "e2e4", "e4"));
+        (await retried.ReadGameAsync()).Moves.Notation().Should().Equal((1, "e2e4", "e4"));
         (await postgres.CountGamesAsync(ownerId)).Should().Be(1);
     }
 
@@ -305,8 +305,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
         new[] { firstResponse.StatusCode, secondResponse.StatusCode }
             .Should().BeEquivalentTo(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict });
         opponent.Calls.Should().HaveCount(2);
-        (await client.ReadGameAsync(game.Id)).Moves.Should().Equal(
-            new MoveResponse(1, "e2e4", "e4"), new MoveResponse(2, "e7e5", "e5"));
+        (await client.ReadGameAsync(game.Id)).Moves.Notation().Should().Equal(
+            (1, "e2e4", "e4"), (2, "e7e5", "e5"));
     }
 
     // 2 is the computer's half-move, 1 has been played, and 4 is ahead.

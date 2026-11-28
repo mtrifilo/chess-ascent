@@ -9,14 +9,12 @@ import { flushSync } from 'react-dom'
 import {
   ChessBoard,
   type BoardMove,
-  type Side,
 } from '@/components/chess-board/chess-board'
 import { useNavItemForPage } from '@/components/layout/page-nav-item'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-import { ColourSwatch } from './colour-swatch'
 import { useComputerThinking } from './computer-thinking'
 import { TEXT_CONTROL_CLASS } from './controls'
 import { useGame, usePlayMove, useResign } from './game-api'
@@ -38,10 +36,12 @@ import {
   type Game,
   type PromotionPiece,
 } from './game-state'
+import { GameStatus } from './game-status'
 import { useHint } from './hint'
 import { HintUsed } from './hint-used'
 import { MoveList } from './move-list'
 import { NewGameLink } from './new-game-link'
+import { PlayerBar } from './player-bar'
 import { PromotionPicker } from './promotion-picker'
 import { ResignConfirm } from './resign-confirm'
 
@@ -49,12 +49,13 @@ import { ResignConfirm } from './resign-confirm'
 // on phones) the game's status or result, the move list and the controls.
 //
 // It is under Play, as drawn, whether the game is being played or is over,
-// and from before the game has loaded. Nothing else shows until then, so the
-// page does not flash a starting position. A game the player does not have
-// shows the site's not-found page.
+// once the game has loaded. Until then nothing shows, not even the item in
+// the top bar, since a game that is already over opens as a replay instead
+// (game-route.tsx), and the page does not flash a starting position. A game
+// the player does not have shows the site's not-found page.
 export function GameScreen({ id }: { id: string }) {
-  useNavItemForPage('/play')
   const { data: game } = useGame(id)
+  useNavItemForPage(game ? '/play' : undefined)
   if (game === null) notFound()
   if (!game) return null
   return <LoadedGame game={game} />
@@ -188,7 +189,8 @@ function LoadedGame({ game }: { game: Game }) {
   return (
     // On phones the upper player bar sits against the app shell's top bar,
     // as drawn, so the shell's 16px top padding (app-shell.tsx) is taken
-    // back; change the two together.
+    // back; change the two together. The replay
+    // (features/replay/replay-screen.tsx) copies this layout: change it too.
     <div className="-mt-4 flex flex-col md:mt-0 md:flex-row md:justify-center md:gap-8">
       <div className="flex min-w-0 flex-col md:w-160 md:gap-2">
         <PlayerBar
@@ -302,38 +304,6 @@ function LoadedGame({ game }: { game: Game }) {
           <MoveList moves={shown.moves} className="md:absolute md:inset-0" />
         </div>
       </div>
-    </div>
-  )
-}
-
-// One side's player, and whether that player is the computer thinking.
-function PlayerBar({
-  game,
-  side,
-  thinking,
-}: {
-  game: Game
-  side: Side
-  thinking: boolean
-}) {
-  return (
-    <div className="flex h-10 items-center gap-2">
-      <ColourSwatch side={side} />
-      <span className="text-sm font-semibold">{playerName(game, side)}</span>
-      {thinking && (
-        <span className="ml-auto text-body-s text-muted-foreground">
-          Thinking…
-        </span>
-      )}
-    </div>
-  )
-}
-
-function GameStatus({ title, detail }: { title: string; detail: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <h1 className="font-display text-display-s font-semibold">{title}</h1>
-      <p className="text-body-s text-muted-foreground">{detail}</p>
     </div>
   )
 }

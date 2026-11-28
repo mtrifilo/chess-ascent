@@ -48,6 +48,14 @@ public interface IChessGame
     /// </summary>
     IReadOnlyList<PlayedMove> History { get; }
 
+    /// <summary>
+    /// The position after each move in <see cref="History"/>, as six-field
+    /// FEN, in the same order, so the last is <see cref="Fen"/>. Empty before
+    /// the first move. Each read returns a new list, which later moves do not
+    /// change.
+    /// </summary>
+    IReadOnlyList<string> PositionsAfterMoves { get; }
+
     /// <summary>Every legal move for the side to move, ordered by UCI text. Empty once the game is over.</summary>
     IReadOnlyList<LegalMove> LegalMoves();
 

@@ -100,6 +100,20 @@ public sealed class RandomGameTests(RandomGames games) : IClassFixture<RandomGam
         replayed.History.Should().Equal(recorded.History);
     }
 
+    // The positions a rebuilt game records are compared with the ones a game
+    // played move by move passes through.
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public void ARebuiltGameGivesThePositionAfterEachMoveAsPlayed(int seed)
+    {
+        var recorded = games[seed];
+
+        var rebuilt = Games.Play([.. recorded.Moves]);
+
+        var reached = RandomGames.Positions(recorded).Skip(1).Select(position => position.Game.Fen).ToList();
+        rebuilt.PositionsAfterMoves.Should().Equal(reached, "in {0}", recorded.At(recorded.Moves.Count));
+    }
+
     // A FEN holds no history, so the reloaded game cannot know about earlier
     // occurrences of the position: a game drawn by repetition reloads as
     // ongoing. Everything else a FEN describes must survive.

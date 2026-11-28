@@ -158,6 +158,13 @@ internal static class GameRequests
         return pages;
     }
 
+    /// <summary>
+    /// Each move's half-move number, UCI and SAN, leaving out the position
+    /// after it, for a test about the moves rather than the positions.
+    /// </summary>
+    public static IEnumerable<(int HalfMoveNumber, string Uci, string San)> Notation(this IEnumerable<MoveResponse> moves) =>
+        moves.Select(move => (move.HalfMoveNumber, move.Uci, move.San));
+
     /// <summary>The half-move number the game's next move has.</summary>
     public static int NextHalfMoveNumber(this GameResponse game) => game.Moves.Count + 1;
 

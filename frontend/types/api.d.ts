@@ -899,6 +899,12 @@ export interface components {
        *     in which a hint was used.
        */
       hintCount: number
+      /**
+       * Format: date-time
+       * @description When the game was created, last had a move saved, or was resigned, as an
+       *     ISO 8601 time in UTC. The list of games gives the same time.
+       */
+      lastActivityAt: string
     }
     /** @enum {unknown} */
     GameResult: 'whiteWins' | 'blackWins' | 'draw'
@@ -984,6 +990,11 @@ export interface components {
       uci: string
       /** @description The move in standard algebraic notation, such as `e4` or `e8=Q+`. */
       san: string
+      /**
+       * @description The position after the move, as six-field FEN. The last move's is the
+       *     game's `fen`.
+       */
+      fen: string
     }
     /**
      * @description Who plays the side the player does not.

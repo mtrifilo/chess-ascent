@@ -30,7 +30,8 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var resigned = await response.ReadGameAsync();
-        // The position, the side to move and the moves stay as they were.
+        // The position, the side to move and the moves stay as they were,
+        // and the resignation is the game's last activity.
         resigned.Should().BeEquivalentTo(
             before with
             {
@@ -38,8 +39,10 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
                 Result = result,
                 EndReason = GameEndReason.Resignation,
                 LegalMoves = new Dictionary<string, IReadOnlyList<string>>(),
+                LastActivityAt = resigned.LastActivityAt,
             },
             InStrictOrder);
+        resigned.LastActivityAt.Should().BeAfter(before.LastActivityAt);
         (await client.ReadGameAsync(game.Id)).Should().BeEquivalentTo(resigned, InStrictOrder);
     }
 
@@ -78,7 +81,7 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var resigned = await response.ReadGameAsync();
         before.HintCount.Should().Be(1);
-        before.Moves.Should().Equal(new MoveResponse(1, "e2e4", "e4"));
+        before.Moves.Notation().Should().Equal((1, "e2e4", "e4"));
         resigned.Should().BeEquivalentTo(
             before with
             {
@@ -87,8 +90,10 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
                 EndReason = GameEndReason.Resignation,
                 LegalMoves = new Dictionary<string, IReadOnlyList<string>>(),
                 Promotions = [],
+                LastActivityAt = resigned.LastActivityAt,
             },
             InStrictOrder);
+        resigned.LastActivityAt.Should().BeAfter(before.LastActivityAt);
         opponent.Calls.Should().HaveCount(1);
         hints.Calls.Should().HaveCount(1);
     }
@@ -137,7 +142,7 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
 
         move.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await move.ReadProblemAsync()).Detail.Should().Be(GameEndpoints.GameFinishedDetail);
-        (await client.ReadGameAsync(game.Id)).Moves.Should().Equal(new MoveResponse(1, "e2e4", "e4"));
+        (await client.ReadGameAsync(game.Id)).Moves.Notation().Should().Equal((1, "e2e4", "e4"));
     }
 
     [Fact]
