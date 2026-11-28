@@ -73,11 +73,14 @@ function LoadedGame({ game }: { game: Game }) {
   const [pending, setPending] = useState<PendingPromotion>()
   const [confirmingResign, setConfirmingResign] = useState(false)
   const resignControl = useRef<HTMLButtonElement>(null)
-  const resign = useResign(game.id)
   // Set at the press itself, as the mutation reports itself pending only
   // after React has rendered again, which a second press can come before.
-  // While it is set, the resignation is neither sent again nor cancelled.
+  // While it is set, the resignation is neither sent again nor cancelled,
+  // and no move is sent to race it.
   const resignSent = useRef(false)
+  const resign = useResign(game.id, () => {
+    resignSent.current = false
+  })
 
   const thinking = useComputerThinking(game, playMove)
   // While the computer thinks, the game is shown as it stood after the
@@ -98,9 +101,11 @@ function LoadedGame({ game }: { game: Game }) {
   const resigning = resign.isPending
   const opponentSide = opposite(game.playerSide)
   const orientation = flipped ? opponentSide : game.playerSide
-  const promotion = pending?.fen === game.fen ? pending : undefined
+  // A resignation ends the game without changing the position, so these
+  // check that the game is still being played as well as the position.
+  const promotion = !finished && pending?.fen === game.fen ? pending : undefined
   const failedMove =
-    playMove.isError && playMove.variables.fen === game.fen
+    !finished && playMove.isError && playMove.variables.fen === game.fen
       ? playMove.variables.uci
       : undefined
 
@@ -118,6 +123,10 @@ function LoadedGame({ game }: { game: Game }) {
 
   function send(uci: string) {
     const resetBoard = () => setBoardKey(key => key + 1)
+    if (resignSent.current) {
+      resetBoard()
+      return
+    }
     playMove.mutate(
       { uci, halfMoveNumber: nextHalfMoveNumber(game), fen: game.fen },
       {
@@ -132,11 +141,7 @@ function LoadedGame({ game }: { game: Game }) {
   function confirmResign() {
     if (moveUnderway || resignSent.current) return
     resignSent.current = true
-    resign.mutate(undefined, {
-      onSettled: () => {
-        resignSent.current = false
-      },
-    })
+    resign.mutate()
   }
 
   function cancelResign() {
@@ -195,13 +200,7 @@ function LoadedGame({ game }: { game: Game }) {
       </div>
       <div className="flex flex-col gap-3 pt-4 md:w-90 md:shrink-0 md:gap-4 md:rounded-md md:border md:bg-card md:p-4">
         {finished ? <ResultPanel game={game} /> : <GameStatus {...status} />}
-        {failedMove && (
-          <MoveFailed
-            onTryAgain={() => {
-              if (!resigning) send(failedMove)
-            }}
-          />
-        )}
+        {failedMove && <MoveFailed onTryAgain={() => send(failedMove)} />}
         {/* The controls, or the resign confirmation in their place: below
             the move list from `md` up, above it on phones. A game that ends
             while the confirmation is open, in another tab say, shows its

@@ -123,13 +123,18 @@ export function usePlayMove(id: string) {
 // game that is not waited for: a resignation whose answer was lost may have
 // been saved all the same, and the read then shows the result. Resigning
 // again is safe, as the second answer is that 409.
-export function useResign(id: string) {
+//
+// `onSettled` runs once the resignation is answered or has failed. It is
+// given here rather than to `mutate`, whose callbacks are skipped while
+// nothing observes the mutation, as when Next.js keeps the page hidden.
+export function useResign(id: string, onSettled?: () => void) {
   const queryClient = useQueryClient()
   return useMutation({
     networkMode: 'always',
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: gameKey(id) })
     },
+    onSettled,
     mutationFn: async () => {
       const answer = await api.POST('/games/{id}/resign', {
         params: { path: { id } },
