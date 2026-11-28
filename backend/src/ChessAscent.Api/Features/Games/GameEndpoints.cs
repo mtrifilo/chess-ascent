@@ -479,7 +479,8 @@ public static partial class GameEndpoints
     // the board is left in, in one transaction, and answers with the game as
     // saved, built from what this request played rather than read back, so a
     // move another request saves just after this one does not appear in this
-    // answer.
+    // answer. The hint count is the one the save read under its lock, since
+    // a hint can be counted in this position while the computer thinks.
     private static async Task<Results<Ok<GameResponse>, ValidationProblem, ProblemHttpResult>> SaveAsync(
         GameStore store,
         string playerId,
@@ -507,6 +508,7 @@ public static partial class GameEndpoints
             Result = saved.Result,
             EndReason = saved.EndReason,
             UpdatedAt = saved.UpdatedAt,
+            HintCount = saved.HintCount,
             Moves = [.. game.Moves, .. moves],
         };
 

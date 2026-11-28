@@ -1,6 +1,7 @@
 using System.Net;
 using ChessAscent.Api.Features.Games;
 using ChessAscent.Api.Hints;
+using ChessAscent.Api.Opponents;
 using ChessAscent.Api.Security;
 using ChessAscent.Chess;
 using Microsoft.AspNetCore.Http;
@@ -343,6 +344,49 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
         var read = await client.ReadGameAsync(game.Id);
         read.Moves.Select(move => move.Uci).Should().Equal("d2d4", "e7e5");
         read.HintCount.Should().Be(0);
+    }
+
+    // A hint is counted in the position while the computer thinks about its
+    // reply to the move played from it, as a second tab can do. The move is
+    // saved after the count, so its answer shows the count as saved, not as
+    // the move request loaded it.
+    [Fact]
+    public async Task AMovesAnswerCarriesAHintCountedWhileTheComputerThought()
+    {
+        var opponent = new FakeOpponent();
+        using var api = factory.WithFakes(opponent, new FakeHintProvider());
+        var (signedIn, ownerId) = await api.SignedInPlayerAsync();
+        using var client = signedIn;
+        var game = await client.CreateComputerGameAsync("white");
+        opponent.Answer = async (_, _) =>
+        {
+            (await factory.WithStoreAsync(store => store.CountHintAsync(ownerId, game.Id, 1, Cancellation)))
+                .Value.Should().BeOfType<HintCounted>();
+            return new OpponentMove("e7e5");
+        };
+
+        var moved = await client.PlayAsync(game.Id, "e2e4");
+
+        moved.HintCount.Should().Be(1);
+        (await client.ReadGameAsync(game.Id)).Should().BeEquivalentTo(moved, InStrictOrder);
+    }
+
+    // The test host has no Fairy-Stockfish kind, so the application's own
+    // hint provider runs without its engine, as on a machine where it is not
+    // installed.
+    [Fact]
+    public async Task WithoutTheHintEngineInstalledAHintAnswers503AndRecordsNothing()
+    {
+        using var api = factory.WithFakes(new FakeOpponent());
+        using var client = await api.SignedInClientAsync();
+        var game = await client.CreateComputerGameAsync("white");
+        var before = await postgres.SavedRowsAsync(game.Id);
+
+        using var response = await client.PostHintAsync(game.Id, 1);
+
+        response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        (await response.ReadProblemAsync()).Detail.Should().Be(GameEndpoints.HintUnavailableDetail);
+        (await postgres.SavedRowsAsync(game.Id)).Should().Be(before);
     }
 
     // The list reads the count from the game's own row, so each row shows

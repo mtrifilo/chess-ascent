@@ -383,6 +383,14 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
             return new HalfMoveConflict();
         }
 
+        // Read under the row lock, so it is the count the commit leaves: a
+        // hint may have been counted in this position after the caller
+        // loaded the game, and none can be counted before the commit.
+        var hintCount = await database.Games
+            .Where(g => g.Id == gameId)
+            .Select(g => g.HintCount)
+            .SingleAsync(cancellationToken);
+
         var rows = MoveRows(gameId, firstHalfMoveNumber, moves);
         database.Moves.AddRange(rows);
         try
@@ -411,7 +419,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // Not cancellable: a commit cancelled after the server has applied it
         // would report a save that happened as one that did not.
         await transaction.CommitAsync(CancellationToken.None);
-        return new MovesAppended(now, progress, result, endReason);
+        return new MovesAppended(now, progress, result, endReason, hintCount);
     }
 
     /// <summary>
@@ -461,17 +469,24 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // WHERE and throw DbUpdateConcurrencyException, EF Core's
         // OptimisticLockException, when no row matches. The caller would
         // then reload and try again. Here there is nothing to retry: the
-        // conditions and the increment are read and written by one statement,
-        // against the row as it stands once the statement holds its lock.
+        // conditions and the increment are read and written by one statement.
+        // Under READ COMMITTED, PostgreSQL's default isolation level and the
+        // one this transaction uses, an UPDATE that has to wait for another
+        // transaction's lock on the row checks its WHERE again, against the
+        // row as that transaction left it, once the lock is free.
         //
         // Moves are only ever added at the end of a game, so a position is
         // named by the number of the half-move to be played from it, and a
-        // number at or below the last one counted has been counted. Of two
-        // requests for the same position, the second waits at this
-        // statement for the first to commit, then finds the number counted
-        // and changes nothing. The update also leaves the game's row locked
+        // number at or below the last one counted has been counted (see
+        // Game.LastHintedHalfMoveNumber). Of two requests for the same
+        // position, the second waits at this statement for the first to
+        // commit, then finds the number counted and changes nothing. When
+        // the update does change the row, it also leaves the row locked
         // until the transaction ends, so no move can be saved before the
-        // count of moves below.
+        // count of moves below. When it changes nothing, it takes no lock,
+        // and nothing is written on that path: the count below still sees
+        // every move saved before it runs, which turns a repeat in a position
+        // the game has left into a conflict.
         var counted = await database.Games
             .Where(g => g.Id == gameId
                 && g.OwnerId == ownerId

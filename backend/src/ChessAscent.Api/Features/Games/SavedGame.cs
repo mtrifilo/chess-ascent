@@ -68,8 +68,12 @@ public union AppendResult(MovesAppended, GameNotFound, GameFinished, HalfMoveCon
 /// <param name="Status">The game's progress as saved.</param>
 /// <param name="Result">The game's result as saved; <c>null</c> while it is ongoing.</param>
 /// <param name="EndReason">Why the game ended, as saved; <c>null</c> while it is ongoing.</param>
+/// <param name="HintCount">
+/// The game's hint count when the moves were saved, which a hint counted
+/// since the caller loaded the game has raised.
+/// </param>
 public readonly record struct MovesAppended(
-    DateTimeOffset UpdatedAt, GameProgress Status, GameResult? Result, GameEndReason? EndReason);
+    DateTimeOffset UpdatedAt, GameProgress Status, GameResult? Result, GameEndReason? EndReason, int HintCount);
 
 /// <summary>The outcome of <see cref="GameStore.CountHintAsync"/>.</summary>
 public union HintCountResult(HintCounted, GameNotFound, GameFinished, HalfMoveConflict)

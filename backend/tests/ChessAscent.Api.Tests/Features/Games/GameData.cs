@@ -119,6 +119,10 @@ internal static class GameData
         factory.WithStoreAsync(store => store.AppendMovesAsync(
             ownerId, gameId, firstHalfMoveNumber, moves, statusAfter, TestContext.Current.CancellationToken));
 
+    /// <summary>Counts a hint in a game, on a store of its own.</summary>
+    public static Task<HintCountResult> CountHintAsync(this ApiFactory factory, string ownerId, Guid gameId, int halfMoveNumber) =>
+        factory.WithStoreAsync(store => store.CountHintAsync(ownerId, gameId, halfMoveNumber, TestContext.Current.CancellationToken));
+
     /// <summary>Runs <paramref name="action"/> on a store of its own, as one request would.</summary>
     public static async Task<T> WithStoreAsync<T>(this ApiFactory factory, Func<GameStore, Task<T>> action)
     {

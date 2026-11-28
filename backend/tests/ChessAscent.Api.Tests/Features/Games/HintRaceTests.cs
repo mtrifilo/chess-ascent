@@ -2,6 +2,7 @@ using System.Net;
 using ChessAscent.Api.Database;
 using ChessAscent.Api.Tests.Features.Accounts;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using AccountData = ChessAscent.Api.Tests.Features.Accounts.Accounts;
 
 namespace ChessAscent.Api.Tests.Features.Games;
@@ -10,9 +11,9 @@ namespace ChessAscent.Api.Tests.Features.Games;
 // two browser tabs can send them, where both have found the hint before
 // either has counted it. Sent side by side they would usually not overlap,
 // so the first request is held just after its update has counted the hint
-// and locked the game's row, and let go only once the second has loaded the
-// game, been given the hint, and begun its own update.
-public sealed class HintRaceTests(ApiFactory factory) : IClassFixture<ApiFactory>
+// and locked the game's row, and let go only once PostgreSQL reports the
+// second's update waiting for that lock.
+public sealed class HintRaceTests(ApiFactory factory, PostgresFixture postgres) : IClassFixture<ApiFactory>
 {
     private static readonly TimeSpan Patience = TimeSpan.FromSeconds(10);
 
@@ -35,15 +36,45 @@ public sealed class HintRaceTests(ApiFactory factory) : IClassFixture<ApiFactory
         var first = client.PostHintAsync(game.Id, 1);
         await hold.FirstRan.WaitAsync(Patience, Cancellation);
         var second = client.PostHintAsync(game.Id, 1);
-        await hold.SecondStarting.WaitAsync(Patience, Cancellation);
+        var secondWaitedOnTheLock = await HintCountWaitsOnALockAsync();
         hold.Release();
         using var firstResponse = await first;
         using var secondResponse = await second;
 
+        secondWaitedOnTheLock.Should().BeTrue("the second count must have waited for the first one's row lock");
         firstResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         secondResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         (await secondResponse.ReadHintAsync()).Should().Be(await firstResponse.ReadHintAsync());
         hints.Calls.Should().HaveCount(2);
         (await client.ReadGameAsync(game.Id)).HintCount.Should().Be(1);
+    }
+
+    // Asks PostgreSQL, from a connection of its own, whether a hint count is
+    // blocked waiting for a lock, polling until one is or patience runs out.
+    // No other test counts hints while holding a game's row, so a waiting
+    // count in the shared database is this test's second request.
+    private async Task<bool> HintCountWaitsOnALockAsync()
+    {
+        await using var connection = new NpgsqlConnection(postgres.ConnectionString);
+        await connection.OpenAsync(Cancellation);
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT count(*) FROM pg_stat_activity
+            WHERE wait_event_type = 'Lock' AND query LIKE 'UPDATE "Games"%' AND query LIKE '%"HintCount"%'
+            """,
+            connection);
+
+        var giveUpAt = DateTime.UtcNow + Patience;
+        while (DateTime.UtcNow < giveUpAt)
+        {
+            if (await command.ExecuteScalarAsync(Cancellation) is > 0L)
+            {
+                return true;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(20), Cancellation);
+        }
+
+        return false;
     }
 }

@@ -62,6 +62,12 @@ internal sealed class Game
     /// The half-move number the last counted hint was for, or 0 before the
     /// first. A hint for this number or a lower one is not counted again.
     /// </summary>
+    /// <remarks>
+    /// That is right only while moves are never removed, so that a half-move
+    /// number names one position for the life of the game. Anything that
+    /// removes moves, such as taking one back, must lower this to the number
+    /// of moves left.
+    /// </remarks>
     public int LastHintedHalfMoveNumber { get; set; }
 
     public List<Move> Moves { get; } = [];

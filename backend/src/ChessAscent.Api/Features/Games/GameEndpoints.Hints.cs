@@ -27,7 +27,10 @@ namespace ChessAscent.Api.Features.Games;
 /// The answers follow a move's: both 409s mean the game is not where the
 /// screen thought, and the screen loads it again; a 503 can be sent again
 /// unchanged. The 422, like a move's, means the request can never succeed as
-/// it is: a game without the computer never gets a hint.
+/// it is: a game without the computer never gets a hint. The computer's turn
+/// is a 500 rather than a refusal the screen could act on, as it is for a
+/// move: the computer's reply is saved with the player's move, so no request
+/// finds a game on the computer's turn unless what is saved is broken.
 /// </para>
 /// <para>
 /// A hint is never played, and is never stored. The game counts the

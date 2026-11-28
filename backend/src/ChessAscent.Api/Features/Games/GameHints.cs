@@ -19,8 +19,9 @@ internal static class GameHints
     /// when what it answered means something on the server is wrong.
     /// </returns>
     // Each case of HintReply is mapped by hand, here and nowhere else, so the
-    // union never reaches a response, and neither does the reason text of
-    // HintFailed, which is written for the log and not for the player.
+    // union never reaches a response. The reason text of HintFailed is
+    // dropped here and never sent: the provider logs a timeout or a broken
+    // reply where it happens (see LegalMoveSearch).
     public static async Task<HintLookup> FindHintAsync(
         this IHintProvider hints, IChessGame board, CancellationToken cancellationToken)
     {
