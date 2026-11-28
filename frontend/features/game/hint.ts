@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { useAskForHint } from './game-api'
 import {
@@ -18,14 +18,19 @@ import {
 // the game is read again and has moved on, when the game ends, and while the
 // player's move is on its way or the computer thinks; an answer that arrives
 // for a position the screen no longer shows is never drawn. `clear` drops it
-// for good, together with any answer still on its way, and is called when
-// the player moves, so it does not come back if that move is not played.
+// for good, together with any answer still on its way, and is called each
+// time a move is sent, so it does not come back if that move is not played.
 //
 // Nothing about a hint is kept outside this component's memory.
 export function useHint(game: Game, playersTurn: boolean) {
   const askForHint = useAskForHint(game.id)
   // The position in which the second press revealed the move.
   const [moveShownIn, setMoveShownIn] = useState<string>()
+  // The request on its way, set at the press itself, as the mutation reports
+  // itself pending only after React has rendered again, which a second press
+  // can come before. Each request has its own token, so the end of one that
+  // `clear` dropped does not release a later one.
+  const asking = useRef<object>(undefined)
 
   const answer = askForHint.data
   const forThisPosition =
@@ -61,15 +66,29 @@ export function useHint(game: Game, playersTurn: boolean) {
     // The first press asks for the hint; the second, once the piece is
     // shown, reveals the move without asking again.
     press() {
-      if (shown) setMoveShownIn(game.fen)
-      else
-        askForHint.mutate({
+      if (shown) {
+        setMoveShownIn(game.fen)
+        return
+      }
+      if (asking.current) return
+      const request = {}
+      asking.current = request
+      // The promise settles even while nothing observes the mutation, as
+      // when Next.js keeps the page hidden. A failure is reported by the
+      // query cache (query-client.ts); here it only ends the request.
+      askForHint
+        .mutateAsync({
           halfMoveNumber: nextHalfMoveNumber(game),
           fen: game.fen,
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (asking.current === request) asking.current = undefined
         })
     },
     clear() {
       askForHint.reset()
+      asking.current = undefined
       setMoveShownIn(undefined)
     },
   }

@@ -193,11 +193,12 @@ export type HintRequest = { halfMoveNumber: number; fen: string }
 // positions, which only the game itself reports, so the game is read again;
 // the hint is shown without waiting for that read.
 //
-// A failed request is not retried. Mutations are not retried unless told to,
-// and this one says so, since a retry would keep the control waiting for
-// seconds: the control is ready again at once and the player may press it
-// again. It is sent even when the browser reports itself offline, so that it
-// fails at once rather than waiting unseen.
+// A failed request is not retried, so the control is ready again at once and
+// the player may press it again. That is a mutation's default, unlike a
+// query's three retries over seconds, and `retry: false` states it here so
+// that no default given to the query client changes it. It is sent even when
+// the browser reports itself offline, so that it fails at once rather than
+// waiting unseen.
 export function useAskForHint(id: string) {
   const queryClient = useQueryClient()
   return useMutation({

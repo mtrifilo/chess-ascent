@@ -148,6 +148,7 @@ function LoadedGame({ game }: { game: Game }) {
       }
 
   function send(uci: string) {
+    hint.clear()
     const resetBoard = () => setBoardKey(key => key + 1)
     if (resignSent.current) {
       resetBoard()
@@ -178,7 +179,6 @@ function LoadedGame({ game }: { game: Game }) {
   }
 
   function onMove(move: BoardMove) {
-    hint.clear()
     const pieces = promotionChoices(game, move)
     if (pieces) setPending({ move, pieces, fen: game.fen })
     else send(toUci(move))

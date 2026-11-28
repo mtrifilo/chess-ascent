@@ -1602,6 +1602,28 @@ describe('GameScreen: a hint', () => {
       expect(boardMarks()).toEqual(NO_MARKS)
       expect(control()).not.toHaveAttribute('aria-disabled', 'true')
     })
+
+    it('does not come back when "Try again" sends the move and it fails again', async () => {
+      const sent = answer({
+        [GAME_PATH]: ok(GAME),
+        [HINTS_PATH]: ok(HINT),
+        [MOVES_PATH]: problem(500),
+      })
+      await renderGame()
+      playOnBoard('g1', 'h3')
+      await screen.findByRole('alert')
+      // A hint asked for after the move failed, then the move sent again.
+      await revealPiece()
+      fireEvent.click(control('Show move'))
+
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+      await waitFor(() => expect(sentMoves(sent)).toHaveLength(2))
+      await screen.findByRole('alert')
+      expect(screen.queryByText(/^Hint:/)).toBeNull()
+      expect(boardMarks()).toEqual(NO_MARKS)
+      expect(control()).not.toHaveAttribute('aria-disabled', 'true')
+    })
   })
 
   it('clears when the game is read again and has moved on', async () => {
@@ -1648,7 +1670,7 @@ describe('GameScreen: a hint', () => {
     let settle!: (reply: Reply) => void
     // The API holds the game as it stands: moved on once it has.
     let movedOn = false
-    answer({
+    const sent = answer({
       [GAME_PATH]: () => ok(movedOn ? MOVED_ON : GAME),
       [HINTS_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
       [MOVES_PATH]: ok(MOVED_ON),
@@ -1662,8 +1684,12 @@ describe('GameScreen: a hint', () => {
     movedOn = true
     act(() => moveOn(queryClient))
     await waitFor(() => expect(board.props!.fen).toBe(MOVED_ON.fen))
+    const reads = () =>
+      calls(sent).filter(call => call === `GET ${GAME_PATH}`).length
+    const readsBefore = reads()
     settle(ok(HINT))
-    // The control is ready again once the answer has arrived.
+    // The answer has arrived once it has the game read again.
+    await waitFor(() => expect(reads()).toBe(readsBefore + 1))
     await waitFor(() =>
       expect(control()).not.toHaveAttribute('aria-disabled', 'true')
     )
@@ -1692,13 +1718,16 @@ describe('GameScreen: a hint', () => {
     await renderGame()
     control().focus()
 
+    // The second press comes before React has rendered the first's waiting
+    // state, as a quick double press can.
+    fireEvent.click(control())
     fireEvent.click(control())
     await waitFor(() =>
       expect(control()).toHaveAttribute('aria-disabled', 'true')
     )
     fireEvent.click(control())
 
-    expect(sentHints(sent)).toHaveLength(1)
+    await waitFor(() => expect(sentHints(sent)).toHaveLength(1))
     expect(control()).toHaveFocus()
   })
 
@@ -1823,9 +1852,11 @@ describe('GameScreen: a hint', () => {
       }
     )
 
-    // The app's own query settings retry a failed query three times, over
-    // seconds; a failed hint is not retried, so the control is ready again
-    // at once.
+    // The app's query client, made as the app makes it, retries a failed
+    // query three times over seconds, as TanStack Query does by default. A
+    // hint is a mutation and is not retried, so the control is ready again
+    // at once; this holds that, should the hint become a query or the client
+    // be given defaults.
     it("asks once, and is ready again at once, with the app's own query settings", async () => {
       const sent = answer({
         [GAME_PATH]: ok(GAME),
@@ -1838,6 +1869,21 @@ describe('GameScreen: a hint', () => {
       await waitFor(() => expect(console.error).toHaveBeenCalled())
       expect(control()).not.toHaveAttribute('aria-disabled', 'true')
       expect(sentHints(sent)).toHaveLength(1)
+    })
+
+    it('shows nothing for a signed-out visitor, whom the API client sends to sign in', async () => {
+      const sent = answer({ [GAME_PATH]: ok(GAME), [HINTS_PATH]: problem(401) })
+      await renderGame()
+
+      fireEvent.click(control())
+
+      await waitFor(() => expect(sentHints(sent)).toHaveLength(1))
+      await waitFor(() =>
+        expect(control()).not.toHaveAttribute('aria-disabled', 'true')
+      )
+      expect(screen.queryByText(/^Hint:/)).toBeNull()
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(boardMarks()).toEqual(NO_MARKS)
     })
 
     it('loads the game again, and shows no hint, when the game is not where the screen thought', async () => {
