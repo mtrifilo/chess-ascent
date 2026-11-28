@@ -127,8 +127,8 @@ public sealed record MoveResponse(int HalfMoveNumber, string Uci, string San);
 /// the same <c>status</c>, for the next page. <c>null</c> when there are no
 /// more games. The next page holds the games after this page's last one as
 /// the list stands when it is asked for: a game that has had a move since
-/// is at the top of the list instead, and every other game is on exactly one
-/// page.
+/// is at the top of the list instead, where reading the list again finds it,
+/// and no game is listed on two pages while the server's clock runs forward.
 /// </param>
 public sealed record GameListResponse(IReadOnlyList<GameSummaryResponse> Games, string? NextCursor);
 

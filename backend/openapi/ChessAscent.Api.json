@@ -635,7 +635,7 @@
               "null",
               "string"
             ],
-            "description": "Where the next page starts: send it back unchanged as `cursor`, with\nthe same `status`, for the next page. `null` when there are no\nmore games. The next page holds the games after this page's last one as\nthe list stands when it is asked for: a game that has had a move since\nis at the top of the list instead, and every other game is on exactly one\npage."
+            "description": "Where the next page starts: send it back unchanged as `cursor`, with\nthe same `status`, for the next page. `null` when there are no\nmore games. The next page holds the games after this page's last one as\nthe list stands when it is asked for: a game that has had a move since\nis at the top of the list instead, where reading the list again finds it,\nand no game is listed on two pages while the server's clock runs forward."
           }
         },
         "description": "One page of the signed-in player's games, most recent activity first."

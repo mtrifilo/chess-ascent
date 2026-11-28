@@ -189,16 +189,21 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // runs no query. Two differences from a Stream. A query can be
         // extended and run any number of times, where a Stream is used once;
         // each run is a new round trip, so a query enumerated twice is sent
-        // twice. And the type decides where it runs. database.Games is an
-        // IQueryable<Game>, whose Where takes an Expression<Func<Game, bool>>:
-        // the compiler hands EF Core the lambda as a tree of data rather than
-        // as compiled code, and EF Core translates the tree to SQL. An
-        // IEnumerable<Game>, such as a List, has a Where of the same name that
-        // takes a plain Func<Game, bool> and runs it in memory. Declaring
-        // `games` as IEnumerable<Game> would still compile, but every
-        // operator after it would then run in memory, over every row of the
-        // table fetched first. The nearest JPA counterpart is building a
-        // Criteria query, except that here it is written as ordinary C#.
+        // twice. And the static type decides where each operator runs.
+        // database.Games is an IQueryable<Game>, whose Where takes an
+        // Expression<Func<Game, bool>>: the compiler hands EF Core the lambda
+        // as a tree of data rather than as compiled code, and EF Core
+        // translates the tree to SQL. An IEnumerable<Game>, such as a List,
+        // has a Where of the same name that takes a plain Func<Game, bool>
+        // and runs it in memory. Were `games` declared as IEnumerable<Game>,
+        // the Where on this line would still go to SQL, but every operator
+        // after it would bind to the in-memory version: the cursor condition,
+        // the ordering, Take and Select would run in the application over
+        // all of the player's games with this status, g.Moves.Count would
+        // count a collection that was never loaded and give 0, and
+        // ToListAsync, which extends only IQueryable, would not compile. The
+        // nearest JPA counterpart of an IQueryable is a Criteria query, here
+        // written as ordinary C#.
         var games = database.Games.Where(g => g.OwnerId == ownerId && g.Status == status);
 
         if (after is { } cursor)
@@ -208,29 +213,36 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
             // condition on the ordering columns, rather than by skipping the
             // rows already seen (Skip, SQL's OFFSET, which Spring Data's
             // Pageable uses). The database seeks to the cursor in the index
-            // instead of reading and discarding every earlier row, and a game
-            // that gains a move between two requests moves above the cursor
-            // instead of shifting every later game by one place, so nothing
-            // is listed twice or skipped. Spring Data has the same idea as
-            // ScrollPosition.keyset() with a Window result.
+            // instead of reading and discarding every earlier row. And a game
+            // that gains a move between two requests moves above the cursor,
+            // where offset paging would shift every game after it down one
+            // place and show the last game of one page again at the top of
+            // the next. So no game is listed twice; the moved game is on no
+            // later page, and is at the top when the list is read again.
+            // Spring Data has the same idea as ScrollPosition.keyset() with a
+            // Window result.
             //
-            // The first condition follows from the second; it is written out
-            // because PostgreSQL uses a plain comparison on UpdatedAt to seek
-            // in the (OwnerId, UpdatedAt DESC) index, and cannot derive one
-            // from an OR.
+            // In the list's order, newest first, "after the cursor" is
+            // (UpdatedAt, Id) < (cursor.UpdatedAt, cursor.Id), compared
+            // column by column. Both conditions below are needed for that:
+            // without the first, a newer game with a smaller id would pass the
+            // second. The first is also a plain comparison on UpdatedAt,
+            // which PostgreSQL uses to seek in the (OwnerId, UpdatedAt DESC)
+            // index; it cannot seek on the OR alone.
             //
-            // LEARN: C# defines no < for Guid, so the ids are compared with
-            // CompareTo, which EF Core translates to SQL's < on uuid. The
-            // translation is a list of methods EF Core knows: a method it
-            // does not know, such as one of this class's own, compiles here
-            // but fails when the query runs, with an InvalidOperationException
-            // saying the expression "could not be translated". A Java
-            // developer meets the same thing when a Criteria query uses a
-            // function the JPA provider does not support, except that EF Core
-            // only finds out when it translates the query.
+            // LEARN: Guid has the comparison operators, as C# lets a type
+            // define operators and Java does not (java.util.UUID has only
+            // compareTo), and EF Core translates < on two uuids to SQL's <.
+            // What EF Core translates is a fixed list of operators and
+            // methods. A method it does not know, such as one of this class's
+            // own, compiles here but fails when the query runs: EF Core throws
+            // an InvalidOperationException saying the expression "could not be
+            // translated", before any SQL is sent. As with a JPA Criteria query
+            // that calls a function its provider lacks, the compiler cannot
+            // catch it.
             games = games.Where(g =>
                 g.UpdatedAt <= cursor.UpdatedAt
-                && (g.UpdatedAt < cursor.UpdatedAt || g.Id.CompareTo(cursor.Id) < 0));
+                && (g.UpdatedAt < cursor.UpdatedAt || g.Id < cursor.Id));
         }
 
         // LEARN: Select into a type that is not an entity is a projection,

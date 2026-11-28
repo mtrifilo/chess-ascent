@@ -18,7 +18,7 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
     private const string Finished = "finished";
 
     // PostgreSQL orders uuids byte by byte, which is the ordinal order of
-    // their text form (not the order of Guid.CompareTo).
+    // their text form.
     private static readonly IComparer<Guid> DatabaseOrder =
         Comparer<Guid>.Create((left, right) => string.CompareOrdinal(left.ToString(), right.ToString()));
 
@@ -38,6 +38,27 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
 
         players.Games.Select(game => game.Id).Should().Equal(second.Id, first.Id);
         otherPlayers.Games.Select(game => game.Id).Should().Equal(others.Id);
+    }
+
+    // The cursor only says where a page starts, so another player's cursor,
+    // which falls among the caller's games by time, still lists only the
+    // caller's own.
+    [Fact]
+    public async Task AnotherPlayersCursorListsOnlyTheCallersGames()
+    {
+        using var player = await factory.SignedInClientAsync();
+        using var otherPlayer = await factory.SignedInClientAsync();
+        var players = await player.CreateGameAsync();
+        await otherPlayer.CreateGameAsync();
+        await otherPlayer.CreateGameAsync();
+        await otherPlayer.CreateGameAsync();
+        var othersFirstPage = await otherPlayer.ListGamesAsync(Ongoing, pageSize: 1);
+
+        var page = await player.ListGamesAsync(Ongoing, cursor: othersFirstPage.NextCursor);
+
+        othersFirstPage.NextCursor.Should().NotBeNull();
+        page.Games.Select(game => game.Id).Should().Equal(players.Id);
+        page.NextCursor.Should().BeNull();
     }
 
     [Fact]
@@ -252,6 +273,23 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var problem = await response.ReadProblemAsync<HttpValidationProblemDetails>();
         problem.Errors.Keys.Should().Equal("pageSize");
+    }
+
+    // A page size that is not a whole number cannot be bound to the
+    // parameter, so it is refused before validation runs, with a plain
+    // problem rather than one under pageSize.
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("1.5")]
+    [InlineData("2147483648")]
+    public async Task APageSizeThatIsNotAWholeNumberIsRefused(string pageSize)
+    {
+        using var client = await factory.SignedInClientAsync();
+
+        using var response = await client.GetGameListAsync($"?status=ongoing&pageSize={pageSize}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        await response.ReadProblemAsync();
     }
 
     // Only the names the game response writes select games; an unknown value
