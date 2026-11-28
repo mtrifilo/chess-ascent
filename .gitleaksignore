@@ -1,0 +1,6 @@
+# Findings the secret scan in .github/workflows/ci.yml skips, one per line,
+# as <commit>:<file>:<rule>:<line>. Each entry says why it is not a secret.
+
+# A made-up password that the test registers with, to check that no response
+# body or log message ever carries it. It is not a credential for anything.
+7a5ab9150357e96a835c47522235fd9891755e86:backend/tests/ChessAscent.Api.Tests/Features/Accounts/AccountSecretsTests.cs:generic-api-key:17
