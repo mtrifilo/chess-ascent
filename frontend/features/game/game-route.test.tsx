@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { notFound } from 'next/navigation'
+import { Activity } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ChessBoardProps } from '@/components/chess-board/chess-board'
@@ -11,6 +12,8 @@ import {
   type Reply,
   renderWithQueries,
 } from '@/lib/test-support'
+
+import { SPECIAL_MOVES_GAME } from '@/features/replay/test-replay-game'
 
 import { GameRoute } from './game-route'
 import { COMPUTER_REPLIED_E5, FOOLS_MATE, game, GAME_ID } from './test-games'
@@ -51,26 +54,35 @@ beforeEach(() => {
   vi.mocked(notFound).mockReset()
 })
 
-function renderRoute() {
-  return renderWithQueries(
+// The route as Next.js shows it: visible, or kept hidden after the player
+// has left it (cacheComponents), as `mode` says.
+function routeIn(mode: 'visible' | 'hidden') {
+  return (
     <PageNavItemProvider>
       <NamedNavItem />
-      <GameRoute />
+      <Activity mode={mode}>
+        <GameRoute />
+      </Activity>
     </PageNavItemProvider>
   )
+}
+
+function renderRoute() {
+  return renderWithQueries(routeIn('visible'))
 }
 
 const heading = () => screen.getByRole('heading', { level: 1 })
 const highlighted = () => screen.getByRole('status', { name: 'Highlighted' })
 
 describe('GameRoute', () => {
-  it('replays a game that is over when its page opens, under My games', async () => {
-    answer({ [GAME_PATH]: ok(FOOLS_MATE) })
+  it('replays a game that is over when its page opens, under My games, on its final position', async () => {
+    const finished = { ...SPECIAL_MOVES_GAME, id: GAME_ID }
+    answer({ [GAME_PATH]: ok(finished) })
     renderRoute()
 
     await waitFor(() => expect(heading()).toHaveTextContent('Replay'))
     expect(highlighted()).toHaveTextContent('/games')
-    expect(board.props!.readOnly).toBe(true)
+    expect(board.props).toMatchObject({ fen: finished.fen, readOnly: true })
   })
 
   it('shows the game screen, under Play, for a game still being played, reading it once', async () => {
@@ -104,6 +116,23 @@ describe('GameRoute', () => {
     renderRoute()
 
     await waitFor(() => expect(heading()).toHaveTextContent('Replay'))
+  })
+
+  it('replays a game that ended on its screen when the player leaves the page and comes back to it', async () => {
+    answer({
+      [GAME_PATH]: ok(BEFORE_MATE),
+      [MOVES_PATH]: ok(FOOLS_MATE),
+    })
+    const { rerender } = renderRoute()
+    await waitFor(() => expect(heading()).toHaveTextContent('Your move'))
+    act(() => board.props!.onMove!({ from: 'd8', to: 'h4' }))
+    await waitFor(() => expect(heading()).toHaveTextContent('You won'))
+
+    rerender(routeIn('hidden'))
+    rerender(routeIn('visible'))
+
+    await waitFor(() => expect(heading()).toHaveTextContent('Replay'))
+    expect(highlighted()).toHaveTextContent('/games')
   })
 
   it('keeps the game screen and its result when the player resigns there, and replays the game when the page opens again', async () => {

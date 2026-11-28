@@ -37,7 +37,8 @@ export function gameRowText(game: GameSummary): GameRowText {
 
 // A finished game's reason for ending, as the second half of its result,
 // such as "Won, checkmate". Each follows the reason the game screen gives
-// when the game ends.
+// when the game ends. The replay's line (features/replay/replay-text.ts)
+// uses the same words.
 export const END_REASON_IN_LIST: Record<EndReason, string> = {
   checkmate: 'checkmate',
   stalemate: 'stalemate',

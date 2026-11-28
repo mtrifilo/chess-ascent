@@ -42,7 +42,7 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
                 LastActivityAt = resigned.LastActivityAt,
             },
             InStrictOrder);
-        resigned.LastActivityAt.Should().BeOnOrAfter(before.LastActivityAt);
+        resigned.LastActivityAt.Should().BeAfter(before.LastActivityAt);
         (await client.ReadGameAsync(game.Id)).Should().BeEquivalentTo(resigned, InStrictOrder);
     }
 
@@ -93,7 +93,7 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
                 LastActivityAt = resigned.LastActivityAt,
             },
             InStrictOrder);
-        resigned.LastActivityAt.Should().BeOnOrAfter(before.LastActivityAt);
+        resigned.LastActivityAt.Should().BeAfter(before.LastActivityAt);
         opponent.Calls.Should().HaveCount(1);
         hints.Calls.Should().HaveCount(1);
     }

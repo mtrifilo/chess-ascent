@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useState } from 'react'
+import { useLayoutEffect, useState } from 'react'
 
 import { ReplayScreen } from '@/features/replay/replay-screen'
 
@@ -27,5 +27,10 @@ function GameOrReplay({ id }: { id: string }) {
   const { data: game } = useGame(id)
   const [replay, setReplay] = useState<boolean>()
   if (game && replay === undefined) setReplay(game.status === 'finished')
+  // Next.js keeps a page the player leaves, hidden, and shows it again as it
+  // was when they come back (cacheComponents in next.config.ts). The choice
+  // is forgotten as the page is hidden, so coming back, by a link or the
+  // back button, chooses again, as opening the page does.
+  useLayoutEffect(() => () => setReplay(undefined), [])
   return replay && game ? <ReplayScreen game={game} /> : <GameScreen id={id} />
 }

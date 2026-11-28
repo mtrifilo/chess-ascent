@@ -943,7 +943,7 @@
           },
           "lastActivityAt": {
             "type": "string",
-            "description": "When the game was created or last had a move saved, as an ISO 8601 time\nin UTC, as the list of games gives it.",
+            "description": "When the game was created, last had a move saved, or was resigned, as an\nISO 8601 time in UTC. The list of games gives the same time.",
             "format": "date-time"
           }
         },

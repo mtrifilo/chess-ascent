@@ -7,9 +7,9 @@ export const GAME_ID = '3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
 export const START_FEN =
   'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
-// A move as the API lists it. The position after it is read only by the
-// replay, whose tests use games the API played (test-replay-game.ts), so
-// here it is left empty unless given.
+// A move as the API lists it. The position after it is left empty unless
+// given: the game screen never reads it, and the tests of what the replay
+// shows use a game the API played (features/replay/test-replay-game.ts).
 export function move(
   halfMoveNumber: number,
   uci: string,

@@ -115,7 +115,7 @@ describe('ReplayScreen', () => {
     }
   })
 
-  it('replays a game with castling on each side, en passant, a promotion and an under-promotion', () => {
+  it('walks, above, a game with castling on each side, en passant, a promotion and an under-promotion', () => {
     // The walk through every step above covers each of these moves.
     expect(MOVES.map(move => move.san)).toEqual(
       expect.arrayContaining(['exf6', 'O-O-O', 'O-O', 'gxh8=Q', 'bxa1=N'])
@@ -137,20 +137,33 @@ describe('ReplayScreen', () => {
   it('disables the controls that would go past the last move', () => {
     renderReplay()
 
-    expect(control('Next')).toBeDisabled()
-    expect(control('Last')).toBeDisabled()
-    expect(control('Previous')).toBeEnabled()
-    expect(control('First')).toBeEnabled()
+    expect(control('Next')).toHaveAttribute('aria-disabled', 'true')
+    expect(control('Last')).toHaveAttribute('aria-disabled', 'true')
+    expect(control('Previous')).toHaveAttribute('aria-disabled', 'false')
+    expect(control('First')).toHaveAttribute('aria-disabled', 'false')
   })
 
   it('disables the controls that would go before the first move', () => {
     renderReplay()
     press('First')
 
-    expect(control('First')).toBeDisabled()
-    expect(control('Previous')).toBeDisabled()
-    expect(control('Next')).toBeEnabled()
-    expect(control('Last')).toBeEnabled()
+    expect(control('First')).toHaveAttribute('aria-disabled', 'true')
+    expect(control('Previous')).toHaveAttribute('aria-disabled', 'true')
+    expect(control('Next')).toHaveAttribute('aria-disabled', 'false')
+    expect(control('Last')).toHaveAttribute('aria-disabled', 'false')
+  })
+
+  it('keeps focus on a control that can do nothing once pressed, and does nothing more', () => {
+    renderReplay()
+    press('First')
+    const first = control('First')
+    first.focus()
+
+    fireEvent.click(first)
+    fireEvent.click(control('Previous'))
+
+    expect(document.activeElement).toBe(first)
+    expectStep(1)
   })
 
   it('jumps to a move clicked in the list', () => {
@@ -208,6 +221,23 @@ describe('ReplayScreen', () => {
     }
   })
 
+  it('leaves the arrow keys to an open menu', () => {
+    renderReplay()
+    const menu = document.createElement('div')
+    menu.setAttribute('role', 'menu')
+    const item = document.createElement('div')
+    item.setAttribute('role', 'menuitem')
+    menu.append(item)
+    document.body.append(menu)
+    try {
+      fireEvent.keyDown(item, { key: 'ArrowLeft' })
+
+      expectStep(LAST)
+    } finally {
+      menu.remove()
+    }
+  })
+
   it('leaves an arrow key held with a modifier to the browser', () => {
     renderReplay()
 
@@ -237,7 +267,7 @@ describe('ReplayScreen', () => {
       orientation: 'black',
     })
     expect(marked()).toEqual(['O-O'])
-    expect(control('Next')).toBeDisabled()
+    expect(control('Next')).toHaveAttribute('aria-disabled', 'true')
     expect(screen.getByText(/^You resigned · /)).toBeInTheDocument()
   })
 
@@ -254,7 +284,7 @@ describe('ReplayScreen', () => {
     expect(board.props).toMatchObject({ fen: START_FEN, readOnly: true })
     expect(board.props!.lastMove).toBeUndefined()
     for (const name of ['First', 'Previous', 'Next', 'Last'])
-      expect(control(name)).toBeDisabled()
+      expect(control(name)).toHaveAttribute('aria-disabled', 'true')
     expect(screen.getByText('No moves yet.')).toBeInTheDocument()
   })
 })

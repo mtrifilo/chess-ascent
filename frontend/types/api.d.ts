@@ -901,8 +901,8 @@ export interface components {
       hintCount: number
       /**
        * Format: date-time
-       * @description When the game was created or last had a move saved, as an ISO 8601 time
-       *     in UTC, as the list of games gives it.
+       * @description When the game was created, last had a move saved, or was resigned, as an
+       *     ISO 8601 time in UTC. The list of games gives the same time.
        */
       lastActivityAt: string
     }

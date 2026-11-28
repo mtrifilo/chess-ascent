@@ -70,9 +70,10 @@ export function ReplayScreen({ game }: { game: Game }) {
   ]
 
   return (
-    // Laid out as the game screen is (game-screen.tsx): on phones the upper
-    // player bar sits against the app shell's top bar, so the shell's top
-    // padding is taken back.
+    // Laid out as the game screen is (game-screen.tsx), class for class, so
+    // the board stays put between the two: change them together. On phones
+    // the upper player bar sits against the app shell's top bar, so the
+    // shell's top padding is taken back.
     <div className="-mt-4 flex flex-col md:mt-0 md:flex-row md:justify-center md:gap-8">
       <div className="flex min-w-0 flex-col md:w-160 md:gap-2">
         <PlayerBar game={game} side={opposite(game.playerSide)} />
@@ -88,7 +89,9 @@ export function ReplayScreen({ game }: { game: Game }) {
       <div className="flex flex-col gap-3 pt-4 md:w-90 md:shrink-0 md:gap-4 md:rounded-md md:border md:bg-card md:p-4">
         <GameStatus title="Replay" detail={replaySummary(game)} />
         {/* Below the move list from `md` up, above it on phones. A control
-            that would not change the step is disabled. */}
+            that would not change the step does nothing and looks disabled,
+            but stays focusable (aria-disabled rather than disabled), so
+            pressing Last or First from the keyboard does not drop focus. */}
         <div className="flex gap-2 md:order-last">
           {controls.map(({ label, Icon, target }) => {
             const reachable =
@@ -99,9 +102,11 @@ export function ReplayScreen({ game }: { game: Game }) {
                 key={label}
                 variant="outline"
                 aria-label={label}
-                className="h-11 min-w-0 flex-1 md:h-8"
-                disabled={!reachable}
-                onClick={() => stepTo(target)}
+                className="h-11 min-w-0 flex-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 md:h-8"
+                aria-disabled={!reachable}
+                onClick={() => {
+                  if (reachable) stepTo(target)
+                }}
               >
                 <Icon aria-hidden />
               </Button>
@@ -135,11 +140,11 @@ const ARROW_STEPS: Partial<Record<string, number>> = {
 }
 
 // Where the arrow keys belong to what has focus: a text field, a list to
-// choose from, or editable text.
+// choose from, editable text, or an open menu such as the account menu.
 function isField(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
     (target.isContentEditable ||
-      target.closest('input, textarea, select') !== null)
+      target.closest('input, textarea, select, [role="menu"]') !== null)
   )
 }

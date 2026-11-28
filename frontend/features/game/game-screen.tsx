@@ -189,7 +189,8 @@ function LoadedGame({ game }: { game: Game }) {
   return (
     // On phones the upper player bar sits against the app shell's top bar,
     // as drawn, so the shell's 16px top padding (app-shell.tsx) is taken
-    // back; change the two together.
+    // back; change the two together. The replay
+    // (features/replay/replay-screen.tsx) copies this layout: change it too.
     <div className="-mt-4 flex flex-col md:mt-0 md:flex-row md:justify-center md:gap-8">
       <div className="flex min-w-0 flex-col md:w-160 md:gap-2">
         <PlayerBar

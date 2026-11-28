@@ -116,8 +116,8 @@ public sealed record HintResponse(string From, string To);
 /// in which a hint was used.
 /// </param>
 /// <param name="LastActivityAt">
-/// When the game was created or last had a move saved, as an ISO 8601 time
-/// in UTC, as the list of games gives it.
+/// When the game was created, last had a move saved, or was resigned, as an
+/// ISO 8601 time in UTC. The list of games gives the same time.
 /// </param>
 public sealed record GameResponse(
     Guid Id,

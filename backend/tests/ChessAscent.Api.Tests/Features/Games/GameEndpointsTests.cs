@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json.Nodes;
 using ChessAscent.Api.Features.Games;
 using ChessAscent.Api.Security;
+using ChessAscent.Api.Tests.Engine;
 using ChessAscent.Api.Tests.Features.Accounts;
 using ChessAscent.Chess;
 using Microsoft.AspNetCore.Hosting;
@@ -98,24 +99,43 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         (await client.ReadGameAsync(game.Id)).Should().BeEquivalentTo(mated, InStrictOrder);
     }
 
-    // Each position is checked against the chess interface's own position
-    // for the game up to that move, in a game with every kind of move that
-    // moves a second piece, takes one from another square or changes one.
+    // The front end's replay tests use the API's answer for this game, saved
+    // in the file below, which also holds the game's only list of its moves:
+    // an en passant capture, castling on each side, a promotion and an
+    // under-promotion, every kind of move that moves a second piece, takes
+    // one from another square or changes one. Played again here, the answer
+    // must still be the file's, apart from the game's id and time, and each
+    // position must be the chess interface's own for the game up to that move.
     [Fact]
     public async Task EachMoveGivesThePositionAfterIt()
     {
+        var saved = JsonNode.Parse(await File.ReadAllTextAsync(SpecialMovesGamePath, Cancellation))!.AsObject();
+        string[] uciMoves = [.. saved["moves"]!.AsArray().Select(move => move!["uci"]!.GetValue<string>())];
         using var client = await SignedInClientAsync();
         var game = await client.CreateGameAsync();
 
-        var mated = await client.PlayAsync(game.Id, GameRequests.SpecialMoves);
+        var mated = await client.PlayAsync(game.Id, uciMoves);
+        using var response = await client.GetGameAsync(game.Id);
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync(Cancellation))!.AsObject();
         var read = await client.ReadGameAsync(game.Id);
 
         read.Moves.Select(move => move.San).Should().Contain(["exf6", "O-O-O", "O-O", "gxh8=Q", "bxa1=N"]);
-        read.Moves.Select(move => move.Fen).Should().Equal(PositionsAfterEachMove(GameRequests.SpecialMoves));
+        read.Moves.Select(move => move.Fen).Should().Equal(PositionsAfterEachMove(uciMoves));
         read.Moves[^1].Fen.Should().Be(read.Fen);
         read.Status.Should().Be(GameProgress.Finished);
         mated.Should().BeEquivalentTo(read, InStrictOrder);
+        foreach (var varying in (string[])["id", "lastActivityAt"])
+        {
+            saved.Remove(varying);
+            body.Remove(varying);
+        }
+
+        JsonNode.DeepEquals(body, saved).Should().BeTrue(
+            "the API's answer should match {0}; if the change to it is intended, save the new answer there", SpecialMovesGamePath);
     }
+
+    private static string SpecialMovesGamePath => Path.Combine(
+        SetUpScripts.RepositoryRoot, "frontend", "features", "replay", "special-moves-game.json");
 
     [Fact]
     public async Task EachMoveAnswersWithTheGameAsItThenReads()

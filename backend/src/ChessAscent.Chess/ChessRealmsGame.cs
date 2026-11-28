@@ -29,24 +29,28 @@ internal sealed class ChessRealmsGame : IChessGame
     private readonly Realms.ChessGame game;
 
     // The library records moves but not their SAN, which must be formatted
-    // before each move is played, so the history with both notations is kept here.
-    private readonly List<PlayedMove> history;
+    // before each move is played, and keeps only the current position, so
+    // each move is kept here with both notations and the position after it,
+    // written down as it is played. One entry per move keeps the two
+    // properties built from them in step.
+    //
+    // LEARN: (PlayedMove Move, string PositionAfter) is a value tuple: an
+    // unnamed struct of two fields, written inline, where Java would need a
+    // small record or a Map.Entry. The element names exist only for the
+    // compiler, so entry.Move reads well here while the value itself is just
+    // a pair; a type that crosses an API boundary should be a record instead.
+    private readonly List<(PlayedMove Move, string PositionAfter)> history;
 
-    // The library keeps only the current position, so the one after each move
-    // is written down as the move is played, while it is at hand.
-    private readonly List<string> positions;
-
-    private ChessRealmsGame(Realms.ChessGame game, List<PlayedMove> history, List<string> positions)
+    private ChessRealmsGame(Realms.ChessGame game, List<(PlayedMove Move, string PositionAfter)> history)
     {
         this.game = game;
         this.history = history;
-        this.positions = positions;
     }
 
     /// <summary>Wraps a newly created library game, ending it at once if a draw rule already applies.</summary>
     internal static ChessRealmsGame Start(Realms.ChessGame game)
     {
-        var wrapped = new ChessRealmsGame(game, [], []);
+        var wrapped = new ChessRealmsGame(game, []);
         wrapped.EndByDrawRuleIfAvailable();
         return wrapped;
     }
@@ -57,9 +61,9 @@ internal sealed class ChessRealmsGame : IChessGame
 
     public GameStatus Status => ToStatus(game.Outcome);
 
-    public IReadOnlyList<PlayedMove> History => history.ToArray();
+    public IReadOnlyList<PlayedMove> History => [.. history.Select(entry => entry.Move)];
 
-    public IReadOnlyList<string> PositionsAfterMoves => positions.ToArray();
+    public IReadOnlyList<string> PositionsAfterMoves => [.. history.Select(entry => entry.PositionAfter)];
 
     public IReadOnlyList<LegalMove> LegalMoves() => Describe(game.GetLegalMoves());
 
@@ -96,13 +100,12 @@ internal sealed class ChessRealmsGame : IChessGame
         }
 
         var played = new PlayedMove(move.ToString(), san);
-        history.Add(played);
-        positions.Add(game.ToFen());
+        history.Add((played, game.ToFen()));
         EndByDrawRuleIfAvailable();
         return new MovePlayed(played, Status);
     }
 
-    public IChessGame Branch() => new ChessRealmsGame(game.Clone(), [.. history], [.. positions]);
+    public IChessGame Branch() => new ChessRealmsGame(game.Clone(), [.. history]);
 
     public PgnExportResult ToPgn(PgnTags tags, DeclaredResult? declaredResult)
     {

@@ -188,6 +188,27 @@ describe('MoveList', () => {
     expect(scroller.scrollTop).toBe(150)
   })
 
+  it('scrolls a marked move below its box into view', () => {
+    const { container } = render(
+      <MoveList moves={OPENING} current={1} onSelect={() => {}} />
+    )
+    const scroller = container.firstElementChild as HTMLElement
+    // The list's box from 0 to 100, with the marked move 30px below it.
+    const box = (top: number, height: number) =>
+      ({ top, bottom: top + height, height }) as DOMRect
+    scroller.getBoundingClientRect = () => box(0, 100)
+    container.querySelector('thead')!.getBoundingClientRect = () => box(0, 20)
+    screen.getAllByRole('button')[3].closest('td')!.getBoundingClientRect =
+      () => box(102, 28)
+    scroller.scrollTop = 0
+
+    render(<MoveList moves={OPENING} current={4} onSelect={() => {}} />, {
+      container,
+    })
+
+    expect(scroller.scrollTop).toBe(30)
+  })
+
   it('scrolls to the latest move as moves are added', () => {
     const { container, rerender } = render(
       <MoveList moves={OPENING.slice(0, 2)} />
