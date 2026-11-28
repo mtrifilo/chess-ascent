@@ -21,8 +21,8 @@ namespace ChessAscent.Api.Hints;
 /// <para>
 /// A process is shared by every request, and keeps whatever the previous
 /// request set: options, and what its last search left in its hash table.
-/// So each request sets full strength and the number of candidate lines,
-/// and clears the hash table, before it asks. At full strength and a fixed
+/// So each request sets one search thread, full strength and the number of
+/// candidate lines, and clears the hash table, before it asks. At full strength and a fixed
 /// depth the engine then gives the same move every time for the same game.
 /// </para>
 /// </remarks>
@@ -45,9 +45,15 @@ public sealed class FairyStockfishHintProvider(EnginePool pool, IChessRules rule
 
     // Three candidate lines, though only the best is used: the engine
     // searches differently with each number, and three is the number its
-    // hints were measured with. At depth 12 its best move then matched a far
-    // deeper search by Stockfish on every one of 12 tactical test positions.
+    // hints were measured with. At depth 12 its best move then matched
+    // Stockfish 19's at depth 22 on every one of 12 tactical test positions,
+    // three of which the contract test in HintHostingTests keeps.
     private const string CandidateLines = "3";
+
+    // One search thread. With more, the threads share the hash table in an
+    // order the scheduler decides, and the same game can get a different
+    // move; one thread is also the engine's default.
+    private const string SearchThreads = "1";
 
     // A fixed depth, never a time: a time limit is used up in full whatever
     // the position, and makes the move depend on the machine's speed.
@@ -60,7 +66,7 @@ public sealed class FairyStockfishHintProvider(EnginePool pool, IChessRules rule
     public async Task<HintReply> FindBestMoveAsync(IReadOnlyList<string> moves, CancellationToken cancellationToken)
     {
         var result = await LegalMoveSearch.FindAsync(
-            pool, EngineKind, EngineName, "The hint engine", rules, moves, ConfigureAsync, HintSearch, logger, cancellationToken);
+            pool, kind: EngineKind, engineName: EngineName, role: "The hint engine", rules, moves, ConfigureAsync, HintSearch, logger, cancellationToken);
         return result switch
         {
             EngineMove { Uci: var move } => new HintMove(move),
@@ -72,6 +78,7 @@ public sealed class FairyStockfishHintProvider(EnginePool pool, IChessRules rule
 
     private static async Task ConfigureAsync(UciEngine engine, CancellationToken cancellationToken)
     {
+        await engine.SetOptionAsync("Threads", SearchThreads, cancellationToken);
         await engine.SetOptionAsync("UCI_LimitStrength", NoStrengthLimit, cancellationToken);
         await engine.SetOptionAsync("Skill Level", FullSkillLevel, cancellationToken);
         await engine.SetOptionAsync("MultiPV", CandidateLines, cancellationToken);

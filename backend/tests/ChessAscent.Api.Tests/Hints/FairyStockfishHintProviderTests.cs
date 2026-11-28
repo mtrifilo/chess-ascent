@@ -35,7 +35,7 @@ public sealed class FairyStockfishHintProviderTests : IDisposable
     }
 
     [Fact]
-    public async Task EveryRequestSetsFullStrengthThreeLinesAndAnEmptyHashTableThenSearchesToDepthTwelve()
+    public async Task EveryRequestSetsOneThreadFullStrengthThreeLinesAndAnEmptyHashTableThenSearchesToDepthTwelve()
     {
         await using var hints = Start();
 
@@ -46,6 +46,7 @@ public sealed class FairyStockfishHintProviderTests : IDisposable
         // check, and says nothing about what was asked.
         string[] setUp =
         [
+            "setoption name Threads value 1",
             "setoption name UCI_LimitStrength value false",
             "setoption name Skill Level value 20",
             "setoption name MultiPV value 3",

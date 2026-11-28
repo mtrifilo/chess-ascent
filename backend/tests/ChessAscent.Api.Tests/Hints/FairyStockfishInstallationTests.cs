@@ -25,7 +25,7 @@ public sealed partial class FairyStockfishInstallationTests
 
         // The handshake: the program alone, with no arguments and an empty
         // environment, as the kind starts it.
-        Handshake().IsMatch(script).Should().BeTrue("the script runs the engine as an ENGINE array of env -i and $PROGRAM alone");
+        Handshake().IsMatch(script).Should().BeTrue("the script runs the new program as an ENGINE array of env -i and $CANDIDATE alone");
         kind.Arguments.Should().BeEmpty();
         kind.CopyEnvironment.Should().BeEmpty("nothing from the API's own environment reaches the engine");
         kind.SetEnvironment.Should().BeEmpty();
@@ -34,8 +34,10 @@ public sealed partial class FairyStockfishInstallationTests
         // In the engine's own directory, under $ENGINES, which is where the API runs it.
         script.Should().Contain($"FAIRY=\"$(cd \"$ENGINES/{FairyStockfishHintProvider.EngineKind}\" && pwd)\"");
         script.Should().Contain("reply=\"$(cd \"$FAIRY\" && ");
-        var paths = SetUpScripts.Paths(script, "FAIRY", FairyStockfish, "PROGRAM");
+        var paths = SetUpScripts.Paths(script, "FAIRY", FairyStockfish, "PROGRAM", "CANDIDATE");
         paths["PROGRAM"].Should().Be(kind.ExecutablePath);
+        paths["CANDIDATE"].Should().Be(kind.ExecutablePath + ".new");
+        script.Should().Contain("mv -f \"$CANDIDATE\" \"$PROGRAM\"", "the program checked is the one the kind runs");
         kind.WorkingDirectory.Should().Be(FairyStockfish);
     }
 
@@ -83,7 +85,7 @@ public sealed partial class FairyStockfishInstallationTests
             .WithMessage("*scripts/setup-fairy-stockfish.sh installed Fairy-Stockfish*missing: EnginePool:Kinds:fairy_stockfish:WorkingDirectory.");
     }
 
-    [GeneratedRegex(@"ENGINE=\(/usr/bin/env -i ""\$PROGRAM""\)")]
+    [GeneratedRegex(@"ENGINE=\(/usr/bin/env -i ""\$CANDIDATE""\)")]
     private static partial Regex Handshake();
 
     // The kind as the API configures it, with the engines directory at

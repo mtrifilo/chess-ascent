@@ -164,22 +164,29 @@ if ! /usr/bin/env -i PATH="$PATH" TMPDIR="${TMPDIR:-/tmp}" \
   fail "the build failed; the last lines of $BUILD_LOG are above"
 fi
 
-# Copied, then renamed into place: an API running the previous program
-# keeps it, and never sees a half-written file.
-cp "$SOURCE/src/stockfish" "$PROGRAM.new"
-mv -f "$PROGRAM.new" "$PROGRAM"
-
-# The handshake is run the way the API runs the engine: the program itself,
-# with no arguments, in its own directory, and with an empty environment
-# (backend/src/ChessAscent.Api/appsettings.json).
+# The new program is checked beside the one in place, which it replaces
+# only once it passes; a program that fails is removed and the previous one
+# kept. The handshake is run the way the API runs the engine: the program
+# itself, with no arguments, in its own directory, and with an empty
+# environment (backend/src/ChessAscent.Api/appsettings.json).
+CANDIDATE="$PROGRAM.new"
+cp "$SOURCE/src/stockfish" "$CANDIDATE"
+rejected() {
+  rm -f "$CANDIDATE"
+  fail "$1; the program already in $FAIRY, if any, was kept"
+}
 say "checking that the engine answers"
-ENGINE=(/usr/bin/env -i "$PROGRAM")
+ENGINE=(/usr/bin/env -i "$CANDIDATE")
 reply="$(cd "$FAIRY" && printf 'uci\nisready\nquit\n' | "${ENGINE[@]}" 2>&1)" \
-  || fail "the engine exited with an error; run it by hand to see why: cd $(printf %q "$FAIRY") && $(printf '%q ' "${ENGINE[@]}")"
+  || rejected "the engine exited with an error; run it by hand to see why: cd $(printf %q "$FAIRY") && /usr/bin/env -i $(printf %q "$SOURCE/src/stockfish")"
 grep -qx 'id name Fairy-Stockfish 14' <<<"$reply" \
-  || fail "the engine did not name itself as Fairy-Stockfish 14"
+  || rejected "the engine did not name itself as Fairy-Stockfish 14"
 grep -qx uciok <<<"$reply" && grep -qx readyok <<<"$reply" \
-  || fail "the engine did not complete the UCI handshake"
+  || rejected "the engine did not complete the UCI handshake"
 say "the engine answered uciok and readyok"
+
+# Renamed into place: an API running the previous program keeps it, and
+# never sees a half-written file.
+mv -f "$CANDIDATE" "$PROGRAM"
 
 say "done: $(du -sh "$FAIRY" | cut -f1) in $FAIRY"

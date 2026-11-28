@@ -42,8 +42,11 @@ public sealed class HintHostingTests(PostgresFixture postgres)
     }
 
     // Three positions from games between two weak settings of the engine, in
-    // each of which one move is far better than any other by Stockfish's
-    // judgement, and a much deeper search by Stockfish chose that move.
+    // each of which one move is far better than any other: by Stockfish 19
+    // at depth 16, the best move scored at least 2 pawns more than the
+    // second best. Stockfish 19 at depth 22 chose the same move. The margins
+    // below are from that depth-16 search. A different hint here is a
+    // regression to investigate, not test data to update.
     public static TheoryData<string, string[], string> TacticalPositions() => new()
     {
         {
@@ -63,8 +66,8 @@ public sealed class HintHostingTests(PostgresFixture postgres)
             "d4e6"
         },
         {
-            // White to move, with a forced mate. The moves include a
-            // promotion (d7e8q).
+            // White to move, with a forced mate that no other move keeps.
+            // The moves include a promotion (d7e8q).
             "1rb3k1/5p2/pq2pQ1p/3p1B1P/5N2/P5P1/2P2P2/5K1R w - - 2 31",
             [
                 "e2e4", "e7e6", "d2d4", "d7d5", "b1c3", "g8f6", "e4e5", "f6d7", "h2h4", "c7c6", "h4h5", "h7h6", "a2a3", "c6c5",

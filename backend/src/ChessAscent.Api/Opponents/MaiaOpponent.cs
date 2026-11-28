@@ -57,7 +57,7 @@ public sealed class MaiaOpponent(EnginePool pool, IChessRules rules, ILogger<Mai
 
         var rating = strength.ToString(CultureInfo.InvariantCulture);
         var result = await LegalMoveSearch.FindAsync(
-            pool, EngineKind, EngineName, "The opponent", rules, moves, (engine, token) => ConfigureAsync(engine, rating, token), OneEvaluation, logger, cancellationToken);
+            pool, kind: EngineKind, engineName: EngineName, role: "The opponent", rules, moves, (engine, token) => ConfigureAsync(engine, rating, token), OneEvaluation, logger, cancellationToken);
         return result switch
         {
             EngineMove { Uci: var move } => new OpponentMove(move),
