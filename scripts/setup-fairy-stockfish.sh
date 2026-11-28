@@ -101,12 +101,25 @@ BUILD_LOG="$FAIRY/build.log"
 # for the default engines directory is Chess Ascent's own checkout.
 source_git() { git --git-dir="$SOURCE/.git" --work-tree="$SOURCE" "$@"; }
 
-# Whatever a run leaves half-made is removed when it ends, whether it
-# finishes, fails or is interrupted: a fetch in progress, or a new program
-# not yet checked.
+# Whatever a run leaves half-made is removed when it ends: a fetch in
+# progress, or a new program not yet checked. Each signal has a trap of its
+# own, because a trapped signal makes bash wait for the command running in
+# the foreground (git or make) before it acts; untrapped, bash would clean
+# up at once and leave that command running, still writing. A signal sent
+# to this script alone would otherwise be ignored as well, when the command
+# exits normally. The trap cleans up, then raises the signal again with its
+# default action, so that the script dies by it and a command line around
+# it stops too.
 FETCHING=""
 CANDIDATE=""
-trap '[ -z "$FETCHING" ] || rm -rf "$FETCHING"; [ -z "$CANDIDATE" ] || rm -f "$CANDIDATE"' EXIT
+remove_half_made() {
+  [ -z "$FETCHING" ] || rm -rf "$FETCHING"
+  [ -z "$CANDIDATE" ] || rm -f "$CANDIDATE"
+}
+trap remove_half_made EXIT
+for signal in INT TERM HUP; do
+  trap "remove_half_made; trap - $signal EXIT; kill -s $signal \$\$" "$signal"
+done
 
 if [ -d "$SOURCE/.git" ] && [ "$(source_git rev-parse HEAD 2>/dev/null)" = "$FAIRY_STOCKFISH_COMMIT" ]; then
   say "using the source in $SOURCE, at commit $FAIRY_STOCKFISH_COMMIT"
