@@ -9,7 +9,11 @@ import {
 
 import { api } from '@/lib/api'
 
-import type { Side } from '@/components/chess-board/chess-board'
+import type {
+  BoardMove,
+  Side,
+  Square,
+} from '@/components/chess-board/chess-board'
 
 import type { Game, OpponentStrength } from './game-state'
 
@@ -168,4 +172,52 @@ async function recordAnswer(
   }
   if (response.status === 401) return 'signed-out'
   throw new Error(`${request} answered ${response.status}.`)
+}
+
+// How a request for a hint ended, besides failing, which is thrown: the
+// hinted move's two squares; `reloaded`, because the game was not where this
+// screen thought (409: it had ended, or had moved on, as when another tab
+// played first), so it is being read again; or `signed-out`, which the API
+// client already handles. Every other answer is a failure, a 503 included (the
+// hint engine could not answer, and nothing was recorded).
+export type HintOutcome = BoardMove | 'reloaded' | 'signed-out'
+
+// A hint is asked for in the position the screen shows: `halfMoveNumber` is
+// sent, as for a move, so the API answers only for that position, and `fen`
+// stays with the mutation's state, so the screen can tell which position an
+// answer belongs to.
+export type HintRequest = { halfMoveNumber: number; fen: string }
+
+// Asks the API for the move its hint engine finds best. The move is never
+// played. A hint given in a new position adds to the game's count of hinted
+// positions, which only the game itself reports, so the game is read again;
+// the hint is shown without waiting for that read.
+//
+// A failed request is not retried, so the control is ready again at once and
+// the player may press it again. That is a mutation's default, unlike a
+// query's three retries over seconds, and `retry: false` states it here so
+// that no default given to the query client changes it. It is sent even when
+// the browser reports itself offline, so that it fails at once rather than
+// waiting unseen.
+export function useAskForHint(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    networkMode: 'always',
+    retry: false,
+    mutationFn: async ({
+      halfMoveNumber,
+    }: HintRequest): Promise<HintOutcome> => {
+      const { data, response } = await api.POST('/games/{id}/hints', {
+        params: { path: { id } },
+        body: { halfMoveNumber },
+      })
+      if (data || response.status === 409) {
+        void queryClient.invalidateQueries({ queryKey: gameKey(id) })
+      }
+      if (data) return { from: data.from as Square, to: data.to as Square }
+      if (response.status === 409) return 'reloaded'
+      if (response.status === 401) return 'signed-out'
+      throw new Error(`POST /games/{id}/hints answered ${response.status}.`)
+    },
+  })
 }

@@ -1,7 +1,12 @@
 import { opposite } from '@lichess-org/chessground/util'
 
 import type { Side } from '@/components/chess-board/chess-board'
-import { playerName, sideLabel, winner } from '@/features/game/game-state'
+import {
+  hintUsedText,
+  playerName,
+  sideLabel,
+  winner,
+} from '@/features/game/game-state'
 import type { components } from '@/types/api'
 
 // Every word a row of My games shows, built from the facts the API sends
@@ -28,7 +33,7 @@ export function gameRowText(game: GameSummary): GameRowText {
     colour: sideLabel(game.playerSide),
     result: resultText(game),
     date: dateText(game.lastActivityAt),
-    hint: game.hintCount > 0 ? 'Hint used' : undefined,
+    hint: hintUsedText(game),
   }
 }
 

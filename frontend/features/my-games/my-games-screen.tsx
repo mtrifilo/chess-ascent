@@ -4,9 +4,9 @@ import Link from 'next/link'
 import { useId } from 'react'
 
 import { PageHeading } from '@/components/layout/page-heading'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ColourSwatch } from '@/features/game/colour-swatch'
+import { HintUsed } from '@/features/game/hint-used'
 import { NewGameLink } from '@/features/game/new-game-link'
 import { cn } from '@/lib/utils'
 
@@ -175,25 +175,6 @@ function GameList({
       </ul>
       <div ref={endRef} />
     </section>
-  )
-}
-
-// The marker of a game in which a hint was used: the design's outline badge,
-// 22px tall, with the small corners the design gives badges.
-function HintUsed({
-  className,
-  children,
-}: {
-  className?: string
-  children: React.ReactNode
-}) {
-  return (
-    <Badge
-      variant="outline"
-      className={cn('rounded-sm px-2 py-1 leading-3.5', className)}
-    >
-      {children}
-    </Badge>
   )
 }
 

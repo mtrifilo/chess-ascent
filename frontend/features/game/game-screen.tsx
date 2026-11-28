@@ -14,6 +14,7 @@ import {
 import { useNavItemForPage } from '@/components/layout/page-nav-item'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 import { ColourSwatch } from './colour-swatch'
 import { useComputerThinking } from './computer-thinking'
@@ -23,10 +24,13 @@ import {
   checkSquare,
   destinations,
   END_REASON_TEXT,
+  hintText,
+  hintUsedText,
   lastMove,
   moveNumber,
   nextHalfMoveNumber,
   playerName,
+  playsComputer,
   promotionChoices,
   resultTitle,
   toMoveText,
@@ -34,6 +38,8 @@ import {
   type Game,
   type PromotionPiece,
 } from './game-state'
+import { useHint } from './hint'
+import { HintUsed } from './hint-used'
 import { MoveList } from './move-list'
 import { NewGameLink } from './new-game-link'
 import { PromotionPicker } from './promotion-picker'
@@ -111,6 +117,17 @@ function LoadedGame({ game }: { game: Game }) {
     setBoardKey(key => key + 1)
   }
   const promotion = !finished && pending?.fen === game.fen ? pending : undefined
+  const readOnly = finished || moveUnderway || resigning
+  // Only the player's turn has a use for a hint: not while a move or a
+  // resignation is on its way or the computer thinks, nor while a promotion
+  // waits for its piece.
+  const playersTurn =
+    !readOnly && !promotion && game.sideToMove === game.playerSide
+  // While the resign confirmation stands in for the controls, Hint among
+  // them, a hint is kept but not shown, as the confirmation is drawn without
+  // one; Cancel shows it again.
+  const hint = useHint(game, playersTurn && !confirmingResign)
+  const hintUsed = hintUsedText(game)
   const failedMove =
     !finished && playMove.isError && playMove.variables.fen === game.fen
       ? playMove.variables.uci
@@ -125,7 +142,9 @@ function LoadedGame({ game }: { game: Game }) {
         title: 'Your move',
         detail: promotion
           ? `Choose a piece for the pawn on ${promotion.move.to}.`
-          : toMoveText(game.sideToMove, moveNumber(game.fen)),
+          : hint.shown
+            ? hintText(hint.shown)
+            : toMoveText(game.sideToMove, moveNumber(game.fen)),
       }
 
   function send(uci: string) {
@@ -134,6 +153,8 @@ function LoadedGame({ game }: { game: Game }) {
       resetBoard()
       return
     }
+    // A move refused above was not sent, so the hint stays.
+    hint.clear()
     playMove.mutate(
       { uci, halfMoveNumber: nextHalfMoveNumber(game), fen: game.fen },
       {
@@ -183,7 +204,8 @@ function LoadedGame({ game }: { game: Game }) {
             destinations={destinations(game)}
             lastMove={shown.lastMove}
             check={shown.check}
-            readOnly={finished || moveUnderway || resigning}
+            {...hint.marks}
+            readOnly={readOnly}
             onMove={onMove}
           />
           {promotion && (
@@ -211,6 +233,7 @@ function LoadedGame({ game }: { game: Game }) {
       </div>
       <div className="flex flex-col gap-3 pt-4 md:w-90 md:shrink-0 md:gap-4 md:rounded-md md:border md:bg-card md:p-4">
         {finished ? <ResultPanel game={game} /> : <GameStatus {...status} />}
+        {hintUsed && <HintUsed className="self-start">{hintUsed}</HintUsed>}
         {failedMove && <MoveFailed onTryAgain={() => send(failedMove)} />}
         {/* The controls, or the resign confirmation in their place: below
             the move list from `md` up, above it on phones. A game that ends
@@ -226,6 +249,26 @@ function LoadedGame({ game }: { game: Game }) {
           />
         ) : (
           <div className="flex items-center gap-2 md:order-last md:h-25">
+            {/* Only a game against the computer has a hint, and only while
+                it is being played. Once the move is shown the control rests
+                until the player moves. A press it cannot act on is refused
+                through aria-disabled rather than `disabled`, so focus stays
+                on it, and it takes the button's disabled look, as the
+                thinking state draws it. */}
+            {playsComputer(game) && !finished && (
+              <Button
+                aria-disabled={!hint.canPress}
+                className={cn(
+                  TEXT_CONTROL_CLASS,
+                  'flex-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 md:flex-none'
+                )}
+                onClick={() => {
+                  if (hint.canPress) hint.press()
+                }}
+              >
+                {hint.shown?.step === 'piece' ? 'Show move' : 'Hint'}
+              </Button>
+            )}
             {!finished && (
               <Button
                 ref={resignControl}

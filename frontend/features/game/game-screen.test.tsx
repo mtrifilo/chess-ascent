@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { onlineManager } from '@tanstack/react-query'
+import { onlineManager, type QueryClient } from '@tanstack/react-query'
 import { notFound } from 'next/navigation'
 import { Activity } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,6 +9,7 @@ import {
   PageNavItemProvider,
   usePageNavItem,
 } from '@/components/layout/page-nav-item'
+import { createQueryClient } from '@/lib/query-client'
 import {
   answer,
   calls,
@@ -76,12 +77,13 @@ function NamedNavItem() {
   return <output aria-label="Highlighted">{usePageNavItem() ?? 'none'}</output>
 }
 
-async function renderGame() {
+async function renderGame(queryClient?: QueryClient) {
   const result = renderWithQueries(
     <PageNavItemProvider>
       <NamedNavItem />
       <GameScreen id={GAME_ID} />
-    </PageNavItemProvider>
+    </PageNavItemProvider>,
+    queryClient
   )
   await screen.findByRole('img', { name: 'Chess board' })
   return result
@@ -105,11 +107,14 @@ function unreachable(): Promise<Reply> {
   return failure
 }
 
-// The bodies of the moves posted.
-const sentMoves = (sent: ReturnType<typeof answer>) =>
+// The bodies of the requests posted to `path`.
+const postedTo = (path: string, sent: ReturnType<typeof answer>) =>
   sent
-    .filter(request => request.call === `POST ${MOVES_PATH}`)
+    .filter(request => request.call === `POST ${path}`)
     .map(request => request.body)
+
+const sentMoves = (sent: ReturnType<typeof answer>) =>
+  postedTo(MOVES_PATH, sent)
 
 describe('GameScreen', () => {
   it("shows the position, whose move it is, and the player's colour at the bottom", async () => {
@@ -144,7 +149,7 @@ describe('GameScreen', () => {
     expect(screen.queryByText(/Maia/)).not.toBeInTheDocument()
   })
 
-  it('has no Hint control', async () => {
+  it('has no Hint control in a game where the player moves both sides', async () => {
     answer({ [GAME_PATH]: ok(game()) })
     await renderGame()
 
@@ -1417,5 +1422,524 @@ describe('GameScreen', () => {
     expect(
       screen.queryByRole('img', { name: 'Chess board' })
     ).not.toBeInTheDocument()
+  })
+})
+
+describe('GameScreen: a hint', () => {
+  const HINTS_PATH = `${GAME_PATH}/hints`
+
+  // 1. e4 e5 against the computer, White to move: the third half-move.
+  const GAME = COMPUTER_REPLIED_E5
+  // The hint engine's move there: the knight from g1 to f3.
+  const HINT = { from: 'g1', to: 'f3' }
+  const PIECE_TEXT = 'Hint: move the knight on g1.'
+  const MOVE_TEXT = 'Hint: knight from g1 to f3.'
+
+  // 1. e4 e5 2. Nf3 Nc6, White to move: the game after it has moved on.
+  const MOVED_ON = computerGame({
+    fen: 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3',
+    moves: [...GAME.moves, move(3, 'g1f3', 'Nf3'), move(4, 'b8c6', 'Nc6')],
+    legalMoves: { f1: ['c4', 'b5'] },
+  })
+
+  const control = (name: 'Hint' | 'Show move' = 'Hint') =>
+    screen.getByRole('button', { name })
+
+  const sentHints = (sent: ReturnType<typeof answer>) =>
+    postedTo(HINTS_PATH, sent)
+
+  // What the board marks for the hint: the squares filled and the arrows.
+  const boardMarks = () => ({
+    hintSquares: board.props!.hintSquares,
+    arrows: board.props!.arrows,
+  })
+  const NO_MARKS = { hintSquares: undefined, arrows: undefined }
+
+  // Presses the control and waits until the piece is shown.
+  async function revealPiece() {
+    fireEvent.click(control())
+    await screen.findByText(PIECE_TEXT)
+  }
+
+  it("is ready on the player's turn in a game against the computer", async () => {
+    answer({ [GAME_PATH]: ok(GAME) })
+    await renderGame()
+
+    expect(control()).not.toHaveAttribute('aria-disabled', 'true')
+    expect(boardMarks()).toEqual(NO_MARKS)
+    expect(screen.getByText('White to move · move 2')).toBeInTheDocument()
+    expect(screen.queryByText('Hint used')).not.toBeInTheDocument()
+  })
+
+  it('waits for the API, then marks the piece to move and offers the move', async () => {
+    let settle!: (reply: Reply) => void
+    const sent = answer({
+      [GAME_PATH]: ok(GAME),
+      [HINTS_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
+    })
+    await renderGame()
+
+    fireEvent.click(control())
+
+    // Waiting: the control cannot be pressed again, and nothing is marked.
+    await waitFor(() =>
+      expect(control()).toHaveAttribute('aria-disabled', 'true')
+    )
+    expect(boardMarks()).toEqual(NO_MARKS)
+    expect(sentHints(sent)).toEqual([{ halfMoveNumber: 3 }])
+
+    settle(ok(HINT))
+
+    expect(await screen.findByText(PIECE_TEXT)).toBeInTheDocument()
+    expect(screen.queryByText('White to move · move 2')).toBeNull()
+    expect(boardMarks()).toEqual({ hintSquares: ['g1'], arrows: undefined })
+    expect(control('Show move')).not.toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('shows the move on the second press without asking again, and never plays it', async () => {
+    const sent = answer({ [GAME_PATH]: ok(GAME), [HINTS_PATH]: ok(HINT) })
+    await renderGame()
+    const address = window.location.href
+    await revealPiece()
+
+    fireEvent.click(control('Show move'))
+
+    expect(screen.getByText(MOVE_TEXT)).toBeInTheDocument()
+    expect(boardMarks()).toEqual({
+      hintSquares: ['g1', 'f3'],
+      arrows: [{ from: 'g1', to: 'f3' }],
+    })
+    // Shown in full, the hint rests until the player moves.
+    expect(control()).toHaveAttribute('aria-disabled', 'true')
+    expect(sentHints(sent)).toHaveLength(1)
+    // The player still makes the move: the board shows the same position
+    // and still lets them move.
+    expect(sentMoves(sent)).toEqual([])
+    expect(board.props).toMatchObject({ fen: GAME.fen, readOnly: false })
+    // Nothing about the hint is kept outside the page's memory.
+    expect(window.location.href).toBe(address)
+    expect(window.localStorage).toHaveLength(0)
+    expect(window.sessionStorage).toHaveLength(0)
+  })
+
+  it('shows the marker once the game, read again, counts the hint', async () => {
+    let reads = 0
+    const sent = answer({
+      [GAME_PATH]: () => ok({ ...GAME, hintCount: reads++ === 0 ? 0 : 1 }),
+      [HINTS_PATH]: ok(HINT),
+    })
+    await renderGame()
+    expect(screen.queryByText('Hint used')).not.toBeInTheDocument()
+
+    await revealPiece()
+
+    expect(await screen.findByText('Hint used')).toBeInTheDocument()
+    expect(calls(sent)).toEqual([
+      `GET ${GAME_PATH}`,
+      `POST ${HINTS_PATH}`,
+      `GET ${GAME_PATH}`,
+    ])
+  })
+
+  it.each([
+    ['a game being played', GAME],
+    ['a finished game', { ...FOOLS_MATE, opponent: MAIA_800 }],
+  ])(
+    'shows the marker, from the game the API returns, on %s',
+    async (_, loaded) => {
+      answer({ [GAME_PATH]: ok({ ...loaded, hintCount: 2 }) })
+      await renderGame()
+
+      expect(screen.getByText('Hint used')).toBeInTheDocument()
+    }
+  )
+
+  it('clears when the player moves, and the marker stays', async () => {
+    answer({
+      [GAME_PATH]: ok({ ...GAME, hintCount: 1 }),
+      [HINTS_PATH]: ok(HINT),
+      [MOVES_PATH]: ok({ ...MOVED_ON, hintCount: 1 }),
+    })
+    await renderGame()
+    await revealPiece()
+    fireEvent.click(control('Show move'))
+
+    // A different move from the one hinted.
+    playOnBoard('g1', 'h3')
+
+    expect(screen.queryByText(MOVE_TEXT)).toBeNull()
+    expect(boardMarks()).toEqual(NO_MARKS)
+    await waitFor(() => expect(board.props!.fen).toBe(MOVED_ON.fen))
+    expect(screen.queryByText(/^Hint:/)).toBeNull()
+    expect(boardMarks()).toEqual(NO_MARKS)
+    expect(control()).not.toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByText('Hint used')).toBeInTheDocument()
+  })
+
+  describe('when the move the player made is not played', () => {
+    // The query cache reports the failure to the console.
+    beforeEach(() => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+    })
+    afterEach(() => {
+      vi.mocked(console.error).mockRestore()
+    })
+
+    it('does not come back', async () => {
+      answer({
+        [GAME_PATH]: ok(GAME),
+        [HINTS_PATH]: ok(HINT),
+        [MOVES_PATH]: problem(500),
+      })
+      await renderGame()
+      await revealPiece()
+
+      playOnBoard('g1', 'h3')
+
+      await screen.findByRole('alert')
+      expect(board.props!.fen).toBe(GAME.fen)
+      expect(screen.queryByText(PIECE_TEXT)).toBeNull()
+      expect(boardMarks()).toEqual(NO_MARKS)
+      expect(control()).not.toHaveAttribute('aria-disabled', 'true')
+    })
+
+    it('does not come back when "Try again" sends the move and it fails again', async () => {
+      const sent = answer({
+        [GAME_PATH]: ok(GAME),
+        [HINTS_PATH]: ok(HINT),
+        [MOVES_PATH]: problem(500),
+      })
+      await renderGame()
+      playOnBoard('g1', 'h3')
+      await screen.findByRole('alert')
+      // A hint asked for after the move failed, then the move sent again.
+      await revealPiece()
+      fireEvent.click(control('Show move'))
+
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+      await waitFor(() => expect(sentMoves(sent)).toHaveLength(2))
+      await screen.findByRole('alert')
+      expect(screen.queryByText(/^Hint:/)).toBeNull()
+      expect(boardMarks()).toEqual(NO_MARKS)
+      expect(control()).not.toHaveAttribute('aria-disabled', 'true')
+    })
+  })
+
+  it('clears when the game is read again and has moved on', async () => {
+    answer({ [GAME_PATH]: ok(GAME), [HINTS_PATH]: ok(HINT) })
+    const { queryClient } = await renderGame()
+    await revealPiece()
+
+    // Another tab played on, and this screen read the game again.
+    act(() => queryClient.setQueryData(['game', GAME_ID], MOVED_ON))
+
+    await waitFor(() => expect(board.props!.fen).toBe(MOVED_ON.fen))
+    expect(screen.queryByText(PIECE_TEXT)).toBeNull()
+    expect(boardMarks()).toEqual(NO_MARKS)
+    expect(control()).not.toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('clears, and is no longer offered, when the game ends', async () => {
+    answer({ [GAME_PATH]: ok(GAME), [HINTS_PATH]: ok(HINT) })
+    const { queryClient } = await renderGame()
+    await revealPiece()
+
+    act(() =>
+      queryClient.setQueryData(['game', GAME_ID], {
+        ...FOOLS_MATE,
+        opponent: MAIA_800,
+      })
+    )
+
+    await screen.findByText('Checkmate.')
+    expect(screen.queryByText(PIECE_TEXT)).toBeNull()
+    expect(boardMarks()).toEqual(NO_MARKS)
+    expect(screen.queryByRole('button', { name: 'Hint' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Show move' })).toBeNull()
+  })
+
+  it.each([
+    [
+      'the game is read again and has moved on',
+      (queryClient: QueryClient) =>
+        queryClient.setQueryData(['game', GAME_ID], MOVED_ON),
+    ],
+    ['the player moves', () => playOnBoard('g1', 'h3')],
+  ])('drops an answer that arrives after %s', async (_, moveOn) => {
+    let settle!: (reply: Reply) => void
+    // The API holds the game as it stands: moved on once it has.
+    let movedOn = false
+    const sent = answer({
+      [GAME_PATH]: () => ok(movedOn ? MOVED_ON : GAME),
+      [HINTS_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
+      [MOVES_PATH]: ok(MOVED_ON),
+    })
+    const { queryClient } = await renderGame()
+    fireEvent.click(control())
+    await waitFor(() =>
+      expect(control()).toHaveAttribute('aria-disabled', 'true')
+    )
+
+    movedOn = true
+    act(() => moveOn(queryClient))
+    await waitFor(() => expect(board.props!.fen).toBe(MOVED_ON.fen))
+    const reads = () =>
+      calls(sent).filter(call => call === `GET ${GAME_PATH}`).length
+    const readsBefore = reads()
+    settle(ok(HINT))
+    // The answer has arrived once it has the game read again.
+    await waitFor(() => expect(reads()).toBe(readsBefore + 1))
+    await waitFor(() =>
+      expect(control()).not.toHaveAttribute('aria-disabled', 'true')
+    )
+
+    expect(screen.queryByText(/^Hint:/)).toBeNull()
+    expect(boardMarks()).toEqual(NO_MARKS)
+  })
+
+  it('sits first in the controls, before Resign and Flip board', async () => {
+    answer({ [GAME_PATH]: ok(GAME) })
+    await renderGame()
+
+    const row = control().parentElement!
+    expect(
+      within(row)
+        .getAllByRole('button')
+        .map(button => button.textContent || button.getAttribute('aria-label'))
+    ).toEqual(['Hint', 'Resign', 'Flip board'])
+  })
+
+  it('refuses a second press while the API answers, and keeps focus', async () => {
+    const sent = answer({
+      [GAME_PATH]: ok(GAME),
+      [HINTS_PATH]: new Promise<Reply>(() => {}),
+    })
+    await renderGame()
+    control().focus()
+
+    // The second press comes before React has rendered the first's waiting
+    // state, as a quick double press can.
+    fireEvent.click(control())
+    fireEvent.click(control())
+    await waitFor(() =>
+      expect(control()).toHaveAttribute('aria-disabled', 'true')
+    )
+    fireEvent.click(control())
+
+    await waitFor(() => expect(sentHints(sent)).toHaveLength(1))
+    expect(control()).toHaveFocus()
+  })
+
+  describe('and the resign confirmation', () => {
+    const QUESTION = 'Resign this game? This cannot be undone.'
+
+    it('keeps the hint, unseen, while the confirmation is open, and shows it again on Cancel', async () => {
+      const sent = answer({ [GAME_PATH]: ok(GAME), [HINTS_PATH]: ok(HINT) })
+      await renderGame()
+      await revealPiece()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Resign' }))
+
+      expect(screen.getByRole('group', { name: QUESTION })).toBeInTheDocument()
+      expect(screen.queryByText(PIECE_TEXT)).toBeNull()
+      expect(screen.getByText('White to move · move 2')).toBeInTheDocument()
+      expect(boardMarks()).toEqual(NO_MARKS)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+      expect(screen.getByText(PIECE_TEXT)).toBeInTheDocument()
+      expect(boardMarks()).toEqual({ hintSquares: ['g1'], arrows: undefined })
+      expect(control('Show move')).not.toHaveAttribute('aria-disabled', 'true')
+      expect(sentHints(sent)).toHaveLength(1)
+    })
+
+    it('keeps the hint when "Try again" is refused while the resignation is on its way', async () => {
+      // The query cache reports the failures to the console.
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {})
+      let settle!: (reply: Reply) => void
+      const sent = answer({
+        [GAME_PATH]: ok(GAME),
+        [HINTS_PATH]: ok(HINT),
+        [MOVES_PATH]: problem(500),
+        [RESIGN_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
+      })
+      await renderGame()
+      playOnBoard('g1', 'h3')
+      await screen.findByRole('alert')
+      await revealPiece()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Resign' }))
+      const group = screen.getByRole('group', { name: QUESTION })
+      fireEvent.click(within(group).getByRole('button', { name: 'Resign' }))
+      await waitFor(() => expect(board.props!.readOnly).toBe(true))
+      // Refused: no move is sent while the resignation is on its way.
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+      settle(problem(500))
+      await waitFor(() =>
+        expect(
+          within(group).getByRole('button', { name: 'Cancel' })
+        ).not.toHaveAttribute('aria-disabled', 'true')
+      )
+      fireEvent.click(within(group).getByRole('button', { name: 'Cancel' }))
+
+      expect(sentMoves(sent)).toHaveLength(1)
+      expect(screen.getByText(PIECE_TEXT)).toBeInTheDocument()
+      expect(boardMarks()).toEqual({ hintSquares: ['g1'], arrows: undefined })
+      consoleError.mockRestore()
+    })
+
+    it('clears the hint, and the control goes, once the game is resigned', async () => {
+      answer({
+        [GAME_PATH]: ok(GAME),
+        [HINTS_PATH]: ok(HINT),
+        [RESIGN_PATH]: ok({
+          ...GAME,
+          status: 'finished',
+          result: 'blackWins',
+          endReason: 'resignation',
+          legalMoves: {},
+        }),
+      })
+      await renderGame()
+      await revealPiece()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Resign' }))
+      fireEvent.click(
+        within(screen.getByRole('group', { name: QUESTION })).getByRole(
+          'button',
+          { name: 'Resign' }
+        )
+      )
+
+      await screen.findByText('You resigned.')
+      expect(screen.queryByText(/^Hint:/)).toBeNull()
+      expect(boardMarks()).toEqual(NO_MARKS)
+      expect(screen.queryByRole('button', { name: 'Hint' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Show move' })).toBeNull()
+    })
+  })
+
+  describe("cannot be used when it is not the player's turn", () => {
+    it('while the computer thinks', async () => {
+      answer({
+        [GAME_PATH]: ok(GAME),
+        [MOVES_PATH]: new Promise<Reply>(() => {}),
+      })
+      await renderGame()
+
+      playOnBoard('g1', 'f3')
+
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+          'Maia 800 is thinking'
+        )
+      )
+      expect(control()).toHaveAttribute('aria-disabled', 'true')
+    })
+
+    it('while a promotion waits for its piece', async () => {
+      answer({ [GAME_PATH]: ok({ ...PROMOTION_GAME, opponent: MAIA_800 }) })
+      await renderGame()
+
+      playOnBoard('e7', 'e8')
+
+      expect(screen.getByRole('group')).toBeInTheDocument()
+      expect(control()).toHaveAttribute('aria-disabled', 'true')
+    })
+
+    it('while the computer is to move in the game the API returns', async () => {
+      answer({ [GAME_PATH]: ok({ ...AFTER_E4, opponent: MAIA_800 }) })
+      await renderGame()
+
+      expect(control()).toHaveAttribute('aria-disabled', 'true')
+    })
+  })
+
+  describe('an answer that is not a hint', () => {
+    // The query cache reports each failure to the console.
+    beforeEach(() => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+    })
+    afterEach(() => {
+      vi.mocked(console.error).mockRestore()
+    })
+
+    it.each([
+      ['the hint engine could not answer', () => problem(503)],
+      ['the API fails', () => problem(500)],
+      ['the API refuses the request', () => problem(422)],
+      ['the API cannot be reached', unreachable],
+    ])(
+      'makes the control ready again, with nothing written, when %s',
+      async (_, reply) => {
+        const sent = answer({ [GAME_PATH]: ok(GAME), [HINTS_PATH]: reply() })
+        await renderGame()
+
+        fireEvent.click(control())
+
+        await waitFor(() => expect(console.error).toHaveBeenCalled())
+        expect(control()).not.toHaveAttribute('aria-disabled', 'true')
+        expect(sentHints(sent)).toHaveLength(1)
+        expect(screen.getByText('White to move · move 2')).toBeInTheDocument()
+        expect(screen.queryByRole('alert')).toBeNull()
+        expect(boardMarks()).toEqual(NO_MARKS)
+      }
+    )
+
+    // The app's query client, made as the app makes it, retries a failed
+    // query three times over seconds, as TanStack Query does by default. A
+    // hint is a mutation and is not retried, so the control is ready again
+    // at once; this holds that, should the hint become a query or the client
+    // be given defaults.
+    it("asks once, and is ready again at once, with the app's own query settings", async () => {
+      const sent = answer({
+        [GAME_PATH]: ok(GAME),
+        [HINTS_PATH]: problem(503),
+      })
+      await renderGame(createQueryClient())
+
+      fireEvent.click(control())
+
+      await waitFor(() => expect(console.error).toHaveBeenCalled())
+      expect(control()).not.toHaveAttribute('aria-disabled', 'true')
+      expect(sentHints(sent)).toHaveLength(1)
+    })
+
+    it('shows nothing for a signed-out visitor, whom the API client sends to sign in', async () => {
+      const sent = answer({ [GAME_PATH]: ok(GAME), [HINTS_PATH]: problem(401) })
+      const { queryClient } = await renderGame()
+
+      fireEvent.click(control())
+
+      await waitFor(() => expect(sentHints(sent)).toHaveLength(1))
+      await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+      // Not a failure, so the query cache reports nothing.
+      expect(console.error).not.toHaveBeenCalled()
+      expect(control()).not.toHaveAttribute('aria-disabled', 'true')
+      expect(screen.queryByText(/^Hint:/)).toBeNull()
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(boardMarks()).toEqual(NO_MARKS)
+    })
+
+    it('loads the game again, and shows no hint, when the game is not where the screen thought', async () => {
+      answer({ [GAME_PATH]: ok(GAME) })
+      await renderGame()
+      // Another tab played on meanwhile.
+      const sent = answer({
+        [GAME_PATH]: ok(MOVED_ON),
+        [HINTS_PATH]: problem(409),
+      })
+
+      fireEvent.click(control())
+
+      await waitFor(() => expect(board.props!.fen).toBe(MOVED_ON.fen))
+      expect(calls(sent)).toEqual([`POST ${HINTS_PATH}`, `GET ${GAME_PATH}`])
+      expect(screen.queryByText(/^Hint:/)).toBeNull()
+      expect(boardMarks()).toEqual(NO_MARKS)
+      expect(control()).not.toHaveAttribute('aria-disabled', 'true')
+    })
   })
 })

@@ -3,10 +3,13 @@ import { describe, expect, it } from 'vitest'
 import {
   checkSquare,
   END_REASON_TEXT,
+  hintText,
+  hintUsedText,
   lastMove,
   moveNumber,
   moveRows,
   nextHalfMoveNumber,
+  pieceOn,
   positionAfter,
   promotionChoices,
   resultTitle,
@@ -198,5 +201,40 @@ describe('result wording', () => {
       deadPosition: 'Neither side can checkmate.',
       resignation: 'You resigned.',
     })
+  })
+})
+
+describe('hintText', () => {
+  it('names the piece first, then the move, in the approved wording', () => {
+    const knight = { from: 'b1', to: 'd2', piece: 'knight' } as const
+
+    expect(hintText({ ...knight, step: 'piece' })).toBe(
+      'Hint: move the knight on b1.'
+    )
+    expect(hintText({ ...knight, step: 'move' })).toBe(
+      'Hint: knight from b1 to d2.'
+    )
+  })
+
+  it("names a castling move as the king's", () => {
+    expect(
+      hintText({ from: 'e1', to: 'g1', piece: 'king', step: 'move' })
+    ).toBe('Hint: king from e1 to g1.')
+  })
+})
+
+describe('pieceOn', () => {
+  it('reads the kind of piece on a square, or nothing on an empty one', () => {
+    expect(pieceOn(START_FEN, 'b1')).toBe('knight')
+    expect(pieceOn(START_FEN, 'e8')).toBe('king')
+    expect(pieceOn(START_FEN, 'e4')).toBeUndefined()
+  })
+})
+
+describe('hintUsedText', () => {
+  it('marks a game once a hint was given in any position', () => {
+    expect(hintUsedText({ hintCount: 0 })).toBeUndefined()
+    expect(hintUsedText({ hintCount: 1 })).toBe('Hint used')
+    expect(hintUsedText({ hintCount: 3 })).toBe('Hint used')
   })
 })
