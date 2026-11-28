@@ -32,6 +32,7 @@ export function useGame(id: string) {
 export function useCreateGame() {
   const queryClient = useQueryClient()
   return useMutation({
+    networkMode: 'always',
     mutationFn: async (): Promise<Game> => {
       const { data, response } = await api.POST('/games', {
         body: { playerSide: 'white', opponent: { kind: 'none' } },
@@ -55,9 +56,23 @@ export type MoveOutcome = 'played' | 'reloaded' | 'signed-out'
 // A game read that was already on its way when the move was played is
 // cancelled before the answer is recorded, so it cannot land afterwards and
 // put back the position before the move.
+//
+// A move that fails is followed by a fresh read of the game. The screen
+// offers only moves the API listed, so a refusal means the screen's position
+// is out of date (another tab has moved), and a move whose answer was lost
+// may have been saved all the same. The read is not waited for: the failure
+// is reported at once.
+//
+// The mutations here are sent even when the browser reports itself offline
+// (`networkMode: 'always'`), so that a move fails at once, as the screen
+// describes, rather than waiting unseen for the connection to come back.
 export function usePlayMove(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
+    networkMode: 'always',
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: gameKey(id) })
+    },
     mutationFn: async (uci: string): Promise<MoveOutcome> => {
       const { data, response } = await api.POST('/games/{id}/moves', {
         params: { path: { id } },

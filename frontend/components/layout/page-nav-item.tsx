@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useLayoutEffect, useState } from 'react'
 
 import type { NavHref } from './nav-links'
 
@@ -38,9 +38,11 @@ export function usePageNavItem(): NavHref | undefined {
 
 // Names the item to highlight while the calling page is showing. Leaving the
 // page, or hiding it as Next.js does on navigation, clears the name again.
+// A layout effect does both before the browser paints, so the next page
+// never shows for a frame with this page's item highlighted.
 export function useNavItemForPage(href: NavHref | undefined) {
   const { setHref } = useContext(PageNavItemContext)
-  useEffect(() => {
+  useLayoutEffect(() => {
     setHref(href)
     return () => setHref(undefined)
   }, [href, setHref])

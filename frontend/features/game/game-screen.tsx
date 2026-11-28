@@ -50,14 +50,15 @@ export function GameScreen({ id }: { id: string }) {
   return <LoadedGame game={game} />
 }
 
-// A promotion waiting for the player's choice of piece, in the position it
-// was made in, so that a new position read meanwhile (from another tab, say)
-// drops it.
+// A promotion waiting for the player's choice of piece, and a move that was
+// not played, each with the position it was made in, so that a new position
+// read meanwhile (after a move in another tab, say) drops it.
 type PendingPromotion = {
   move: BoardMove
   pieces: PromotionPiece[]
   fen: string
 }
+type FailedMove = { uci: string; fen: string }
 
 function LoadedGame({ game }: { game: Game }) {
   const playMove = usePlayMove(game.id)
@@ -67,18 +68,25 @@ function LoadedGame({ game }: { game: Game }) {
   // screen holds, which takes the move back off (see ChessBoard's onMove).
   const [boardKey, setBoardKey] = useState(0)
   const [pending, setPending] = useState<PendingPromotion>()
+  const [failed, setFailed] = useState<FailedMove>()
 
   const finished = game.status === 'finished'
   const orientation = flipped ? opposite(game.playerSide) : game.playerSide
   const promotion = pending?.fen === game.fen ? pending : undefined
+  const failedMove = failed?.fen === game.fen ? failed.uci : undefined
 
   function send(uci: string) {
     const resetBoard = () => setBoardKey(key => key + 1)
+    const fen = game.fen
+    setFailed(undefined)
     playMove.mutate(uci, {
       onSuccess: outcome => {
         if (outcome === 'reloaded') resetBoard()
       },
-      onError: resetBoard,
+      onError: () => {
+        resetBoard()
+        setFailed({ uci, fen })
+      },
     })
   }
 
@@ -88,9 +96,10 @@ function LoadedGame({ game }: { game: Game }) {
     else send(toUci(move))
   }
 
-  const failedMove = playMove.isError ? playMove.variables : undefined
-
   return (
+    // On phones the upper player bar sits against the app shell's top bar,
+    // as drawn, so the shell's 16px top padding (app-shell.tsx) is taken
+    // back; change the two together.
     <div className="-mt-4 flex flex-col md:mt-0 md:flex-row md:justify-center md:gap-8">
       <div className="flex min-w-0 flex-col md:w-160 md:gap-2">
         <PlayerBar game={game} side={opposite(orientation)} />
@@ -144,7 +153,13 @@ function LoadedGame({ game }: { game: Game }) {
             <ArrowUpDownIcon aria-hidden />
           </Button>
         </div>
-        <MoveList moves={game.moves} className="md:min-h-0 md:flex-1" />
+        {/* From `md` up the list takes the height left beside the board and
+            scrolls within it. Its box is absolutely placed, so the moves
+            never make the panel, and with it the row, taller than the
+            board. */}
+        <div className="md:relative md:min-h-0 md:flex-1">
+          <MoveList moves={game.moves} className="md:absolute md:inset-0" />
+        </div>
       </div>
     </div>
   )

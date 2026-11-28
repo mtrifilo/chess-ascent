@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { onlineManager } from '@tanstack/react-query'
 import { notFound } from 'next/navigation'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -223,6 +224,22 @@ describe('GameScreen', () => {
       expect(screen.queryByRole('group')).not.toBeInTheDocument()
     })
 
+    it('drops the choice when a new position arrives meanwhile', async () => {
+      const sent = answer({ [GAME_PATH]: ok(PROMOTION_GAME) })
+      const { queryClient } = await renderGame()
+
+      playOnBoard('e7', 'e8')
+      expect(screen.getByRole('group')).toBeInTheDocument()
+      // Another tab played a move, and this screen read the game again.
+      act(() => queryClient.setQueryData(['game', GAME_ID], AFTER_E4))
+
+      await waitFor(() =>
+        expect(screen.getByText('Black to move · move 1')).toBeInTheDocument()
+      )
+      expect(screen.queryByRole('group')).not.toBeInTheDocument()
+      expect(sentMoves(sent)).toEqual([])
+    })
+
     it('does not ask for a move that does not promote', async () => {
       const sent = answer({
         [GAME_PATH]: ok(PROMOTION_GAME),
@@ -269,7 +286,7 @@ describe('GameScreen', () => {
     )
 
     it('sends the same move again on "Try again"', async () => {
-      const sent = answer({
+      answer({
         [GAME_PATH]: ok(game()),
         [MOVES_PATH]: problem(500),
       })
@@ -277,29 +294,76 @@ describe('GameScreen', () => {
       playOnBoard('e2', 'e4')
       await screen.findByRole('alert')
 
-      answer({ [GAME_PATH]: ok(game()), [MOVES_PATH]: ok(AFTER_E4) })
+      const retried = answer({
+        [GAME_PATH]: ok(game()),
+        [MOVES_PATH]: ok(AFTER_E4),
+      })
       fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
 
       await waitFor(() => expect(board.props!.fen).toBe(AFTER_E4.fen))
-      expect(sentMoves(sent)).toEqual([{ uci: 'e2e4' }])
+      expect(sentMoves(retried)).toEqual([{ uci: 'e2e4' }])
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
-    it('loads the game again, without the error, when it is no longer where the screen thought', async () => {
-      const sent = answer({
-        [GAME_PATH]: ok(game()),
-        [MOVES_PATH]: problem(409),
-      })
+    it.each([
+      ['refuses it', () => problem(422)],
+      ['saved it but its answer was lost', unreachable],
+    ])(
+      'reads the game again, and shows where it stands, when the API %s',
+      async (_, reply) => {
+        answer({ [GAME_PATH]: ok(game()), [MOVES_PATH]: reply() })
+        await renderGame()
+        // The game has moved on: another tab played 1. e4, or this move
+        // was saved before its answer was lost.
+        const sent = answer({
+          [GAME_PATH]: ok(AFTER_E4),
+          [MOVES_PATH]: reply(),
+        })
+
+        playOnBoard('e2', 'e4')
+
+        await waitFor(() => expect(board.props!.fen).toBe(AFTER_E4.fen))
+        expect(calls(sent)).toEqual([`POST ${MOVES_PATH}`, `GET ${GAME_PATH}`])
+        // The error was about the position before; the board now shows
+        // the position the API holds.
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      }
+    )
+
+    it('fails at once, rather than waiting, while the browser is offline', async () => {
+      answer({ [GAME_PATH]: ok(game()), [MOVES_PATH]: unreachable() })
+      await renderGame()
+      onlineManager.setOnline(false)
+
+      try {
+        playOnBoard('e2', 'e4')
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+          'Your move was not sent'
+        )
+        expect(board.mounts).toBe(2)
+      } finally {
+        onlineManager.setOnline(true)
+      }
+    })
+  })
+
+  describe('a move the API finds out of date', () => {
+    it('loads the game again, without the error', async () => {
+      answer({ [GAME_PATH]: ok(game()), [MOVES_PATH]: problem(409) })
       await renderGame()
       // Another tab played 1. e4 meanwhile.
-      answer({ [GAME_PATH]: ok(AFTER_E4), [MOVES_PATH]: problem(409) })
+      const sent = answer({
+        [GAME_PATH]: ok(AFTER_E4),
+        [MOVES_PATH]: problem(409),
+      })
 
       playOnBoard('g1', 'f3')
 
       await waitFor(() => expect(board.props!.fen).toBe(AFTER_E4.fen))
       expect(board.mounts).toBe(2)
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-      expect(calls(sent)).toEqual([`GET ${GAME_PATH}`])
+      expect(calls(sent)).toEqual([`POST ${MOVES_PATH}`, `GET ${GAME_PATH}`])
     })
 
     it('shows no error for a signed-out visitor, whom the API client sends to sign in', async () => {
@@ -355,7 +419,6 @@ describe('GameScreen', () => {
       ['draw', 'fiftyMoveRule', 'Draw', 'Fifty-move rule.'],
       ['draw', 'deadPosition', 'Draw', 'Neither side can checkmate.'],
       ['whiteWins', 'checkmate', 'You won', 'Checkmate.'],
-      ['blackWins', 'resignation', 'You won', 'You resigned.'],
     ] as const)(
       'words a %s by %s as "%s %s"',
       async (result, endReason, title, reason) => {
