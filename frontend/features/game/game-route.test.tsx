@@ -29,9 +29,13 @@ vi.mock('@/components/chess-board/chess-board', () => ({
   },
 }))
 
+// The router's bfcacheId, which a navigation by a link changes and the back
+// button does not.
+const router = vi.hoisted(() => ({ bfcacheId: 'first visit' }))
 vi.mock('next/navigation', () => ({
   notFound: vi.fn(),
   useParams: () => ({ id: GAME_ID }),
+  useRouter: () => router,
 }))
 vi.mock('@/lib/page-load', () => ({ loadPage: vi.fn(), reloadPage: vi.fn() }))
 
@@ -50,6 +54,7 @@ const BEFORE_MATE = game({
 })
 
 beforeEach(() => {
+  router.bfcacheId = 'first visit'
   board.props = undefined
   vi.mocked(notFound).mockReset()
 })
@@ -118,7 +123,25 @@ describe('GameRoute', () => {
     await waitFor(() => expect(heading()).toHaveTextContent('Replay'))
   })
 
-  it('replays a game that ended on its screen when the player leaves the page and comes back to it', async () => {
+  it('replays a game that ended on its screen when the player leaves the page and comes back to it by a link', async () => {
+    answer({
+      [GAME_PATH]: ok(BEFORE_MATE),
+      [MOVES_PATH]: ok(FOOLS_MATE),
+    })
+    const { rerender } = renderRoute()
+    await waitFor(() => expect(heading()).toHaveTextContent('Your move'))
+    act(() => board.props!.onMove!({ from: 'd8', to: 'h4' }))
+    await waitFor(() => expect(heading()).toHaveTextContent('You won'))
+
+    rerender(routeIn('hidden'))
+    router.bfcacheId = 'second visit'
+    rerender(routeIn('visible'))
+
+    await waitFor(() => expect(heading()).toHaveTextContent('Replay'))
+    expect(highlighted()).toHaveTextContent('/games')
+  })
+
+  it('brings back the game screen as it was left when the player comes back with the back button', async () => {
     answer({
       [GAME_PATH]: ok(BEFORE_MATE),
       [MOVES_PATH]: ok(FOOLS_MATE),
@@ -131,8 +154,26 @@ describe('GameRoute', () => {
     rerender(routeIn('hidden'))
     rerender(routeIn('visible'))
 
+    expect(heading()).toHaveTextContent('You won')
+    expect(screen.getByText('Checkmate.')).toBeInTheDocument()
+  })
+
+  it('replays a game whose last move was answered while the player was away from its page, on coming back by a link', async () => {
+    let settle!: (reply: Reply) => void
+    answer({
+      [GAME_PATH]: ok(BEFORE_MATE),
+      [MOVES_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
+    })
+    const { rerender } = renderRoute()
+    await waitFor(() => expect(heading()).toHaveTextContent('Your move'))
+    act(() => board.props!.onMove!({ from: 'd8', to: 'h4' }))
+
+    rerender(routeIn('hidden'))
+    await act(async () => settle(ok(FOOLS_MATE)))
+    router.bfcacheId = 'second visit'
+    rerender(routeIn('visible'))
+
     await waitFor(() => expect(heading()).toHaveTextContent('Replay'))
-    expect(highlighted()).toHaveTextContent('/games')
   })
 
   it('keeps the game screen and its result when the player resigns there, and replays the game when the page opens again', async () => {
