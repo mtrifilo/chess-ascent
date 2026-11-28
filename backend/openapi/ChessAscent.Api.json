@@ -488,15 +488,8 @@
         "type": "object",
         "properties": {
           "playerSide": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "description": "The side the signed-in player has.",
-                "$ref": "#/components/schemas/Side"
-              }
-            ]
+            "description": "The side the signed-in player has.",
+            "$ref": "#/components/schemas/Side"
           },
           "opponent": {
             "description": "Who plays the other side.",
@@ -525,8 +518,7 @@
           "threefoldRepetition",
           "fiftyMoveRule",
           "deadPosition",
-          "resignation",
-          null
+          "resignation"
         ]
       },
       "GameProgress": {
@@ -630,8 +622,7 @@
         "enum": [
           "whiteWins",
           "blackWins",
-          "draw",
-          null
+          "draw"
         ]
       },
       "HttpValidationProblemDetails": {
@@ -717,15 +708,8 @@
         "type": "object",
         "properties": {
           "kind": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "description": "The kind of opponent. Only `none` is offered, meaning the signed-in\nplayer moves both sides; any other is refused with 400.",
-                "$ref": "#/components/schemas/OpponentKind"
-              }
-            ]
+            "description": "The kind of opponent. Only `none` is offered, meaning the signed-in\nplayer moves both sides; any other is refused with 400.",
+            "$ref": "#/components/schemas/OpponentKind"
           }
         },
         "description": "Who plays the side the player does not."

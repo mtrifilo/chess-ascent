@@ -443,8 +443,34 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         await response.ReadProblemAsync();
     }
 
-    [Fact]
-    public async Task ASavedGameThatCannotBeRebuiltAnswers500AndIsLoggedWithItsId()
+    // Moves written straight to the table, as something other than the
+    // store might write them, each leaving a game that cannot be played on.
+    public static TheoryData<string, int, string> BrokenSavedGames => new()
+    {
+        {
+            """INSERT INTO "Moves" ("GameId", "HalfMoveNumber", "Uci", "San") VALUES (@id, 1, 'e2e5', 'e5')""",
+            1,
+            "half-move 1 is illegal"
+        },
+        {
+            """INSERT INTO "Moves" ("GameId", "HalfMoveNumber", "Uci", "San") VALUES (@id, 2, 'e2e4', 'e4')""",
+            1,
+            "its half-move numbers have a gap"
+        },
+        {
+            // Fool's mate, with the game's status left as ongoing.
+            """
+            INSERT INTO "Moves" ("GameId", "HalfMoveNumber", "Uci", "San")
+            VALUES (@id, 1, 'f2f3', 'f3'), (@id, 2, 'e7e5', 'e5'), (@id, 3, 'g2g4', 'g4'), (@id, 4, 'd8h4', 'Qh4#')
+            """,
+            4,
+            "it is saved as ongoing, but its moves end it"
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(BrokenSavedGames))]
+    public async Task ABrokenSavedGameAnswers500AndIsLoggedWithItsIdAndLeftAsItIs(string sql, int rows, string reason)
     {
         var logs = new CapturingLoggerProvider();
         using var logged = factory.WithWebHostBuilder(host => host.ConfigureLogging(logging => logging
@@ -454,7 +480,9 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         var email = AccountData.NewEmail();
         await client.RegisterNewAsync(email);
         var game = await client.CreateGameAsync();
-        await SaveIllegalFirstMoveAsync(game.Id);
+        (await postgres.ExecuteAsync(sql, game.Id)).Should().Be(rows);
+        var ownerId = await factory.AccountIdAsync(email);
+        var before = await factory.LoadGameAsync(ownerId, game.Id);
 
         using var read = await client.GetGameAsync(game.Id);
         using var move = await client.PostMoveAsync(game.Id, "e2e4");
@@ -466,23 +494,27 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         }
 
         logs.Messages.Where(message => message.StartsWith("Saved game", StringComparison.Ordinal))
-            .Should().Equal(
-                Enumerable.Repeat($"Saved game {game.Id} cannot be rebuilt: half-move 1 is illegal.", 2));
-        var saved = await factory.LoadGameAsync(await factory.AccountIdAsync(email), game.Id);
-        saved!.Moves.Should().Equal(new PlayedMove("e2e5", "e5"));
+            .Should().Equal(Enumerable.Repeat($"Saved game {game.Id} cannot be rebuilt: {reason}.", 2));
+        (await factory.LoadGameAsync(ownerId, game.Id)).Should().BeEquivalentTo(before);
+    }
+
+    // The id must be a GUID for the route to match at all, so anything else
+    // is an unknown path, signed in or not, and says nothing about any game.
+    [Fact]
+    public async Task AnIdThatIsNotAGuidIsAnUnknownPath()
+    {
+        using var client = await SignedInClientAsync();
+
+        using var read = await client.GetAsync("/games/not-a-guid", Cancellation);
+        using var move = await client.PostAsJsonAsync("/games/not-a-guid/moves", new { uci = "e2e4" }, Cancellation);
+
+        read.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        move.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     private static readonly Func<AwesomeAssertions.Equivalency.EquivalencyOptions<GameResponse>,
         AwesomeAssertions.Equivalency.EquivalencyOptions<GameResponse>> InStrictOrder =
         options => options.WithStrictOrdering();
-
-    // A move the rules refuse, written straight to the table as something
-    // other than the store might write it.
-    private async Task SaveIllegalFirstMoveAsync(Guid gameId) =>
-        (await postgres.ExecuteAsync(
-            """INSERT INTO "Moves" ("GameId", "HalfMoveNumber", "Uci", "San") VALUES (@id, 1, 'e2e5', 'e5')""",
-            gameId))
-        .Should().Be(1);
 
     private async Task<HttpClient> SignedInClientAsync()
     {

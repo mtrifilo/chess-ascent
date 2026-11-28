@@ -331,5 +331,6 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         game.EndReason,
         game.CreatedAt,
         game.UpdatedAt,
-        [.. game.Moves.Select(move => new PlayedMove(move.Uci, move.San))]);
+        [.. game.Moves.Select(move => new PlayedMove(move.Uci, move.San))],
+        game.Moves.Select((move, index) => move.HalfMoveNumber == index + 1).All(inOrder => inOrder));
 }

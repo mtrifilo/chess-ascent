@@ -21,19 +21,23 @@ public static class JsonServices
         // written as strings.
         services.ConfigureHttpJsonOptions(options =>
         {
-            // The Web defaults read "5" as 5, so the document described every
-            // integer as an integer or a string of digits, and the front
-            // end's generated types as number | string. Strict reads and
-            // writes a number only as a JSON number.
+            // The Web defaults read "5" as 5, and the document then describes
+            // every integer as an integer or a string of digits, which the
+            // front end's generated types turn into number | string. Strict
+            // reads and writes a number only as a JSON number.
             options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
 
             // LEARN: System.Text.Json writes an enum as its number unless a
             // converter says otherwise, where Jackson writes its name. A C#
             // enum is a named integer (see GameStore), so a number would also
             // be read into a value that names no member. This converter
-            // writes "white" for Side.White and reads only the names:
-            // allowIntegerValues: false refuses 0 as well as 7. The document
-            // lists the names as each enum's allowed values.
+            // writes "white" for Side.White, and the document lists the names
+            // as each enum's allowed values. Reading is looser than the
+            // document: allowIntegerValues: false refuses 0 and "7", but a
+            // name is matched without regard to case or surrounding spaces,
+            // and a comma-separated list of names is read as the members
+            // combined bit by bit, as for a [Flags] enum, so "white,black"
+            // reads as Black (0 | 1). Jackson reads only the exact name.
             options.SerializerOptions.Converters.Add(
                 new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false));
         });

@@ -14,11 +14,15 @@ namespace ChessAscent.Api.Features.Games;
 /// The answers a move can get, so the game screen can react to each:
 /// 200 with the game after the move; 400 with a validation problem under
 /// <c>Uci</c> when the text is missing, longer than
-/// <see cref="PlayMoveRequest.UciLength"/> or not a UCI move; 404 when the
-/// player has no game with that id; 409 with <see cref="GameFinishedDetail"/>
-/// when the game is over; 409 with <see cref="MoveConflictDetail"/> when
-/// another request saved a move first; 422 when the move is not legal in the
-/// position. In every case but 200 nothing is saved.
+/// <see cref="PlayMoveRequest.UciLength"/> or not a UCI move, and a plain 400
+/// problem when the body is not JSON of that shape at all; 401 when nobody is
+/// signed in; 403 when a page on another origin started the request (see
+/// CrossSiteRequests); 404 when the player has no game with that id; 409 with
+/// <see cref="GameFinishedDetail"/> when the game is over; 409 with
+/// <see cref="MoveConflictDetail"/> when another request saved a move first;
+/// 422 when the move is not legal in the position; 500 when the saved game is
+/// broken (see SavedGameFaultFilter). In every case but 200 nothing is saved.
+/// Reading a game answers 200, 401, 404 or 500 in the same cases.
 /// </para>
 /// <para>
 /// Both 409s mean the game is no longer where the request found it, and the
@@ -81,9 +85,11 @@ public static class GameEndpoints
             .ProducesProblem(StatusCodes.Status403Forbidden);
 
         // LEARN: {id:guid} is a route constraint: the route matches only when
-        // that segment is a GUID, so /games/abc is an unknown path (404)
-        // rather than a request whose id failed to bind (400). Spring
-        // MVC would need a regular expression, {id:[0-9a-f-]+}. The handler's
+        // that segment parses as a GUID, so /games/abc is an unknown path
+        // (404) rather than a request whose id failed to bind (400). In
+        // Spring MVC, /games/{id} with a UUID parameter matches /games/abc and
+        // then fails the conversion with 400; only a regular expression for
+        // the whole UUID in the path pattern makes it a 404. The handler's
         // parameter of the same name receives the parsed Guid.
         games.MapGet("/{id:guid}", GetAsync)
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -100,11 +106,11 @@ public static class GameEndpoints
 
     /// <summary>Starts a game for the signed-in player from the standard starting position.</summary>
     // LEARN: Results<Created<GameResponse>, ValidationProblem> says this
-    // handler returns exactly one of those two results. It is a generic
-    // struct with an implicit conversion from each of its type arguments, so
-    // each `return` hands back a plain Created or ValidationProblem and the
-    // compiler wraps it, while returning any other result type is a compile
-    // error. Spring's ResponseEntity<?> would accept anything and say nothing.
+    // handler returns exactly one of those two results. It is a sealed
+    // generic class with an implicit conversion from each of its type
+    // arguments, so each `return` hands back a plain Created or
+    // ValidationProblem and the compiler wraps it, while returning any other
+    // result type is a compile error. Spring's ResponseEntity<?> would accept anything and say nothing.
     // Each type argument also describes its own response to the OpenAPI
     // generator (201 with a GameResponse, 400 with validation errors), so the
     // signature is the documentation.
@@ -174,6 +180,8 @@ public static class GameEndpoints
             MovePlayed played => await SaveAsync(store, playerId, game, board, played, cancellationToken),
             MalformedMove => FieldProblem(UciField, MalformedMoveMessage),
             IllegalMove => TypedResults.Problem(IllegalMoveDetail, statusCode: StatusCodes.Status422UnprocessableEntity),
+            // Rebuild refuses a game saved as ongoing whose board is over, so
+            // this does not happen; it gets the answer a finished game gets.
             GameAlreadyOver => FinishedProblem(),
         };
     }
@@ -213,10 +221,20 @@ public static class GameEndpoints
         };
 
     // Load replays every saved move through the same checks as live play, so
-    // a refusal means the stored game is broken. The stored text is left
-    // out of the reason, since nothing bounds what a broken row holds.
-    private static IChessGame Rebuild(IChessRules rules, SavedGame game) =>
-        rules.Load(game.StartingFen, [.. game.Moves.Select(move => move.Uci)]) switch
+    // a refusal means the stored game is broken, as are numbers with a gap
+    // and a game saved as ongoing whose moves end it: every later move in
+    // such a game would be refused, and reloading would not change that. A
+    // game saved as finished on a board that is not over is not broken: a
+    // resignation ends a game the board knows nothing about. The stored text
+    // is left out of the reason, since nothing bounds what a broken row holds.
+    private static IChessGame Rebuild(IChessRules rules, SavedGame game)
+    {
+        if (!game.MovesNumberedInOrder)
+        {
+            throw new UnrebuildableGameException(game.Id, "its half-move numbers have a gap");
+        }
+
+        var board = rules.Load(game.StartingFen, [.. game.Moves.Select(move => move.Uci)]) switch
         {
             GameLoaded loaded => loaded.Game,
             InvalidStartingPosition => throw new UnrebuildableGameException(
@@ -224,6 +242,14 @@ public static class GameEndpoints
             InvalidMoveInHistory invalid => throw new UnrebuildableGameException(
                 game.Id, $"half-move {invalid.Index + 1} is {Describe(invalid.Rejection)}"),
         };
+
+        if (game.Status == GameProgress.Ongoing && board.Status is not Ongoing)
+        {
+            throw new UnrebuildableGameException(game.Id, "it is saved as ongoing, but its moves end it");
+        }
+
+        return board;
+    }
 
     private static string Describe(MoveRejection rejection) => rejection switch
     {

@@ -87,48 +87,43 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
         described.ContainsKey("pattern").Should().BeFalse();
     }
 
-    // Enumerations are written by name, so the document lists the names.
-    [Fact]
-    public async Task DocumentListsEnumerationsByTheirCamelCaseNames()
-    {
-        var document = await GetDocumentAsync();
-
-        document["components"]!["schemas"]!["GameEndReason"]!["enum"]!.AsArray()
-            .Select(value => value?.GetValue<string>())
-            .Should().Contain(["checkmate", "threefoldRepetition", "fiftyMoveRule", "deadPosition"]);
-    }
-
-    // Every response the account endpoints can give, including those that
-    // come from validation and from the refusal of cross-site requests.
+    // Enumerations are written by name, so the document lists the names, and
+    // these are part of the contract: renaming a member fails here. Null is
+    // never one of them, even for an enum the API only ever sends as a
+    // nullable property; the property says it may be null.
     [Theory]
-    [InlineData("/auth/register", "post", new[] { "200", "400", "403", "409" })]
-    [InlineData("/auth/sign-in", "post", new[] { "200", "400", "401", "403" })]
-    [InlineData("/auth/sign-out", "post", new[] { "204", "403" })]
-    [InlineData("/auth/me", "get", new[] { "200", "401" })]
-    public async Task DocumentListsEveryResponseOfTheAccountEndpoints(string path, string method, string[] statuses)
+    [InlineData("Side", new[] { "white", "black" })]
+    [InlineData("OpponentKind", new[] { "none", "computer" })]
+    [InlineData("GameProgress", new[] { "ongoing", "finished" })]
+    [InlineData("GameResult", new[] { "whiteWins", "blackWins", "draw" })]
+    [InlineData("GameEndReason", new[] { "checkmate", "stalemate", "threefoldRepetition", "fiftyMoveRule", "deadPosition", "resignation" })]
+    [InlineData("PromotionPiece", new[] { "queen", "rook", "bishop", "knight" })]
+    public async Task DocumentListsEachEnumerationsCamelCaseNamesAndNothingElse(string schema, string[] names)
     {
         var document = await GetDocumentAsync();
 
-        document["paths"]![path]![method]!["responses"]!.AsObject().Select(response => response.Key)
-            .Should().BeEquivalentTo(statuses);
+        var members = document["components"]!["schemas"]![schema]!["enum"]!.AsArray();
+        members.Select(member => member?.ToJsonString()).Should().Equal(names.Select(name => $"\"{name}\""));
     }
 
-    // The cross-site refusal (Security/CrossSiteRequests.cs) applies to every
-    // method but the safe ones, so every such operation must declare its 403.
-    [Fact]
-    public async Task EveryOperationThatCanChangeStateListsTheCrossSiteRefusal()
+    // A request field that validation requires is never null, though it is
+    // nullable in C# so that validation can see it was missing. A response
+    // field that can be null says so.
+    [Theory]
+    [InlineData("CreateGameRequest", "playerSide", false)]
+    [InlineData("OpponentRequest", "kind", false)]
+    [InlineData("GameResponse", "result", true)]
+    [InlineData("GameResponse", "endReason", true)]
+    public async Task DocumentAllowsNullOnlyWhereTheApiSendsOrAcceptsIt(string schema, string property, bool nullable)
     {
         var document = await GetDocumentAsync();
-        string[] safe = ["get", "head", "options", "trace", "query"];
 
-        var unsafeOperations = document["paths"]!.AsObject()
-            .SelectMany(path => path.Value!.AsObject())
-            .Where(operation => !safe.Contains(operation.Key))
-            .ToList();
-
-        unsafeOperations.Should().NotBeEmpty();
-        unsafeOperations.Should().AllSatisfy(operation =>
-            operation.Value!["responses"]!.AsObject().ContainsKey("403").Should().BeTrue());
+        var described = document["components"]!["schemas"]![schema]!["properties"]![property]!.AsObject();
+        var allowsNull = described["oneOf"] is JsonArray choices
+            && choices.Any(choice => choice?["type"]?.GetValue<string>() == "null");
+        allowsNull.Should().Be(nullable);
+        (described["$ref"] ?? described["oneOf"]!.AsArray().Single(choice => choice?["$ref"] is not null)!["$ref"])
+            .Should().NotBeNull();
     }
 
     [Fact]

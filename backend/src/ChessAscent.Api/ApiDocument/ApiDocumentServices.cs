@@ -45,6 +45,7 @@ public static class ApiDocumentServices
             // pins the build-time one, which does not read it.
             options.OpenApiVersion = OpenApiSpecVersion.OpenApi3_1;
             options.DescribeReadinessEndpoint();
+            options.KeepNullWhereItBelongs();
         });
 
     /// <summary>

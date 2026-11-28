@@ -3,10 +3,13 @@ using ChessAscent.Chess;
 
 namespace ChessAscent.Api.Features.Games;
 
-// The enumerations in these bodies (Side, PromotionPiece and those in
-// GameValues.cs) are written as the camel-case names of their members (see
-// JsonServices), so renaming a member changes the API as well as what the
-// Games table stores.
+// The enumerations in these bodies (Side and PromotionPiece from the chess
+// interface, and those in GameValues.cs) are written as the camel-case names
+// of their members (see JsonServices), so renaming a member changes the API,
+// and for the enumerations the Games table stores, the stored rows too.
+// ApiDocumentTests lists every name the document allows, so such a rename
+// fails a test. PromotionResponse lists pieces in PromotionPiece's declared
+// order, so reordering its members changes that order.
 
 // LEARN: PlayerSide is a nullable enum (Side?) with [Required], where a
 // Java DTO would have a plain enum field and @NotNull. A C# enum is a value

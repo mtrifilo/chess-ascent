@@ -17,8 +17,15 @@ namespace ChessAscent.Api.Features.Games;
 /// <param name="CreatedAt">When the game was created.</param>
 /// <param name="UpdatedAt">When the game was created or last had a move saved.</param>
 /// <param name="Moves">
-/// The moves, oldest first: the move at index <c>i</c> has half-move number
-/// <c>i + 1</c>.
+/// The moves, oldest first. When <paramref name="MovesNumberedInOrder"/>,
+/// the move at index <c>i</c> has half-move number <c>i + 1</c>.
+/// </param>
+/// <param name="MovesNumberedInOrder">
+/// Whether the saved half-move numbers run 1, 2, 3 and so on with no gap, as
+/// this store writes them. False only when something else wrote to the Moves
+/// table; the moves are still in number order, but
+/// <see cref="NextHalfMoveNumber"/> is then not the number the next move can
+/// be saved at.
 /// </param>
 // LEARN: A record's generated Equals compares each component with its own
 // Equals, which for a list is reference equality: two loads of the same game
@@ -35,7 +42,8 @@ public sealed record SavedGame(
     GameEndReason? EndReason,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    IReadOnlyList<PlayedMove> Moves)
+    IReadOnlyList<PlayedMove> Moves,
+    bool MovesNumberedInOrder)
 {
     /// <summary>
     /// The half-move number the next move will have, which is what

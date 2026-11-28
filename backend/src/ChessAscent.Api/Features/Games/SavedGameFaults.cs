@@ -21,10 +21,12 @@ internal sealed class UnrebuildableGameException(Guid gameId, string reason)
 // LEARN: An endpoint filter wraps an endpoint's handler: InvokeAsync runs
 // before it, calls `next` to run it (and any filters added after this one),
 // and can then inspect or replace what it returned, or catch what it threw.
-// It is the minimal API counterpart of a Spring HandlerInterceptor with
-// around advice, or of an MVC @ExceptionHandler in a @ControllerAdvice
-// limited to some controllers: added to a route group (see GameEndpoints), it
-// applies to every endpoint in the group and to no other. Unlike middleware
+// It is the minimal API counterpart of an @Around aspect on the handler
+// methods, or here of an MVC @ExceptionHandler in a @ControllerAdvice
+// limited to some controllers; a HandlerInterceptor, which only runs before
+// and after the handler, cannot replace what it returns. Added to a route
+// group (see GameEndpoints), it applies to every endpoint in the group and to
+// no other. Unlike middleware
 // it runs after routing and parameter binding, so it sees the matched
 // endpoint and its bound arguments in the invocation context.
 /// <summary>

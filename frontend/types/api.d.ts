@@ -553,7 +553,8 @@ export interface components {
     }
     /** @description The body of `POST /games`. */
     CreateGameRequest: {
-      playerSide: null | components['schemas']['Side']
+      /** @description The side the signed-in player has. */
+      playerSide: components['schemas']['Side']
       /** @description Who plays the other side. */
       opponent: components['schemas']['OpponentRequest']
     }
@@ -570,7 +571,6 @@ export interface components {
       | 'fiftyMoveRule'
       | 'deadPosition'
       | 'resignation'
-      | null
     /**
      * @description Whether a game is still being played.
      * @enum {unknown}
@@ -614,7 +614,7 @@ export interface components {
       promotions: components['schemas']['PromotionResponse'][]
     }
     /** @enum {unknown} */
-    GameResult: 'whiteWins' | 'blackWins' | 'draw' | null
+    GameResult: 'whiteWins' | 'blackWins' | 'draw'
     HttpValidationProblemDetails: {
       type?: null | string
       title?: null | string
@@ -646,7 +646,11 @@ export interface components {
     OpponentKind: 'none' | 'computer'
     /** @description Who plays the side the player does not. */
     OpponentRequest: {
-      kind: null | components['schemas']['OpponentKind']
+      /**
+       * @description The kind of opponent. Only `none` is offered, meaning the signed-in
+       *     player moves both sides; any other is refused with 400.
+       */
+      kind: components['schemas']['OpponentKind']
     }
     /** @description Who plays the side the player does not. */
     OpponentResponse: {
