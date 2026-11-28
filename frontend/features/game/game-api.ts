@@ -114,3 +114,39 @@ export function usePlayMove(id: string) {
     },
   })
 }
+
+// How a resignation ended, besides failing, which is thrown: `resigned`, and
+// the recorded game is the API's answer; `reloaded`, because the game was
+// already over (409: it ended by another move, or was resigned in another
+// tab or by an earlier press whose answer was lost), so it has been read
+// again; `signed-out`, which the API client already handles by sending the
+// visitor to sign in. Every other answer is a failure, after which the
+// player may send it again: resigning twice is safe, since the second
+// answer is the 409.
+export type ResignOutcome = 'resigned' | 'reloaded' | 'signed-out'
+
+// Resigns the game. A game read already on its way is cancelled before the
+// answer is recorded, as for a move, so it cannot put back the game as it
+// stood before.
+export function useResign(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    networkMode: 'always',
+    mutationFn: async (): Promise<ResignOutcome> => {
+      const { data, response } = await api.POST('/games/{id}/resign', {
+        params: { path: { id } },
+      })
+      if (data) {
+        await queryClient.cancelQueries({ queryKey: gameKey(id) })
+        queryClient.setQueryData(gameKey(id), data)
+        return 'resigned'
+      }
+      if (response.status === 409) {
+        await queryClient.invalidateQueries({ queryKey: gameKey(id) })
+        return 'reloaded'
+      }
+      if (response.status === 401) return 'signed-out'
+      throw new Error(`POST /games/{id}/resign answered ${response.status}.`)
+    },
+  })
+}

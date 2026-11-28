@@ -3,7 +3,8 @@
 import { opposite } from '@lichess-org/chessground/util'
 import { ArrowUpDownIcon, CircleAlertIcon } from 'lucide-react'
 import { notFound } from 'next/navigation'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 
 import {
   ChessBoard,
@@ -35,6 +36,7 @@ import {
 import { MoveList } from './move-list'
 import { NewGameLink } from './new-game-link'
 import { PromotionPicker } from './promotion-picker'
+import { ResignConfirm } from './resign-confirm'
 
 // One game: the board between the two players' bars, and beside it (below it
 // on phones) the game's status or result, the move list and the controls.
@@ -68,6 +70,8 @@ function LoadedGame({ game }: { game: Game }) {
   // screen holds, which takes the move back off (see ChessBoard's onMove).
   const [boardKey, setBoardKey] = useState(0)
   const [pending, setPending] = useState<PendingPromotion>()
+  const [confirmingResign, setConfirmingResign] = useState(false)
+  const resignControl = useRef<HTMLButtonElement>(null)
 
   const thinking = useComputerThinking(game, playMove)
   // While the computer thinks, the game is shown as it stood after the
@@ -80,6 +84,9 @@ function LoadedGame({ game }: { game: Game }) {
     check: checkSquare(game.fen, game.moves),
   }
   const finished = !isThinking && game.status === 'finished'
+  // A move on its way, or the computer's reply to one, holds the board and
+  // keeps the game from being resigned until it is shown.
+  const moveUnderway = isThinking || playMove.isPending
   const opponentSide = opposite(game.playerSide)
   const orientation = flipped ? opponentSide : game.playerSide
   const promotion = pending?.fen === game.fen ? pending : undefined
@@ -138,7 +145,7 @@ function LoadedGame({ game }: { game: Game }) {
             destinations={destinations(game)}
             lastMove={shown.lastMove}
             check={shown.check}
-            readOnly={finished || isThinking || playMove.isPending}
+            readOnly={finished || moveUnderway}
             onMove={onMove}
           />
           {promotion && (
@@ -163,17 +170,43 @@ function LoadedGame({ game }: { game: Game }) {
       <div className="flex flex-col gap-3 pt-4 md:w-90 md:shrink-0 md:gap-4 md:rounded-md md:border md:bg-card md:p-4">
         {finished ? <ResultPanel game={game} /> : <GameStatus {...status} />}
         {failedMove && <MoveFailed onTryAgain={() => send(failedMove)} />}
-        {/* Below the move list from `md` up, above it on phones. */}
-        <div className="flex items-center justify-end md:order-last md:h-25">
-          <Button
-            variant="outline"
-            aria-label="Flip board"
-            className="size-12.75 md:size-8"
-            onClick={() => setFlipped(value => !value)}
-          >
-            <ArrowUpDownIcon aria-hidden />
-          </Button>
-        </div>
+        {/* The controls, or the resign confirmation in their place: below
+            the move list from `md` up, above it on phones. */}
+        {confirmingResign && !finished ? (
+          <ResignConfirm
+            gameId={game.id}
+            moveUnderway={moveUnderway}
+            onCancel={() => {
+              // The Resign control is back in the page once this returns.
+              flushSync(() => setConfirmingResign(false))
+              resignControl.current?.focus()
+            }}
+          />
+        ) : (
+          <div className="flex items-center gap-2 md:order-last md:h-25">
+            {!finished && (
+              <Button
+                ref={resignControl}
+                variant="outline"
+                aria-disabled={moveUnderway}
+                className="h-12.75 px-4 md:h-8 md:px-2"
+                onClick={() => {
+                  if (!moveUnderway) setConfirmingResign(true)
+                }}
+              >
+                Resign
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              aria-label="Flip board"
+              className="ml-auto size-12.75 md:size-8"
+              onClick={() => setFlipped(value => !value)}
+            >
+              <ArrowUpDownIcon aria-hidden />
+            </Button>
+          </div>
+        )}
         {/* From `md` up the list takes the height left beside the board and
             scrolls within it. Its box is absolutely placed, so the moves
             never make the panel, and with it the row, taller than the
