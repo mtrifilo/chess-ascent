@@ -97,11 +97,12 @@
   </PropertyGroup>
 
   <!--
-    Fails the build if a hook named Microsoft.Testing.Extensions.Telemetry
-    (the test platform's telemetry extension) is still registered:
-    Directory.Build.targets removes it, and misses it if a later
-    version of the package registers under another identifier, or if a
-    nested Directory.Build.targets is imported instead of that file. The
+    Fails the build if a hook whose DisplayName metadata is
+    Microsoft.Testing.Extensions.Telemetry (the test platform's telemetry
+    extension) is still registered. Directory.Build.targets removes it, and
+    misses it if a later version of the package registers under another
+    identifier, or if a nested Directory.Build.targets is imported instead
+    of that file. The
     check lives here, not beside the removal, so that the second case loses
     the removal but not the check. A nested props file that skipped this one
     would also lose the target framework, and the SDK refuses to build
@@ -110,10 +111,10 @@
     LEARN: Unlike properties and items, a target runs only after the whole
     project has been evaluated, so a target defined in a .props file still
     sees every item that later files add or remove. That is Gradle's split
-    between its configuration phase and its execution phase; Maven, whose
-    plugin goals run against the already-merged POM, has no file-order
-    question to answer. %(...) runs the task once per hook item, a loop with
-    no loop syntax, called batching.
+    between its configuration phase and its execution phase. Maven behaves
+    the same way here: a plugin goal bound in a parent POM runs against the
+    effective POM, so it sees what the child POM set. %(...) runs the task
+    once per hook item, a loop with no loop syntax, called batching.
   -->
   <Target Name="RefuseTestingPlatformTelemetry" BeforeTargets="BeforeBuild" Condition="'@(TestingPlatformBuilderHook)' != ''">
     <Error
