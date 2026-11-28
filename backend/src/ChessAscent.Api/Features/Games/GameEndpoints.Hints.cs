@@ -107,38 +107,25 @@ public static partial class GameEndpoints
         var board = game.RebuildBoard(rules);
         RefuseUnplayableComputerGame(game, board, rules);
 
-        var moves = board.History.Select(move => move.Uci).ToList();
-        LegalMove? hinted = await hints.FindBestMoveAsync(moves, cancellationToken) switch
+        return await hints.FindHintAsync(board, cancellationToken) switch
         {
-            HintMove move => LegalMoveOrFault(game, board, move),
-            HintFailed => null,
-
-            // The game was rebuilt by the same rules and is not over, so
-            // each of these means the hint provider is broken.
-            InvalidMoveInHistory invalid => throw new HintFaultException(
-                game.Id, $"the hint engine refused half-move {invalid.Index + 1} of the game"),
-            GameAlreadyOver => throw new HintFaultException(game.Id, "the hint engine found the game already over"),
+            LegalMove hinted => await CountAndAnswerAsync(store, playerId, game, hinted, cancellationToken),
+            HintUnavailable => HintUnavailableProblem(),
+            HintFault fault => throw new HintFaultException(game.Id, fault.Reason),
         };
-        if (hinted is not { } legal)
-        {
-            return HintUnavailableProblem();
-        }
+    }
 
-        return await store.CountHintAsync(playerId, game.Id, game.NextHalfMoveNumber, cancellationToken) switch
+    // Counts the hint, and answers with it only if the game is still in the
+    // position it was found for.
+    private static async Task<Results<Ok<HintResponse>, ProblemHttpResult>> CountAndAnswerAsync(
+        GameStore store, string playerId, SavedGame game, LegalMove hinted, CancellationToken cancellationToken) =>
+        await store.CountHintAsync(playerId, game.Id, game.NextHalfMoveNumber, cancellationToken) switch
         {
-            HintCounted => TypedResults.Ok(new HintResponse(legal.From.ToString(), legal.To.ToString())),
+            HintCounted => TypedResults.Ok(new HintResponse(hinted.From.ToString(), hinted.To.ToString())),
             GameNotFound => NotFoundProblem(),
             GameFinished => HintFinishedProblem(),
             HalfMoveConflict => HintConflictProblem(),
         };
-    }
-
-    // The provider has already checked its move against the same rules. This
-    // check is the one the answer depends on, so a move it refuses means the
-    // hint engine is broken, as with the opponent's moves (see ComputerMoves).
-    private static LegalMove LegalMoveOrFault(SavedGame game, IChessGame board, HintMove move) =>
-        board.LegalMoves().Where(legal => legal.Uci == move.Uci).Cast<LegalMove?>().SingleOrDefault()
-        ?? throw new HintFaultException(game.Id, "the hint engine chose a move that is not legal in the position");
 
     private static ProblemHttpResult HintFinishedProblem() =>
         TypedResults.Problem(HintGameFinishedDetail, statusCode: StatusCodes.Status409Conflict);

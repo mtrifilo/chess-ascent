@@ -4,6 +4,7 @@ using ChessAscent.Api.Features.Games;
 using ChessAscent.Api.Json;
 using ChessAscent.Api.Tests.Features.Accounts;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using AccountData = ChessAscent.Api.Tests.Features.Accounts.Accounts;
@@ -169,11 +170,11 @@ internal static class GameRequests
     }
 
     /// <summary>A browser signed in to a new account of its own.</summary>
-    public static async Task<HttpClient> SignedInClientAsync(this ApiFactory factory) =>
+    public static async Task<HttpClient> SignedInClientAsync(this WebApplicationFactory<Program> factory) =>
         (await factory.SignedInPlayerAsync()).Client;
 
     /// <summary>A browser signed in to a new account of its own, and the account's id.</summary>
-    public static async Task<(HttpClient Client, string OwnerId)> SignedInPlayerAsync(this ApiFactory factory)
+    public static async Task<(HttpClient Client, string OwnerId)> SignedInPlayerAsync(this WebApplicationFactory<Program> factory)
     {
         var client = factory.CreateClient();
         var email = AccountData.NewEmail();
@@ -182,7 +183,7 @@ internal static class GameRequests
     }
 
     /// <summary>The account id of the player signed in under <paramref name="email"/>.</summary>
-    public static async Task<string> AccountIdAsync(this ApiFactory factory, string email)
+    public static async Task<string> AccountIdAsync(this WebApplicationFactory<Program> factory, string email)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();

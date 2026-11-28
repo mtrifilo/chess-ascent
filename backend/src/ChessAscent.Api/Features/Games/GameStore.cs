@@ -378,8 +378,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // every later append would then be refused. Counting under the row
         // lock also answers a move submitted twice before it reaches the
         // insert.
-        var saved = await database.Moves.CountAsync(m => m.GameId == gameId, cancellationToken);
-        if (saved != firstHalfMoveNumber - 1)
+        if (!await IsAtHalfMoveAsync(gameId, firstHalfMoveNumber, cancellationToken))
         {
             return new HalfMoveConflict();
         }
@@ -501,8 +500,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // A move saved since the caller loaded the game means the hint is
         // for a position the game has left, so it is not counted. Disposing
         // the transaction without committing undoes the update above.
-        var saved = await database.Moves.CountAsync(m => m.GameId == gameId, cancellationToken);
-        if (saved != halfMoveNumber - 1)
+        if (!await IsAtHalfMoveAsync(gameId, halfMoveNumber, cancellationToken))
         {
             return new HalfMoveConflict();
         }
@@ -512,6 +510,13 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         await transaction.CommitAsync(CancellationToken.None);
         return new HintCounted();
     }
+
+    // Whether the game has exactly the moves before halfMoveNumber, so that
+    // the next move played in it is that half-move. When the caller's
+    // transaction holds the game's row lock, the answer stays true until the
+    // transaction ends, since no other append can save a move before then.
+    private async Task<bool> IsAtHalfMoveAsync(Guid gameId, int halfMoveNumber, CancellationToken cancellationToken) =>
+        await database.Moves.CountAsync(m => m.GameId == gameId, cancellationToken) == halfMoveNumber - 1;
 
     private static List<Move> MoveRows(Guid gameId, int firstHalfMoveNumber, IReadOnlyList<PlayedMove> moves) =>
     [

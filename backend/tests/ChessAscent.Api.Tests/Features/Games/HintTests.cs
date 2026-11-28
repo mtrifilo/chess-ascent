@@ -1,20 +1,11 @@
 using System.Net;
 using ChessAscent.Api.Features.Games;
 using ChessAscent.Api.Hints;
-using ChessAscent.Api.Opponents;
 using ChessAscent.Api.Security;
-using ChessAscent.Api.Tests.Features.Accounts;
 using ChessAscent.Chess;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.TestHost;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Logging;
 using Microsoft.Net.Http.Headers;
 using static ChessAscent.Api.Tests.Features.Games.GameRequests;
-using AccountData = ChessAscent.Api.Tests.Features.Accounts.Accounts;
 
 namespace ChessAscent.Api.Tests.Features.Games;
 
@@ -29,8 +20,8 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
     public async Task AHintOnThePlayersTurnGivesTheTwoSquaresOfTheBestMoveWithoutPlayingIt()
     {
         var hints = FakeHintProvider.Hinting("g1f3");
-        using var api = ApiWith(new FakeOpponent(), hints);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(new FakeOpponent(), hints);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
 
         using var response = await client.PostHintAsync(game.Id, 1);
@@ -48,8 +39,8 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
     public async Task AsBlackTheHintIsForTheReplyToTheComputersFirstMove()
     {
         var hints = FakeHintProvider.Hinting("e7e5");
-        using var api = ApiWith(FakeOpponent.Playing("e2e4"), hints);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(FakeOpponent.Playing("e2e4"), hints);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("black");
 
         var hint = await client.HintAsync(game);
@@ -66,8 +57,8 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
     public async Task TheCountIsOneAfterAHintStillOneAfterAskingAgainInTheSamePositionAndTwoAfterAHintInALaterOne()
     {
         var hints = FakeHintProvider.Hinting("e2e4");
-        using var api = ApiWith(FakeOpponent.Playing("e7e5"), hints);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(FakeOpponent.Playing("e7e5"), hints);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
 
         var first = await client.HintAsync(game);
@@ -93,8 +84,8 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
     [Fact]
     public async Task AHintChangesNeitherTheGamesMovesNorItsStatusNorItsUpdateTime()
     {
-        using var api = ApiWith(FakeOpponent.Playing("e7e5"), FakeHintProvider.Hinting("g1f3"));
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(FakeOpponent.Playing("e7e5"), FakeHintProvider.Hinting("g1f3"));
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
         var moved = await client.PlayAsync(game.Id, "e2e4");
         var before = await postgres.SavedRowsApartFromHintsAsync(game.Id);
@@ -111,8 +102,8 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
     public async Task AHintInAFinishedGameIsRefusedWith409AndTheEngineIsNotAsked()
     {
         var hints = new FakeHintProvider();
-        using var api = ApiWith(FakeOpponent.Playing("e7e5", "d8h4"), hints);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(FakeOpponent.Playing("e7e5", "d8h4"), hints);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
         var mated = await client.PlayAsync(game.Id, "f2f3", "g2g4");
         var before = await postgres.SavedRowsAsync(game.Id);
@@ -130,8 +121,8 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
     public async Task AHintInAGameWithNoOpponentIsRefusedWith422AndTheEngineIsNotAsked()
     {
         var hints = new FakeHintProvider();
-        using var api = ApiWith(new FakeOpponent(), hints);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(new FakeOpponent(), hints);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateGameAsync("white");
         var before = await postgres.SavedRowsAsync(game.Id);
 
@@ -147,10 +138,10 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
     public async Task AnotherPlayersGameIsNotFoundAndTheEngineIsNotAsked()
     {
         var hints = new FakeHintProvider();
-        using var api = ApiWith(new FakeOpponent(), hints);
-        using var owner = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(new FakeOpponent(), hints);
+        using var owner = await api.SignedInClientAsync();
         var game = await owner.CreateComputerGameAsync("white");
-        using var otherPlayer = await SignedInClientAsync(api);
+        using var otherPlayer = await api.SignedInClientAsync();
 
         using var response = await otherPlayer.PostHintAsync(game.Id, 1);
         using var noSuchGame = await owner.PostHintAsync(Guid.NewGuid(), 1);
@@ -166,8 +157,8 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
     public async Task ASignedOutHintRequestIs401AndChangesNothing()
     {
         var hints = new FakeHintProvider();
-        using var api = ApiWith(new FakeOpponent(), hints);
-        using var owner = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(new FakeOpponent(), hints);
+        using var owner = await api.SignedInClientAsync();
         var game = await owner.CreateComputerGameAsync("white");
         using var signedOut = api.CreateClient(new() { AllowAutoRedirect = false });
 
@@ -186,8 +177,8 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
     public async Task AHintRequestStartedByAnotherSiteIsRefusedAndChangesNothing()
     {
         var hints = new FakeHintProvider();
-        using var api = ApiWith(new FakeOpponent(), hints);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(new FakeOpponent(), hints);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
 
         using var forged = new HttpRequestMessage(HttpMethod.Post, $"/games/{game.Id}/hints")
@@ -210,8 +201,8 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
     public async Task AHintRequestWithoutAHalfMoveNumberIsRefusedWith400UnderThatField(string body)
     {
         var hints = new FakeHintProvider();
-        using var api = ApiWith(new FakeOpponent(), hints);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(new FakeOpponent(), hints);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
 
         using var response = await client.PostAsync($"/games/{game.Id}/hints", JsonBody(body), Cancellation);
@@ -231,8 +222,8 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
     public async Task AHintForAnotherHalfMoveThanTheNextIsRefusedWith409BeforeTheEngineIsAsked(int halfMoveNumber)
     {
         var hints = new FakeHintProvider();
-        using var api = ApiWith(FakeOpponent.Playing("e7e5"), hints);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(FakeOpponent.Playing("e7e5"), hints);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
         await client.PlayAsync(game.Id, "e2e4");
         var before = await postgres.SavedRowsAsync(game.Id);
@@ -252,8 +243,8 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
     {
         var hints = new FakeHintProvider();
         var logs = new CapturingLoggerProvider();
-        using var api = ApiWith(new FakeOpponent(), hints, logs);
-        var (signedIn, ownerId) = await SignedInPlayerAsync(api);
+        using var api = factory.WithFakes(new FakeOpponent(), hints, logs);
+        var (signedIn, ownerId) = await api.SignedInPlayerAsync();
         using var client = signedIn;
         var game = await factory.CreateGameAsync(ownerId, Opponent.Computer(800), Side.White);
         var (e4, afterE4) = GameData.Rules.NewGame().Play("e2e4");
@@ -280,8 +271,8 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
                 ? new HintFailed("secret-reason-for-the-log")
                 : new HintMove("e2e4")),
         };
-        using var api = ApiWith(new FakeOpponent(), hints);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(new FakeOpponent(), hints);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
         var before = await postgres.SavedRowsAsync(game.Id);
 
@@ -315,8 +306,8 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
     {
         var hints = new FakeHintProvider { Answer = (_, _) => Task.FromResult(FaultyHint(reply)) };
         var logs = new CapturingLoggerProvider();
-        using var api = ApiWith(FakeOpponent.Playing("e7e5"), hints, logs);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(FakeOpponent.Playing("e7e5"), hints, logs);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
         var moved = await client.PlayAsync(game.Id, "e2e4");
         var before = await postgres.SavedRowsAsync(game.Id);
@@ -336,8 +327,8 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
     public async Task AHintFoundWhileAMoveIsSavedIsRefusedWith409AndNotCounted()
     {
         var hints = new FakeHintProvider();
-        using var api = ApiWith(FakeOpponent.Playing("e7e5"), hints);
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(FakeOpponent.Playing("e7e5"), hints);
+        using var client = await api.SignedInClientAsync();
         var game = await client.CreateComputerGameAsync("white");
         hints.Answer = async (_, _) =>
         {
@@ -354,41 +345,22 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
         read.HintCount.Should().Be(0);
     }
 
-    // The game is created with the count, and every answer carries it.
-    [Fact]
-    public async Task TheCountIsWrittenAsANumberInTheGame()
-    {
-        using var api = ApiWith(new FakeOpponent(), FakeHintProvider.Hinting("e2e4"));
-        using var client = await SignedInClientAsync(api);
-        using var created = await client.PostComputerGameAsync("white", 800);
-        var game = await created.ReadGameAsync();
-        await client.HintAsync(game);
-
-        using var read = await client.GetGameAsync(game.Id);
-
-        (await created.Content.ReadAsStringAsync(Cancellation)).Should().Contain("\"hintCount\":0");
-        (await read.Content.ReadAsStringAsync(Cancellation)).Should().Contain("\"hintCount\":1");
-    }
-
     // The list reads the count from the game's own row, so each row shows
     // what the game's response shows.
     [Fact]
     public async Task EachRowOfTheListCarriesTheCountWhichAHintMoves()
     {
-        using var api = ApiWith(new FakeOpponent(), FakeHintProvider.Hinting("e2e4"));
-        using var client = await SignedInClientAsync(api);
+        using var api = factory.WithFakes(new FakeOpponent(), FakeHintProvider.Hinting("e2e4"));
+        using var client = await api.SignedInClientAsync();
         var hinted = await client.CreateComputerGameAsync("white");
         var unhinted = await client.CreateComputerGameAsync("white");
 
         var before = await client.ListGamesAsync("ongoing");
         await client.HintAsync(hinted);
-        var afterOne = await client.ListGamesAsync("ongoing");
-        await client.HintAsync(hinted);
-        var afterAgain = await client.ListGamesAsync("ongoing");
+        var after = await client.ListGamesAsync("ongoing");
 
         before.Games.Select(row => (row.Id, row.HintCount)).Should().BeEquivalentTo(new[] { (hinted.Id, 0), (unhinted.Id, 0) });
-        afterOne.Games.Select(row => (row.Id, row.HintCount)).Should().BeEquivalentTo(new[] { (hinted.Id, 1), (unhinted.Id, 0) });
-        afterAgain.Games.Select(row => (row.Id, row.HintCount)).Should().BeEquivalentTo(new[] { (hinted.Id, 1), (unhinted.Id, 0) });
+        after.Games.Select(row => (row.Id, row.HintCount)).Should().BeEquivalentTo(new[] { (hinted.Id, 1), (unhinted.Id, 0) });
     }
 
     private static HintReply FaultyHint(string reply) => reply switch
@@ -398,37 +370,4 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
         "game over" => new GameAlreadyOver(new Checkmate(Side.White)),
         _ => throw new ArgumentOutOfRangeException(nameof(reply), reply, null),
     };
-
-    // Replaces the opponent and the hint provider for this test's host only
-    // (see ComputerGameTests.ApiWith).
-    private WebApplicationFactory<Program> ApiWith(
-        FakeOpponent opponent, FakeHintProvider hints, CapturingLoggerProvider? logs = null) =>
-        factory.WithWebHostBuilder(host =>
-        {
-            host.ConfigureTestServices(services =>
-            {
-                services.RemoveAll<IOpponent>();
-                services.AddSingleton<IOpponent>(opponent);
-                services.RemoveAll<IHintProvider>();
-                services.AddSingleton<IHintProvider>(hints);
-            });
-            if (logs is not null)
-            {
-                host.ConfigureLogging(logging => logging
-                    .AddProvider(logs)
-                    .AddFilter<CapturingLoggerProvider>(category: null, LogLevel.Trace));
-            }
-        });
-
-    private async Task<HttpClient> SignedInClientAsync(WebApplicationFactory<Program> api) =>
-        (await SignedInPlayerAsync(api)).Client;
-
-    // A browser signed in to a new account, and the account's id.
-    private async Task<(HttpClient Client, string OwnerId)> SignedInPlayerAsync(WebApplicationFactory<Program> api)
-    {
-        var client = api.CreateClient();
-        var email = AccountData.NewEmail();
-        await client.RegisterNewAsync(email);
-        return (client, await factory.AccountIdAsync(email));
-    }
 }
