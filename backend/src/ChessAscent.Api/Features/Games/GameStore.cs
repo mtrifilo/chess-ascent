@@ -347,13 +347,15 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // several round trips: the update, the count and the insert.
         //
         // LEARN: The isolation level is an argument here, where Spring takes
-        // it as @Transactional(isolation = Isolation.READ_COMMITTED). It is
-        // given rather than left to the server's default, which a database or
-        // connection setting can change, because what follows needs READ
-        // COMMITTED: a second append that waits for this one's row lock then
-        // checks its WHERE against the committed row, and its count sees the
-        // committed moves. Under REPEATABLE READ the waiting append would
-        // fail with a serialization error instead, answered as a 500.
+        // it as @Transactional(isolation = Isolation.READ_COMMITTED). Npgsql
+        // already begins every transaction at READ COMMITTED when none is
+        // given; unlike Spring's Isolation.DEFAULT, it does not defer to the
+        // server's default_transaction_isolation. The level is written out
+        // because what follows depends on it: a second append that waits for
+        // this one's row lock then checks its WHERE against the committed
+        // row, and its count sees the committed moves. Under REPEATABLE READ
+        // the waiting append would instead fail with a serialization error
+        // once this one commits, answered as a 500.
         await using var transaction = await database.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
 
         // LEARN: ExecuteUpdateAsync sends one UPDATE ... WHERE straight to
@@ -480,12 +482,12 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // OptimisticLockException, when no row matches. The caller would
         // then reload and try again. Here there is nothing to retry: the
         // conditions and the increment are read and written by one statement.
-        // Under READ COMMITTED, PostgreSQL's default isolation level, which
-        // this transaction asks for rather than leave to the server's
-        // settings, an UPDATE that has to wait for another transaction's lock
-        // on the row checks its WHERE again, against the row as that
-        // transaction left it, once the lock is free. (Under REPEATABLE READ
-        // it would fail with a serialization error instead.)
+        // Under READ COMMITTED, which this transaction names because what
+        // follows depends on it (see AppendMovesAsync), an UPDATE that has to
+        // wait for another transaction's lock on the row checks its WHERE
+        // again, against the row as that transaction left it, once the lock
+        // is free. (Under REPEATABLE READ it would fail with a serialization
+        // error once the other commits.)
         //
         // Moves are only ever added at the end of a game, so a position is
         // named by the number of the half-move to be played from it, and a
