@@ -248,6 +248,26 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           }
         }
       }
@@ -411,6 +431,16 @@
           },
           "500": {
             "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -708,8 +738,16 @@
         "type": "object",
         "properties": {
           "kind": {
-            "description": "The kind of opponent. Only `none` is offered, meaning the signed-in\nplayer moves both sides; any other is refused with 400.",
+            "description": "The kind of opponent: `computer`, or `none` when the signed-in\nplayer moves both sides.",
             "$ref": "#/components/schemas/OpponentKind"
+          },
+          "strength": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "The computer's strength: 600, 800, 1000, 1200 or 1400, where higher is\nstronger. Left out or `null`, it is 800. Any other number is refused\nwith 400, as is a strength given when the kind is `none`.",
+            "format": "int32"
           }
         },
         "description": "Who plays the side the player does not."
@@ -738,7 +776,8 @@
       },
       "PlayMoveRequest": {
         "required": [
-          "uci"
+          "uci",
+          "halfMoveNumber"
         ],
         "type": "object",
         "properties": {
@@ -746,6 +785,11 @@
             "maxLength": 5,
             "type": "string",
             "description": "The move in UCI coordinate form: the square the piece leaves and the\nsquare it arrives on, in lower case, such as `e2e4`, and for a\npromotion the piece's letter, as in `e7e8q`. A promotion needs its\nletter. Castling is the king's move, such as `e1g1`."
+          },
+          "halfMoveNumber": {
+            "type": "integer",
+            "description": "The half-move number this move is meant to have, numbered as the\nresponse's moves are: one more than the number of moves in the game the\nclient is showing. Any other number, whether the game has moved on since\nor the number is simply wrong, is refused with 409 before the move is\nplayed, and nothing is saved, so sending the same move again is always\nsafe.",
+            "format": "int32"
           }
         },
         "description": "The body of `POST /games/{id}/moves`."

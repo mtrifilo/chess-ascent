@@ -41,6 +41,51 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         loaded.Should().BeEquivalentTo(created);
     }
 
+    // As the computer's first move is saved when it has White, and with a
+    // status that ends the game, so that both are seen to be stored.
+    [Fact]
+    public async Task CreateWithMovesSavesThemAndTheirStatusWithTheGame()
+    {
+        var owner = await factory.CreateOwnerAsync();
+        var (moves, status) = GameData.Rules.NewGame().Play(GameRequests.FoolsMate);
+
+        var created = await factory.WithStoreAsync(store => store.CreateAsync(
+            owner, Side.White, Opponent.Computer(800), GameData.StartingFen, moves, status, Cancellation));
+        var loaded = await factory.LoadGameAsync(owner, created.Id);
+
+        created.Moves.Should().Equal(moves);
+        created.Status.Should().Be(GameProgress.Finished);
+        created.Result.Should().Be(GameResult.BlackWins);
+        created.EndReason.Should().Be(GameEndReason.Checkmate);
+        created.NextHalfMoveNumber.Should().Be(5);
+        loaded.Should().BeEquivalentTo(created);
+        loaded!.MovesNumberedInOrder.Should().BeTrue();
+    }
+
+    // The moves are inserted with the game, so a game whose moves cannot be
+    // saved is not saved either, and nothing is left in the context. Either
+    // the game's row fails (an owner that does not exist) or, after it has
+    // gone in, a move's (PostgreSQL refuses a NUL character in text).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ACreateWithMovesThatFailsSavesNothingAndLeavesNothingTracked(bool moveFails)
+    {
+        var owner = await factory.CreateOwnerAsync();
+        await using var scope = factory.Services.CreateAsyncScope();
+        var store = scope.ServiceProvider.GetRequiredService<GameStore>();
+        var tracker = scope.ServiceProvider.GetRequiredService<AppDbContext>().ChangeTracker;
+        var (moves, status) = GameData.Rules.NewGame().Play("e2e4");
+        IReadOnlyList<PlayedMove> saved = moveFails ? [moves[0] with { Uci = "e2e4\0" }] : moves;
+
+        var create = () => store.CreateAsync(
+            moveFails ? owner : "no-such-account", Side.Black, Opponent.Computer(800), GameData.StartingFen, saved, status, Cancellation);
+
+        await create.Should().ThrowAsync<DbUpdateException>();
+        tracker.Entries().Should().BeEmpty();
+        (await postgres.CountGamesAsync(owner)).Should().Be(0);
+    }
+
     [Fact]
     public async Task LoadFindsNoGameThatBelongsToAnotherPlayerJustAsForAGameThatDoesNotExist()
     {

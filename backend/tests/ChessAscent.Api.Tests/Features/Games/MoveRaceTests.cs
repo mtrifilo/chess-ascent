@@ -13,7 +13,8 @@ namespace ChessAscent.Api.Tests.Features.Games;
 // One move sent twice at once, as a double click or two browser tabs can send
 // it, where both requests load the game before either has saved. Sent side by
 // side they would usually not overlap: the second would load the game after
-// the first had saved, and find the move illegal (see GameEndpointsTests). So
+// the first had saved, and find its half-move number taken before playing it
+// (see GameEndpointsTests). So
 // the first request is held just after its update has locked the game's row,
 // and let go only once the second has loaded the game, played the move on
 // it, and begun its own update.
@@ -33,9 +34,9 @@ public sealed class MoveRaceTests(ApiFactory factory) : IClassFixture<ApiFactory
         await client.RegisterNewAsync(AccountData.NewEmail());
         var game = await client.CreateGameAsync();
 
-        var first = client.PostMoveAsync(game.Id, "e2e4");
+        var first = client.PostMoveAsync(game.Id, "e2e4", 1);
         await hold.FirstUpdated.WaitAsync(Patience, Cancellation);
-        var second = client.PostMoveAsync(game.Id, "e2e4");
+        var second = client.PostMoveAsync(game.Id, "e2e4", 1);
         await hold.SecondUpdating.WaitAsync(Patience, Cancellation);
         hold.Release();
         using var firstResponse = await first;

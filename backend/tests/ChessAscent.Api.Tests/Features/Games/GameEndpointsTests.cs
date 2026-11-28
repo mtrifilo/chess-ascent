@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Net.Http.Headers;
+using static ChessAscent.Api.Tests.Features.Games.GameRequests;
 using AccountData = ChessAscent.Api.Tests.Features.Accounts.Accounts;
 
 namespace ChessAscent.Api.Tests.Features.Games;
@@ -55,7 +56,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         using var client = await SignedInClientAsync();
         var game = await client.CreateGameAsync("black");
 
-        using var response = await client.PostMoveAsync(game.Id, "e2e4");
+        using var response = await client.PostMoveAsync(game.Id, "e2e4", 1);
         var body = JsonNode.Parse(await response.Content.ReadAsStringAsync(Cancellation))!.AsObject();
 
         body.Select(property => property.Key).Should().Equal(
@@ -173,7 +174,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
 
         var beforePromotion = await client.PlayAsync(
             game.Id, "a2a4", "b7b5", "a4b5", "a7a6", "b5a6", "c8b7", "a6b7", "b8c6");
-        using var withoutPiece = await client.PostMoveAsync(game.Id, "b7a8");
+        using var withoutPiece = await client.PostMoveAsync(game.Id, "b7a8", 9);
         var promoted = await client.PlayAsync(game.Id, "b7a8n");
 
         PromotionPiece[] everyPiece = [PromotionPiece.Queen, PromotionPiece.Rook, PromotionPiece.Bishop, PromotionPiece.Knight];
@@ -196,7 +197,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         using var client = await SignedInClientAsync();
         var game = await client.CreateGameAsync();
 
-        using var response = await client.PostMoveAsync(game.Id, uci);
+        using var response = await client.PostMoveAsync(game.Id, uci, 1);
 
         response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
         (await response.ReadProblemAsync()).Detail.Should().Be(GameEndpoints.IllegalMoveDetail);
@@ -222,12 +223,28 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         using var client = await SignedInClientAsync();
         var game = await client.CreateGameAsync();
 
-        using var response = await client.PostMoveAsync(game.Id, uci);
+        using var response = await client.PostMoveAsync(game.Id, uci, 1);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var problem = await response.ReadProblemAsync<HttpValidationProblemDetails>();
         problem.Errors.Keys.Should().Equal(nameof(PlayMoveRequest.Uci));
         (await client.ReadGameAsync(game.Id)).Should().BeEquivalentTo(game, InStrictOrder);
+    }
+
+    [Theory]
+    [InlineData("""{"uci":"e2e4"}""")]
+    [InlineData("""{"uci":"e2e4","halfMoveNumber":null}""")]
+    public async Task AMoveWithoutAHalfMoveNumberIsRefusedWith400UnderThatFieldAndSavesNothing(string body)
+    {
+        using var client = await SignedInClientAsync();
+        var game = await client.CreateGameAsync();
+
+        using var response = await client.PostAsync($"/games/{game.Id}/moves", JsonBody(body), Cancellation);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var problem = await response.ReadProblemAsync<HttpValidationProblemDetails>();
+        problem.Errors.Keys.Should().Equal(nameof(PlayMoveRequest.HalfMoveNumber));
+        (await client.ReadGameAsync(game.Id)).Moves.Should().BeEmpty();
     }
 
     [Fact]
@@ -236,7 +253,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         using var client = await SignedInClientAsync();
         var game = await client.CreateGameAsync();
 
-        using var response = await client.PostMoveAsync(game.Id, "zz99");
+        using var response = await client.PostMoveAsync(game.Id, "zz99", 1);
 
         var problem = await response.ReadProblemAsync<HttpValidationProblemDetails>();
         problem.Errors[nameof(PlayMoveRequest.Uci)].Should().Equal(GameEndpoints.MalformedMoveMessage);
@@ -254,7 +271,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         var game = await client.CreateGameAsync();
         var mated = await client.PlayAsync(game.Id, GameRequests.FoolsMate);
 
-        using var response = await client.PostMoveAsync(game.Id, uci);
+        using var response = await client.PostMoveAsync(game.Id, uci, 5);
 
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await response.ReadProblemAsync()).Detail.Should().Be(GameEndpoints.GameFinishedDetail);
@@ -262,19 +279,57 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
     }
 
     // The second of two identical moves sent one after the other, as a
-    // double click sends them: by then the piece has left its square.
+    // double click sends them: by then its half-move number is taken.
     [Fact]
     public async Task AMoveSentTwiceInARowIsSavedOnceAndRefusedOnce()
     {
         using var client = await SignedInClientAsync();
         var game = await client.CreateGameAsync();
 
-        using var first = await client.PostMoveAsync(game.Id, "e2e4");
-        using var second = await client.PostMoveAsync(game.Id, "e2e4");
+        using var first = await client.PostMoveAsync(game.Id, "e2e4", 1);
+        using var second = await client.PostMoveAsync(game.Id, "e2e4", 1);
 
         first.StatusCode.Should().Be(HttpStatusCode.OK);
-        second.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await second.ReadProblemAsync()).Detail.Should().Be(GameEndpoints.MoveConflictDetail);
         (await client.ReadGameAsync(game.Id)).Moves.Should().Equal(new MoveResponse(1, "e2e4", "e4"));
+    }
+
+    // After e4, e7e5 is legal as the next move, half-move 2. Sent with any
+    // other number it is refused before it is played.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(0)]
+    [InlineData(-2)]
+    [InlineData(int.MaxValue)]
+    public async Task AMoveForAnotherHalfMoveThanTheNextIsRefusedWith409BeforeItIsPlayed(int halfMoveNumber)
+    {
+        using var client = await SignedInClientAsync();
+        var game = await client.CreateGameAsync();
+        var afterE4 = await client.PlayAsync(game.Id, "e2e4");
+
+        using var response = await client.PostMoveAsync(game.Id, "e7e5", halfMoveNumber);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await response.ReadProblemAsync()).Detail.Should().Be(GameEndpoints.MoveConflictDetail);
+        (await client.ReadGameAsync(game.Id)).Should().BeEquivalentTo(afterE4, InStrictOrder);
+    }
+
+    // A move the client means for a game that has since moved on is refused
+    // even when it would be legal where the game now stands.
+    [Fact]
+    public async Task AMoveFromAnOlderPositionThatIsLegalNowIsStillRefused()
+    {
+        using var client = await SignedInClientAsync();
+        var game = await client.CreateGameAsync();
+        var afterTwo = await client.PlayAsync(game.Id, "e2e4", "e7e5");
+
+        // Meant as White's first move, and legal for White now too.
+        using var response = await client.PostMoveAsync(game.Id, "d2d4", 1);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await client.ReadGameAsync(game.Id)).Should().BeEquivalentTo(afterTwo, InStrictOrder);
     }
 
     // The mating move sent twice: the first ends the game, so the second is
@@ -286,8 +341,8 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         var game = await client.CreateGameAsync();
         await client.PlayAsync(game.Id, GameRequests.FoolsMate[..3]);
 
-        using var first = await client.PostMoveAsync(game.Id, "d8h4");
-        using var second = await client.PostMoveAsync(game.Id, "d8h4");
+        using var first = await client.PostMoveAsync(game.Id, "d8h4", 4);
+        using var second = await client.PostMoveAsync(game.Id, "d8h4", 4);
 
         first.StatusCode.Should().Be(HttpStatusCode.OK);
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
@@ -305,8 +360,8 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
 
         using var readOthers = await otherPlayer.GetGameAsync(game.Id);
         using var readUnknown = await otherPlayer.GetGameAsync(unknownId);
-        using var moveInOthers = await otherPlayer.PostMoveAsync(game.Id, "e2e4");
-        using var moveInUnknown = await otherPlayer.PostMoveAsync(unknownId, "e2e4");
+        using var moveInOthers = await otherPlayer.PostMoveAsync(game.Id, "e2e4", 1);
+        using var moveInUnknown = await otherPlayer.PostMoveAsync(unknownId, "e2e4", 1);
 
         foreach (var response in new[] { readOthers, readUnknown, moveInOthers, moveInUnknown })
         {
@@ -328,8 +383,8 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         var game = await owner.CreateGameAsync();
         using var otherPlayer = await SignedInClientAsync();
 
-        using var inOwnGame = await owner.PostMoveAsync(game.Id, "e2e4qq");
-        using var inOthersGame = await otherPlayer.PostMoveAsync(game.Id, "e2e4qq");
+        using var inOwnGame = await owner.PostMoveAsync(game.Id, "e2e4qq", 1);
+        using var inOthersGame = await otherPlayer.PostMoveAsync(game.Id, "e2e4qq", 1);
 
         inOwnGame.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await inOthersGame.ComparableBodyAsync()).Should().Be(await inOwnGame.ComparableBodyAsync());
@@ -344,7 +399,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
 
         using var create = await signedOut.PostGameAsync();
         using var read = await signedOut.GetGameAsync(game.Id);
-        using var move = await signedOut.PostMoveAsync(game.Id, "e2e4");
+        using var move = await signedOut.PostMoveAsync(game.Id, "e2e4", 1);
 
         foreach (var response in new[] { create, read, move })
         {
@@ -383,7 +438,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
 
         using var forged = new HttpRequestMessage(HttpMethod.Post, $"/games/{game.Id}/moves")
         {
-            Content = JsonContent.Create(new { uci = "e2e4" }),
+            Content = JsonContent.Create(new { uci = "e2e4", halfMoveNumber = 1 }),
         };
         forged.Headers.Add("Sec-Fetch-Site", "cross-site");
         forged.Headers.TryAddWithoutValidation(HeaderNames.Origin, "https://attacker.example").Should().BeTrue();
@@ -392,19 +447,6 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await response.ReadProblemAsync()).Detail.Should().Be(CrossSiteRequests.RefusedDetail);
         (await client.ReadGameAsync(game.Id)).Moves.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task CreateRefusesTheComputerOpponentUnderTheOpponentKindField()
-    {
-        using var client = await SignedInClientAsync();
-
-        using var response = await client.PostGameAsync(new { playerSide = "white", opponent = new { kind = "computer" } });
-
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        var problem = await response.ReadProblemAsync<HttpValidationProblemDetails>();
-        problem.Errors.Keys.Should().Equal("Opponent.Kind");
-        problem.Errors["Opponent.Kind"].Should().Equal(GameEndpoints.UnofferedOpponentMessage);
     }
 
     public static TheoryData<string, string[]> MissingFields => new()
@@ -448,6 +490,8 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
 
     // Moves written straight to the table, as something other than the
     // store might write them, each leaving a game that cannot be played on.
+    // Each row written is one saved move, so the next half-move number is
+    // one more than the rows.
     public static TheoryData<string, int, string> BrokenSavedGames => new()
     {
         {
@@ -488,7 +532,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         var before = await factory.LoadGameAsync(ownerId, game.Id);
 
         using var read = await client.GetGameAsync(game.Id);
-        using var move = await client.PostMoveAsync(game.Id, "e2e4");
+        using var move = await client.PostMoveAsync(game.Id, "e2e4", rows + 1);
 
         foreach (var response in new[] { read, move })
         {
@@ -521,7 +565,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
             """,
             game.Id)).Should().Be(2);
 
-        using var move = await client.PostMoveAsync(game.Id, "e2e4");
+        using var move = await client.PostMoveAsync(game.Id, "e2e4", 2);
         using var read = await client.GetGameAsync(game.Id);
 
         move.StatusCode.Should().Be(HttpStatusCode.Conflict);
@@ -537,8 +581,10 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
     {
         { null, "", HttpStatusCode.BadRequest },
         { "application/json", "{", HttpStatusCode.BadRequest },
-        { "application/json", """{"uci":5}""", HttpStatusCode.BadRequest },
-        { "text/plain", """{"uci":"e2e4"}""", HttpStatusCode.UnsupportedMediaType },
+        { "application/json", """{"uci":5,"halfMoveNumber":1}""", HttpStatusCode.BadRequest },
+        { "application/json", """{"uci":"e2e4","halfMoveNumber":"1"}""", HttpStatusCode.BadRequest },
+        { "application/json", """{"uci":"e2e4","halfMoveNumber":1.5}""", HttpStatusCode.BadRequest },
+        { "text/plain", """{"uci":"e2e4","halfMoveNumber":1}""", HttpStatusCode.UnsupportedMediaType },
     };
 
     [Theory]
@@ -564,15 +610,11 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         using var client = await SignedInClientAsync();
 
         using var read = await client.GetAsync("/games/not-a-guid", Cancellation);
-        using var move = await client.PostAsJsonAsync("/games/not-a-guid/moves", new { uci = "e2e4" }, Cancellation);
+        using var move = await client.PostAsJsonAsync("/games/not-a-guid/moves", new { uci = "e2e4", halfMoveNumber = 1 }, Cancellation);
 
         read.StatusCode.Should().Be(HttpStatusCode.NotFound);
         move.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
-
-    private static readonly Func<AwesomeAssertions.Equivalency.EquivalencyOptions<GameResponse>,
-        AwesomeAssertions.Equivalency.EquivalencyOptions<GameResponse>> InStrictOrder =
-        options => options.WithStrictOrdering();
 
     private async Task<HttpClient> SignedInClientAsync()
     {
@@ -581,5 +623,4 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         return client;
     }
 
-    private static StringContent JsonBody(string json) => new(json, System.Text.Encoding.UTF8, "application/json");
 }

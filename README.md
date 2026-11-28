@@ -47,12 +47,12 @@ curl -c "$jar" -H 'Content-Type: application/json' \
 curl -b "$jar" http://localhost:5100/auth/me
 ```
 
-Games are under `/games`, for the signed-in player only. `POST /games` with `{"playerSide":"white","opponent":{"kind":"none"}}` starts a game from the standard position in which the player moves both sides; `GET /games/{id}` reads it; `POST /games/{id}/moves` with `{"uci":"e2e4"}` plays a move (`e7e8q` for a promotion). Each answers with the whole game: the position, the moves so far, the status, and the legal moves for the side to move. An illegal move is refused with 422, text that is not a move with 400, a move in a finished game or one that another request got to first with 409, and another player's game is 404, as is one that does not exist:
+Games are under `/games`, for the signed-in player only. `POST /games` with `{"playerSide":"white","opponent":{"kind":"computer","strength":800}}` starts a game against the computer from the standard position; the strength is 600, 800, 1000, 1200 or 1400, and 800 when left out. With `"playerSide":"black"` the computer has White, and the answer already holds its first move. `{"kind":"none"}`, with no strength, starts a game in which the player moves both sides. `GET /games/{id}` reads a game; `POST /games/{id}/moves` with `{"uci":"e2e4","halfMoveNumber":1}` plays a move (`e7e8q` for a promotion), where `halfMoveNumber` is the number the move is meant to have, one more than the moves the game has so far. Against the computer, the same request plays its reply. Each answers with the whole game: the position, the moves so far, the status, and the legal moves for the side to move. An illegal move is refused with 422, text that is not a move with 400, and a move in a finished game, or whose half-move number is not the game's next one, with 409; another player's game is 404, as is one that does not exist. When the computer gives no move, nothing is saved and the answer is 503: send the same request again. The computer needs Maia, which `scripts/setup-maia.sh` installs (see "Chess engines" below):
 
 ```sh
 curl -b "$jar" -H 'Content-Type: application/json' \
-  -d '{"playerSide":"white","opponent":{"kind":"none"}}' http://localhost:5100/games   # the answer's "id" is the game's
-curl -b "$jar" -H 'Content-Type: application/json' -d '{"uci":"e2e4"}' http://localhost:5100/games/<id>/moves
+  -d '{"playerSide":"white","opponent":{"kind":"computer"}}' http://localhost:5100/games   # the answer's "id" is the game's
+curl -b "$jar" -H 'Content-Type: application/json' -d '{"uci":"e2e4","halfMoveNumber":1}' http://localhost:5100/games/<id>/moves
 ```
 
 The session cookie is encrypted with ASP.NET Core Data Protection keys, which by default live in `~/.aspnet/DataProtection-Keys` on the machine running the API. Deleting them signs everyone out. A deployment must keep them durable, private and shared between instances.
