@@ -1239,6 +1239,33 @@ describe('GameScreen', () => {
         expect(screen.getByText('You resigned.')).toBeInTheDocument()
       )
       expect(screen.queryByRole('group', { name: /Choose a piece/ })).toBeNull()
+      // A new board is mounted, which takes the unplayed pawn off e8.
+      expect(board.mounts).toBe(2)
+      expect(sentMoves(sent)).toEqual([])
+    })
+
+    it('drops a promotion chosen while the resignation was on its way, once the game is resigned', async () => {
+      let settle!: (reply: Reply) => void
+      const promotionGame = { ...PROMOTION_GAME, opponent: MAIA_800 }
+      const sent = answer({
+        [GAME_PATH]: ok(promotionGame),
+        [RESIGN_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
+      })
+      await renderGame()
+
+      playOnBoard('e7', 'e8')
+      fireEvent.click(resignControl())
+      fireEvent.click(
+        within(confirmation()).getByRole('button', { name: 'Resign' })
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Knight' }))
+      settle(ok(resignedAs(promotionGame)))
+
+      await waitFor(() =>
+        expect(screen.getByText('You resigned.')).toBeInTheDocument()
+      )
+      expect(screen.queryByRole('group', { name: /Choose a piece/ })).toBeNull()
+      expect(board.mounts).toBe(2)
       expect(sentMoves(sent)).toEqual([])
     })
 

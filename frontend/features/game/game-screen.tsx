@@ -103,6 +103,13 @@ function LoadedGame({ game }: { game: Game }) {
   const orientation = flipped ? opponentSide : game.playerSide
   // A resignation ends the game without changing the position, so these
   // check that the game is still being played as well as the position.
+  // A promotion left waiting when the game ends is dropped, and a new board
+  // is mounted to take the pawn the board moved back off; this is done
+  // while rendering, so the stale board is never shown.
+  if (finished && pending?.fen === game.fen) {
+    setPending(undefined)
+    setBoardKey(key => key + 1)
+  }
   const promotion = !finished && pending?.fen === game.fen ? pending : undefined
   const failedMove =
     !finished && playMove.isError && playMove.variables.fen === game.fen
