@@ -102,19 +102,20 @@
     extension) is still registered. Directory.Build.targets removes it, and
     misses it if a later version of the package registers under another
     identifier, or if a nested Directory.Build.targets is imported instead
-    of that file. The
-    check lives here, not beside the removal, so that the second case loses
-    the removal but not the check. A nested props file that skipped this one
-    would also lose the target framework, and the SDK refuses to build
-    without one unless that file sets its own.
+    of that file. The check lives here, not beside the removal, so that the
+    second case loses the removal but not the check. A nested props file
+    that skipped this one would also lose the target framework, and the SDK
+    refuses to build without one unless that file sets its own.
 
     LEARN: Unlike properties and items, a target runs only after the whole
     project has been evaluated, so a target defined in a .props file still
     sees every item that later files add or remove. That is Gradle's split
     between its configuration phase and its execution phase. Maven behaves
     the same way here: a plugin goal bound in a parent POM runs against the
-    effective POM, so it sees what the child POM set. %(...) runs the task
-    once per hook item, a loop with no loop syntax, called batching.
+    effective POM, so it sees what the child POM set. %(...) is batching, a
+    loop with no loop syntax: MSBuild groups the items by the values of the
+    metadata the task names and runs the task once per group. The message
+    names Identity, so here each hook item is a group of its own.
   -->
   <Target Name="RefuseTestingPlatformTelemetry" BeforeTargets="BeforeBuild" Condition="'@(TestingPlatformBuilderHook)' != ''">
     <Error
