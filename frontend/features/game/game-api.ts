@@ -9,9 +9,13 @@ import {
 
 import { api } from '@/lib/api'
 
-import type { BoardMove, Side } from '@/components/chess-board/chess-board'
+import type {
+  BoardMove,
+  Side,
+  Square,
+} from '@/components/chess-board/chess-board'
 
-import { squaresOf, type Game, type OpponentStrength } from './game-state'
+import type { Game, OpponentStrength } from './game-state'
 
 const gameKey = (id: string) => ['game', id] as const
 
@@ -206,14 +210,11 @@ export function useAskForHint(id: string) {
         params: { path: { id } },
         body: { halfMoveNumber },
       })
-      if (data) {
+      if (data || response.status === 409) {
         void queryClient.invalidateQueries({ queryKey: gameKey(id) })
-        return squaresOf(data.from + data.to)
       }
-      if (response.status === 409) {
-        void queryClient.invalidateQueries({ queryKey: gameKey(id) })
-        return 'reloaded'
-      }
+      if (data) return { from: data.from as Square, to: data.to as Square }
+      if (response.status === 409) return 'reloaded'
       if (response.status === 401) return 'signed-out'
       throw new Error(`POST /games/{id}/hints answered ${response.status}.`)
     },

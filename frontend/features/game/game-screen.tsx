@@ -116,15 +116,12 @@ function LoadedGame({ game }: { game: Game }) {
     setBoardKey(key => key + 1)
   }
   const promotion = !finished && pending?.fen === game.fen ? pending : undefined
-  // Only the player's turn has a use for a hint: not while a move is on its
-  // way or the computer thinks, nor while a resignation is on its way or a
-  // promotion waits for its piece.
+  const readOnly = finished || moveUnderway || resigning
+  // Only the player's turn has a use for a hint: not while a move or a
+  // resignation is on its way or the computer thinks, nor while a promotion
+  // waits for its piece.
   const playersTurn =
-    !finished &&
-    !moveUnderway &&
-    !resigning &&
-    !promotion &&
-    game.sideToMove === game.playerSide
+    !readOnly && !promotion && game.sideToMove === game.playerSide
   const hint = useHint(game, playersTurn)
   const hintUsed = hintUsedText(game)
   const failedMove =
@@ -202,18 +199,8 @@ function LoadedGame({ game }: { game: Game }) {
             destinations={destinations(game)}
             lastMove={shown.lastMove}
             check={shown.check}
-            hintSquares={
-              hint.shown &&
-              (hint.shown.step === 'move'
-                ? [hint.shown.from, hint.shown.to]
-                : [hint.shown.from])
-            }
-            arrows={
-              hint.shown?.step === 'move'
-                ? [{ from: hint.shown.from, to: hint.shown.to }]
-                : undefined
-            }
-            readOnly={finished || moveUnderway || resigning}
+            {...hint.marks}
+            readOnly={readOnly}
             onMove={onMove}
           />
           {promotion && (
@@ -263,9 +250,7 @@ function LoadedGame({ game }: { game: Game }) {
             {playsComputer(game) && !finished && (
               <Button
                 className="h-12.75 flex-1 md:h-8 md:flex-none md:px-2"
-                disabled={
-                  !playersTurn || hint.waiting || hint.shown?.step === 'move'
-                }
+                disabled={!hint.canPress}
                 onClick={hint.press}
               >
                 {hint.shown?.step === 'piece' ? 'Show move' : 'Hint'}

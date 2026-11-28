@@ -44,10 +44,20 @@ export function useHint(game: Game, playersTurn: boolean) {
         }
       : undefined
 
+  const moveShown = shown?.step === 'move'
+
   return {
     shown,
-    // From the press until the API answers.
-    waiting: askForHint.isPending,
+    // What the board marks: the piece's square, then both squares and an
+    // arrow between them.
+    marks: {
+      hintSquares: shown && (moveShown ? [shown.from, shown.to] : [shown.from]),
+      arrows:
+        shown && moveShown ? [{ from: shown.from, to: shown.to }] : undefined,
+    },
+    // The control can be pressed on the player's turn, except while the API
+    // answers and once the move is shown, until the player moves.
+    canPress: playersTurn && !askForHint.isPending && !moveShown,
     // The first press asks for the hint; the second, once the piece is
     // shown, reveals the move without asking again.
     press() {

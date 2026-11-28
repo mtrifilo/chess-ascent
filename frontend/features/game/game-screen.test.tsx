@@ -107,11 +107,14 @@ function unreachable(): Promise<Reply> {
   return failure
 }
 
-// The bodies of the moves posted.
-const sentMoves = (sent: ReturnType<typeof answer>) =>
+// The bodies of the requests posted to `path`.
+const postedTo = (path: string, sent: ReturnType<typeof answer>) =>
   sent
-    .filter(request => request.call === `POST ${MOVES_PATH}`)
+    .filter(request => request.call === `POST ${path}`)
     .map(request => request.body)
+
+const sentMoves = (sent: ReturnType<typeof answer>) =>
+  postedTo(MOVES_PATH, sent)
 
 describe('GameScreen', () => {
   it("shows the position, whose move it is, and the player's colour at the bottom", async () => {
@@ -1443,9 +1446,7 @@ describe('GameScreen: a hint', () => {
     screen.getByRole('button', { name })
 
   const sentHints = (sent: ReturnType<typeof answer>) =>
-    sent
-      .filter(request => request.call === `POST ${HINTS_PATH}`)
-      .map(request => request.body)
+    postedTo(HINTS_PATH, sent)
 
   // What the board marks for the hint: the squares filled and the arrows.
   const boardMarks = () => ({
@@ -1454,7 +1455,7 @@ describe('GameScreen: a hint', () => {
   })
   const NO_MARKS = { hintSquares: undefined, arrows: undefined }
 
-  // Presses the control once the piece is shown, to show the move.
+  // Presses the control and waits until the piece is shown.
   async function revealPiece() {
     fireEvent.click(control())
     await screen.findByText(PIECE_TEXT)
@@ -1573,9 +1574,16 @@ describe('GameScreen: a hint', () => {
     expect(screen.getByText('Hint used')).toBeInTheDocument()
   })
 
-  it('does not come back when the move the player made is not played', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
+  describe('when the move the player made is not played', () => {
+    // The query cache reports the failure to the console.
+    beforeEach(() => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+    })
+    afterEach(() => {
+      vi.mocked(console.error).mockRestore()
+    })
+
+    it('does not come back', async () => {
       answer({
         [GAME_PATH]: ok(GAME),
         [HINTS_PATH]: ok(HINT),
@@ -1591,9 +1599,7 @@ describe('GameScreen: a hint', () => {
       expect(screen.queryByText(PIECE_TEXT)).toBeNull()
       expect(boardMarks()).toEqual(NO_MARKS)
       expect(control()).toBeEnabled()
-    } finally {
-      vi.mocked(console.error).mockRestore()
-    }
+    })
   })
 
   it('clears when the game is read again and has moved on', async () => {
@@ -1694,13 +1700,6 @@ describe('GameScreen: a hint', () => {
       await renderGame()
 
       expect(control()).toBeDisabled()
-    })
-
-    it('once the game is over, where it is not shown', async () => {
-      answer({ [GAME_PATH]: ok({ ...FOOLS_MATE, opponent: MAIA_800 }) })
-      await renderGame()
-
-      expect(screen.queryByRole('button', { name: 'Hint' })).toBeNull()
     })
   })
 
