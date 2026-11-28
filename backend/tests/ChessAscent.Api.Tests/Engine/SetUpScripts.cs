@@ -17,14 +17,16 @@ internal static partial class SetUpScripts
     /// The full paths a script assigns to the named variables, such as
     /// <c>PYTHON="$VENV/bin/python"</c>, worked out from the engine's own
     /// directory, which the script calls <paramref name="directoryVariable"/>.
-    /// Each assignment may use the ones before it.
+    /// Each assignment may use the ones before it. An assignment of the empty
+    /// string, which clears a variable once its file is dealt with, is not a
+    /// path and is passed over.
     /// </summary>
     public static Dictionary<string, string> Paths(string script, string directoryVariable, string directory, params string[] names)
     {
         var paths = new Dictionary<string, string> { [directoryVariable] = directory };
         foreach (Match assignment in PathAssignment().Matches(script))
         {
-            if (names.Contains(assignment.Groups["name"].Value))
+            if (names.Contains(assignment.Groups["name"].Value) && assignment.Groups["value"].Length > 0)
             {
                 paths[assignment.Groups["name"].Value] = Variable().Replace(assignment.Groups["value"].Value, name => paths[name.Groups["name"].Value]);
             }

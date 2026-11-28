@@ -3,8 +3,9 @@
 #   1. its source, at the commit that the release tag fairy_sf_14 names,
 #      fetched with git and checked against that commit;
 #   2. a build of it for this machine, with the compiler already on it;
-#   3. the program, copied to <engines>/fairy_stockfish/fairy-stockfish;
-#   4. a check that it answers a UCI handshake, started as the API starts it.
+#   3. a check that the new program answers a UCI handshake, started as the
+#      API starts it;
+#   4. only then, the program in place as <engines>/fairy_stockfish/fairy-stockfish.
 # Everything goes under <engines>/fairy_stockfish, where <engines> is
 # $CHESS_ASCENT_ENGINES_DIR (a full path) or, unset, engines/ at the
 # repository root. The API reads the same variable. Nothing is installed
@@ -100,8 +101,14 @@ BUILD_LOG="$FAIRY/build.log"
 # for the default engines directory is Chess Ascent's own checkout.
 source_git() { git --git-dir="$SOURCE/.git" --work-tree="$SOURCE" "$@"; }
 
+# Whatever a run leaves half-made is removed when it ends, however it ends:
+# a fetch in progress, or a new program not yet checked. A signal ends the
+# script through `exit`, so that the EXIT trap runs for it too: bash 3.2,
+# macOS's own, does not run it on a signal otherwise.
 FETCHING=""
-trap '[ -z "$FETCHING" ] || rm -rf "$FETCHING"' EXIT
+CANDIDATE=""
+trap '[ -z "$FETCHING" ] || rm -rf "$FETCHING"; [ -z "$CANDIDATE" ] || rm -f "$CANDIDATE"' EXIT
+trap 'exit 130' INT TERM
 
 if [ -d "$SOURCE/.git" ] && [ "$(source_git rev-parse HEAD 2>/dev/null)" = "$FAIRY_STOCKFISH_COMMIT" ]; then
   say "using the source in $SOURCE, at commit $FAIRY_STOCKFISH_COMMIT"
@@ -170,11 +177,11 @@ fi
 # itself, with no arguments, in its own directory, and with an empty
 # environment (backend/src/ChessAscent.Api/appsettings.json).
 CANDIDATE="$PROGRAM.new"
+# A new file each time, never one written over: a program that was run is
+# not rewritten in place.
+rm -f "$CANDIDATE"
 cp "$SOURCE/src/stockfish" "$CANDIDATE"
-rejected() {
-  rm -f "$CANDIDATE"
-  fail "$1; the program already in $FAIRY, if any, was kept"
-}
+rejected() { fail "$1; the program already in $FAIRY, if any, was kept"; }
 say "checking that the engine answers"
 ENGINE=(/usr/bin/env -i "$CANDIDATE")
 reply="$(cd "$FAIRY" && printf 'uci\nisready\nquit\n' | "${ENGINE[@]}" 2>&1)" \
@@ -188,5 +195,6 @@ say "the engine answered uciok and readyok"
 # Renamed into place: an API running the previous program keeps it, and
 # never sees a half-written file.
 mv -f "$CANDIDATE" "$PROGRAM"
+CANDIDATE=""
 
 say "done: $(du -sh "$FAIRY" | cut -f1) in $FAIRY"
