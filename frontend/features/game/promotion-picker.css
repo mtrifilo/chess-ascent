@@ -1,0 +1,22 @@
+@reference '../../app/globals.css';
+
+/* Chessground places its pieces absolutely, an eighth of the board each. In
+ * the picker a piece fills its option instead. The picker's class outranks
+ * chessground's `.cg-wrap piece` rule whatever the stylesheet order. */
+.promotion-picker .cg-wrap piece {
+  position: static;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* On a phone the pieces are drawn at 88% of the square, as on the board
+ * (chess-board.css). */
+.promotion-picker .cg-wrap piece {
+  @variant max-md {
+    background-size: 88%;
+    background-repeat: no-repeat;
+    background-position: center;
+  }
+}
