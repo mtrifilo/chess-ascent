@@ -36,7 +36,7 @@ public sealed class HintRaceTests(ApiFactory factory, PostgresFixture postgres) 
         var first = client.PostHintAsync(game.Id, 1);
         await hold.FirstRan.WaitAsync(Patience, Cancellation);
         var second = client.PostHintAsync(game.Id, 1);
-        var secondWaitedOnTheLock = await HintCountWaitsOnALockAsync();
+        var secondWaitedOnTheLock = await HintCountWaitsOnAsync(hold.HeldBackend);
         hold.Release();
         using var firstResponse = await first;
         using var secondResponse = await second;
@@ -50,19 +50,19 @@ public sealed class HintRaceTests(ApiFactory factory, PostgresFixture postgres) 
     }
 
     // Asks PostgreSQL, from a connection of its own, whether a hint count is
-    // blocked waiting for a lock, polling until one is or patience runs out.
-    // No other test counts hints while holding a game's row, so a waiting
-    // count in the shared database is this test's second request.
-    private async Task<bool> HintCountWaitsOnALockAsync()
+    // blocked by the backend that holds the first request's lock, polling
+    // until one is or patience runs out.
+    private async Task<bool> HintCountWaitsOnAsync(int heldBackend)
     {
         await using var connection = new NpgsqlConnection(postgres.ConnectionString);
         await connection.OpenAsync(Cancellation);
         await using var command = new NpgsqlCommand(
             """
             SELECT count(*) FROM pg_stat_activity
-            WHERE wait_event_type = 'Lock' AND query LIKE 'UPDATE "Games"%' AND query LIKE '%"HintCount"%'
+            WHERE @held = ANY(pg_blocking_pids(pid)) AND query LIKE '%"HintCount"%'
             """,
             connection);
+        command.Parameters.AddWithValue("held", heldBackend);
 
         var giveUpAt = DateTime.UtcNow + Patience;
         while (DateTime.UtcNow < giveUpAt)

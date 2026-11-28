@@ -1,3 +1,4 @@
+using System.Data;
 using ChessAscent.Api.Database;
 using ChessAscent.Chess;
 using Microsoft.EntityFrameworkCore;
@@ -344,7 +345,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // inside it. A lone SaveChangesAsync is already atomic (it opens a
         // transaction of its own); one is needed here because the work is
         // several round trips: the update, the count and the insert.
-        await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await database.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
 
         // LEARN: ExecuteUpdateAsync sends one UPDATE ... WHERE straight to
         // the database, like a JPQL bulk update with executeUpdate(): it loads
@@ -454,7 +455,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(halfMoveNumber, 1);
 
-        await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await database.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
 
         // LEARN: The second SetProperty is given an expression of the row,
         // not a value, so the database computes the new count: the statement
@@ -470,10 +471,12 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // OptimisticLockException, when no row matches. The caller would
         // then reload and try again. Here there is nothing to retry: the
         // conditions and the increment are read and written by one statement.
-        // Under READ COMMITTED, PostgreSQL's default isolation level and the
-        // one this transaction uses, an UPDATE that has to wait for another
-        // transaction's lock on the row checks its WHERE again, against the
-        // row as that transaction left it, once the lock is free.
+        // Under READ COMMITTED, PostgreSQL's default isolation level, which
+        // this transaction asks for rather than leave to the server's
+        // settings, an UPDATE that has to wait for another transaction's lock
+        // on the row checks its WHERE again, against the row as that
+        // transaction left it, once the lock is free. (Under REPEATABLE READ
+        // it would fail with a serialization error instead.)
         //
         // Moves are only ever added at the end of a game, so a position is
         // named by the number of the half-move to be played from it, and a
@@ -483,10 +486,12 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // commit, then finds the number counted and changes nothing. When
         // the update does change the row, it also leaves the row locked
         // until the transaction ends, so no move can be saved before the
-        // count of moves below. When it changes nothing, it takes no lock,
-        // and nothing is written on that path: the count below still sees
-        // every move saved before it runs, which turns a repeat in a position
-        // the game has left into a conflict.
+        // count of moves below. When it changes nothing, it usually takes no
+        // lock; one that first waited for another transaction's lock may keep
+        // the row locked though its re-check failed. Either way nothing is
+        // written on that path, and the count below still sees every move
+        // saved before it runs, which turns a repeat in a position the game
+        // has left into a conflict.
         var counted = await database.Games
             .Where(g => g.Id == gameId
                 && g.OwnerId == ownerId

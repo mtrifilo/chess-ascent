@@ -1,5 +1,6 @@
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Npgsql;
 
 namespace ChessAscent.Api.Tests.Features.Games;
 
@@ -26,6 +27,13 @@ internal sealed class HoldTheFirstCommand(Func<DbCommand, bool> holds) : DbComma
     /// <summary>Completes once the first command has run and is being held.</summary>
     public Task FirstRan => _firstRan.Task;
 
+    /// <summary>
+    /// The PostgreSQL backend process of the connection the first command
+    /// ran on, which holds whatever locks it took; valid once
+    /// <see cref="FirstRan"/> has completed.
+    /// </summary>
+    public int HeldBackend { get; private set; }
+
     /// <summary>Completes when a second command is about to run.</summary>
     public Task SecondStarting => _secondStarting.Task;
 
@@ -51,6 +59,7 @@ internal sealed class HoldTheFirstCommand(Func<DbCommand, bool> holds) : DbComma
     {
         if (holds(command) && !_firstRan.Task.IsCompleted)
         {
+            HeldBackend = ((NpgsqlConnection)command.Connection!).ProcessID;
             _firstRan.TrySetResult();
             await Task.WhenAny(_released.Task, Task.Delay(Patience, cancellationToken));
         }

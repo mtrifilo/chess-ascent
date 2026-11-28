@@ -371,11 +371,11 @@ public sealed class HintTests(ApiFactory factory, PostgresFixture postgres) : IC
         (await client.ReadGameAsync(game.Id)).Should().BeEquivalentTo(moved, InStrictOrder);
     }
 
-    // The test host has no Fairy-Stockfish kind, so the application's own
-    // hint provider runs without its engine, as on a machine where it is not
-    // installed.
+    // The test host configures no Fairy-Stockfish kind, so the application's
+    // own hint provider has no engine to ask. An engine that is configured
+    // but will not start reaches the same HintFailed, through the pool.
     [Fact]
-    public async Task WithoutTheHintEngineInstalledAHintAnswers503AndRecordsNothing()
+    public async Task WithNoHintEngineConfiguredAHintAnswers503AndRecordsNothing()
     {
         using var api = factory.WithFakes(new FakeOpponent());
         using var client = await api.SignedInClientAsync();

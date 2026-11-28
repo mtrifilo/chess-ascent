@@ -312,9 +312,6 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         await halfMoveZero.Should().ThrowAsync<ArgumentOutOfRangeException>().WithParameterName("firstHalfMoveNumber");
     }
 
-    // SaveChanges saves everything the context tracks, so a save that began
-    // with the caller's own changes pending would save them too, or fail on
-    // them.
     [Fact]
     public async Task CountingAHintTwiceInOnePositionCountsItOnceAndAHintInTheNextCountsAgain()
     {
@@ -419,6 +416,9 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         await count.Should().ThrowAsync<ArgumentOutOfRangeException>();
     }
 
+    // SaveChanges saves everything the context tracks, so a save that began
+    // with the caller's own changes pending would save them too, or fail on
+    // them.
     [Fact]
     public async Task CreateAndAppendRefuseToStartWhileTheContextHoldsUnsavedChanges()
     {
