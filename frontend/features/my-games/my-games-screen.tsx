@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useId } from 'react'
 
 import { PageHeading } from '@/components/layout/page-heading'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ColourSwatch } from '@/features/game/colour-swatch'
 import { NewGameLink } from '@/features/game/new-game-link'
@@ -112,6 +113,9 @@ function GameList({
             <th scope="col" className={cn(headClass, 'w-32.5')}>
               Date
             </th>
+            <th scope="col" className={cn(headClass, 'w-27.5')}>
+              Hint
+            </th>
             {/* The column of actions has no heading. */}
             <td className="w-26" />
           </tr>
@@ -129,6 +133,9 @@ function GameList({
               <td className="px-2 text-sm">{row.text.result}</td>
               <td className="px-2 font-data text-data-m text-muted-foreground">
                 {row.text.date}
+              </td>
+              <td className="px-2">
+                {row.text.hint && <HintUsed>{row.text.hint}</HintUsed>}
               </td>
               <td className="px-2 text-right">
                 {open(row, index, 'h-8 px-2')}
@@ -155,6 +162,9 @@ function GameList({
                 <span>{row.text.result}</span>{' '}
                 <span className="font-data">{row.text.date}</span>
               </p>
+              {row.text.hint && (
+                <HintUsed className="self-start">{row.text.hint}</HintUsed>
+              )}
             </div>
             {open(row, index, 'h-12.75 px-4')}
           </li>
@@ -162,6 +172,25 @@ function GameList({
       </ul>
       <div ref={endRef} />
     </section>
+  )
+}
+
+// The marker of a game in which a hint was used: the design's outline badge,
+// 22px tall, with the small corners the design gives badges.
+function HintUsed({
+  className,
+  children,
+}: {
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <Badge
+      variant="outline"
+      className={cn('rounded-sm px-2 py-1 leading-3.5', className)}
+    >
+      {children}
+    </Badge>
   )
 }
 

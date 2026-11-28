@@ -11,12 +11,15 @@ export type GameSummary = components['schemas']['GameSummaryResponse']
 type Result = components['schemas']['GameResult']
 type EndReason = components['schemas']['GameEndReason']
 
-// What a row shows, in the order the desktop table's columns show it.
+// What a row shows, in the order the desktop table's columns show it. `hint`
+// is the marker of a game in which a hint was used, and is left out for any
+// other game.
 export type GameRowText = {
   opponent: string
   colour: string
   result: string
   date: string
+  hint?: string
 }
 
 export function gameRowText(game: GameSummary): GameRowText {
@@ -25,6 +28,7 @@ export function gameRowText(game: GameSummary): GameRowText {
     colour: sideLabel(game.playerSide),
     result: resultText(game),
     date: dateText(game.lastActivityAt),
+    hint: game.hintCount > 0 ? 'Hint used' : undefined,
   }
 }
 

@@ -17,7 +17,7 @@ function gameId(): string {
 }
 
 // A game against the computer at strength 800, the player as White, five
-// moves in; `overrides` replaces any field.
+// moves in, with no hint; `overrides` replaces any field.
 export function unfinishedGame(
   overrides: Partial<GameSummary> = {}
 ): GameSummary {
@@ -29,6 +29,7 @@ export function unfinishedGame(
     result: null,
     endReason: null,
     halfMoveCount: 10,
+    hintCount: 0,
     lastActivityAt: '2026-11-26T15:00:00Z',
     ...overrides,
   }

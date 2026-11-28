@@ -140,7 +140,7 @@ describe('MyGamesScreen', () => {
       within(unfinished)
         .getAllByRole('columnheader')
         .map(head => head.textContent)
-    ).toEqual(['Opponent', 'Your colour', 'Result', 'Date'])
+    ).toEqual(['Opponent', 'Your colour', 'Result', 'Date', 'Hint'])
   })
 
   it('shows each row the same way in the table and in the phone list', async () => {
@@ -161,10 +161,10 @@ describe('MyGamesScreen', () => {
     const ongoingDate = dateText(ongoing.lastActivityAt)
     const lostDate = dateText(lost.lastActivityAt)
     expect(tableRows('Unfinished')).toEqual([
-      ['Maia 800', 'White', 'In progress, move 6', ongoingDate, 'Resume'],
+      ['Maia 800', 'White', 'In progress, move 6', ongoingDate, '', 'Resume'],
     ])
     expect(tableRows('Finished')).toEqual([
-      ['Maia 1200', 'Black', 'Lost, resigned', lostDate, 'Review'],
+      ['Maia 1200', 'Black', 'Lost, resigned', lostDate, '', 'Review'],
     ])
     expect(phoneRows('Unfinished')).toEqual([
       ['Maia 800 White', `In progress, move 6 ${ongoingDate}`, 'Resume'],
@@ -172,6 +172,34 @@ describe('MyGamesScreen', () => {
     expect(phoneRows('Finished')).toEqual([
       ['Maia 1200 Black', `Lost, resigned ${lostDate}`, 'Review'],
     ])
+  })
+
+  it('marks a game in which a hint was used, in the table and the phone list', async () => {
+    const hinted = unfinishedGame({ hintCount: 2 })
+    const unhinted = unfinishedGame({ hintCount: 0 })
+    lists({ ongoing: ok(page([hinted, unhinted])) })
+    renderWithQueries(<MyGamesScreen />)
+
+    const unfinished = await screen.findByRole('table', { name: 'Unfinished' })
+    const [, hintedRow, unhintedRow] = within(unfinished).getAllByRole('row')
+    // The marker's own words name it to a screen reader, in the column
+    // headed "Hint".
+    const marker = within(hintedRow).getByText('Hint used')
+    const hintColumn = within(unfinished)
+      .getAllByRole('columnheader')
+      .findIndex(head => head.textContent === 'Hint')
+    expect(within(hintedRow).getAllByRole('cell')[hintColumn]).toContainElement(
+      marker
+    )
+    expect(within(unhintedRow).queryByText('Hint used')).not.toBeInTheDocument()
+
+    const [hintedItem, unhintedItem] = within(
+      phoneList('Unfinished')
+    ).getAllByRole('listitem')
+    expect(within(hintedItem).getByText('Hint used')).toBeInTheDocument()
+    expect(
+      within(unhintedItem).queryByText('Hint used')
+    ).not.toBeInTheDocument()
   })
 
   it('opens each game at its own address from a link', async () => {

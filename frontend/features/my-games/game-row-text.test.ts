@@ -82,6 +82,17 @@ describe('gameRowText', () => {
     })
   })
 
+  it.each([1, 3])(
+    'marks a game with %i hinted positions as one in which a hint was used',
+    hintCount => {
+      expect(gameRowText(unfinishedGame({ hintCount })).hint).toBe('Hint used')
+    }
+  )
+
+  it('has no hint marker for a game without a hint', () => {
+    expect(gameRowText(unfinishedGame({ hintCount: 0 })).hint).toBeUndefined()
+  })
+
   it('names the opponent "You" in a game the player moves both sides of', () => {
     const game = unfinishedGame({ opponent: { kind: 'none', strength: null } })
 
