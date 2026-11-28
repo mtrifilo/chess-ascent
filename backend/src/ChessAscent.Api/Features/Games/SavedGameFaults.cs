@@ -1,4 +1,55 @@
+using ChessAscent.Chess;
+
 namespace ChessAscent.Api.Features.Games;
+
+/// <summary>Rebuilds a saved game's board, refusing a saved game that is broken.</summary>
+internal static class SavedGameBoards
+{
+    /// <summary>
+    /// The board for <paramref name="game"/>: its starting position with
+    /// every saved move played, through the same checks as live play.
+    /// </summary>
+    /// <exception cref="UnrebuildableGameException">
+    /// The saved game is broken: a saved move is refused, the half-move
+    /// numbers have a gap, or the game is saved as ongoing but its moves end
+    /// it. Every later move in such a game would be refused, and reloading
+    /// would not change that. A game saved as finished on a board that is not
+    /// over is not broken: a resignation ends a game the board knows nothing
+    /// about.
+    /// </exception>
+    // The stored text is left out of the reason, since nothing bounds what a
+    // broken row holds.
+    public static IChessGame RebuildBoard(this SavedGame game, IChessRules rules)
+    {
+        if (!game.MovesNumberedInOrder)
+        {
+            throw new UnrebuildableGameException(game.Id, "its half-move numbers have a gap");
+        }
+
+        var board = rules.Load(game.StartingFen, [.. game.Moves.Select(move => move.Uci)]) switch
+        {
+            GameLoaded loaded => loaded.Game,
+            InvalidStartingPosition => throw new UnrebuildableGameException(
+                game.Id, "the starting position is not a FEN the chess interface accepts"),
+            InvalidMoveInHistory invalid => throw new UnrebuildableGameException(
+                game.Id, $"half-move {invalid.Index + 1} is {Describe(invalid.Rejection)}"),
+        };
+
+        if (game.Status == GameProgress.Ongoing && board.Status is not Ongoing)
+        {
+            throw new UnrebuildableGameException(game.Id, "it is saved as ongoing, but its moves end it");
+        }
+
+        return board;
+    }
+
+    private static string Describe(MoveRejection rejection) => rejection switch
+    {
+        IllegalMove => "illegal",
+        MalformedMove => "not a UCI move",
+        GameAlreadyOver => "after the end of the game",
+    };
+}
 
 /// <summary>
 /// A saved game that the chess interface cannot rebuild. What is stored is
@@ -6,8 +57,9 @@ namespace ChessAscent.Api.Features.Games;
 /// </summary>
 /// <remarks>
 /// It is an exception rather than a result value because no caller can do
-/// anything about it except report it: <see cref="SavedGameFaultFilter"/>
-/// turns it into a 500 for every endpoint of the games group.
+/// anything about it except report it: <see cref="SavedGameBoards.RebuildBoard"/>
+/// throws it, and <see cref="SavedGameFaultFilter"/> turns it into a 500 for
+/// every endpoint of the games group.
 /// </remarks>
 internal sealed class UnrebuildableGameException(Guid gameId, string reason)
     : Exception($"Saved game {gameId} cannot be rebuilt: {reason}.")
@@ -26,9 +78,9 @@ internal sealed class UnrebuildableGameException(Guid gameId, string reason)
 // limited to some controllers; a HandlerInterceptor, which only runs before
 // and after the handler, cannot replace what it returns. Added to a route
 // group (see GameEndpoints), it applies to every endpoint in the group and to
-// no other. Unlike middleware
-// it runs after routing and parameter binding, so it sees the matched
-// endpoint and its bound arguments in the invocation context.
+// no other. Unlike middleware it runs after routing and parameter binding,
+// so it sees the matched endpoint and its bound arguments in the invocation
+// context.
 /// <summary>
 /// Answers 500 when a handler finds a saved game it cannot rebuild, after
 /// logging which game it was. The game is left as it is.

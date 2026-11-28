@@ -37,7 +37,9 @@ public static class JsonServices
             // name is matched without regard to case or surrounding spaces,
             // and a comma-separated list of names is read as the members
             // combined bit by bit, as for a [Flags] enum, so "white,black"
-            // reads as Black (0 | 1). Jackson reads only the exact name.
+            // reads as Black (0 | 1). Jackson by default matches the exact,
+            // case-sensitive name, and reads a JSON integer as the member at
+            // that ordinal unless FAIL_ON_NUMBERS_FOR_ENUMS is enabled.
             options.SerializerOptions.Converters.Add(
                 new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false));
         });

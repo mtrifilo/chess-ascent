@@ -13,8 +13,9 @@ namespace ChessAscent.Api.Features.Games;
 /// </para>
 /// <para>
 /// It records what it is given and does not check moves against the rules.
-/// The caller rebuilds the game from what <see cref="LoadAsync"/> returns,
-/// with <see cref="IChessRules.Load"/>, plays the moves on it through
+/// The caller rebuilds the game from what <see cref="LoadAsync"/> returns
+/// with <see cref="SavedGameBoards.RebuildBoard"/>, which also refuses a
+/// saved game that is broken, plays the moves on it through
 /// <see cref="IChessGame"/>, and saves the moves and status that produced.
 /// </para>
 /// <para>

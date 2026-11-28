@@ -15,14 +15,17 @@ namespace ChessAscent.Api.Features.Games;
 /// 200 with the game after the move; 400 with a validation problem under
 /// <c>Uci</c> when the text is missing, longer than
 /// <see cref="PlayMoveRequest.UciLength"/> or not a UCI move, and a plain 400
-/// problem when the body is not JSON of that shape at all; 401 when nobody is
+/// problem when the body is JSON but not of that shape; 415 when it is not
+/// sent as JSON; 401 when nobody is
 /// signed in; 403 when a page on another origin started the request (see
 /// CrossSiteRequests); 404 when the player has no game with that id; 409 with
 /// <see cref="GameFinishedDetail"/> when the game is over; 409 with
 /// <see cref="MoveConflictDetail"/> when another request saved a move first;
-/// 422 when the move is not legal in the position; 500 when the saved game is
-/// broken (see SavedGameFaultFilter). In every case but 200 nothing is saved.
-/// Reading a game answers 200, 401, 404 or 500 in the same cases.
+/// 422 when the move is not legal in the position; 500 when the game is still
+/// being played but its saved form is broken (see
+/// SavedGameBoards.RebuildBoard). In every case but 200 nothing is saved.
+/// Reading a game answers 200, 401, 404 or 500 in the same cases, a finished
+/// game included.
 /// </para>
 /// <para>
 /// Both 409s mean the game is no longer where the request found it, and the
@@ -147,7 +150,7 @@ public static class GameEndpoints
         var game = await store.LoadAsync(PlayerId(principal, users), id, cancellationToken);
         return game is null
             ? NotFoundProblem()
-            : TypedResults.Ok(GameMapping.ToResponse(game, Rebuild(rules, game)));
+            : TypedResults.Ok(GameMapping.ToResponse(game, game.RebuildBoard(rules)));
     }
 
     /// <summary>Plays one move in one of the signed-in player's games, and answers with the game after it.</summary>
@@ -174,13 +177,13 @@ public static class GameEndpoints
             return FinishedProblem();
         }
 
-        var board = Rebuild(rules, game);
+        var board = game.RebuildBoard(rules);
         return board.TryPlay(request.Uci) switch
         {
             MovePlayed played => await SaveAsync(store, playerId, game, board, played, cancellationToken),
             MalformedMove => FieldProblem(UciField, MalformedMoveMessage),
             IllegalMove => TypedResults.Problem(IllegalMoveDetail, statusCode: StatusCodes.Status422UnprocessableEntity),
-            // Rebuild refuses a game saved as ongoing whose board is over, so
+            // RebuildBoard refuses a game saved as ongoing whose board is over, so
             // this does not happen; it gets the answer a finished game gets.
             GameAlreadyOver => FinishedProblem(),
         };
@@ -219,44 +222,6 @@ public static class GameEndpoints
             UpdatedAt = saved.UpdatedAt,
             Moves = [.. game.Moves, played.Move],
         };
-
-    // Load replays every saved move through the same checks as live play, so
-    // a refusal means the stored game is broken, as are numbers with a gap
-    // and a game saved as ongoing whose moves end it: every later move in
-    // such a game would be refused, and reloading would not change that. A
-    // game saved as finished on a board that is not over is not broken: a
-    // resignation ends a game the board knows nothing about. The stored text
-    // is left out of the reason, since nothing bounds what a broken row holds.
-    private static IChessGame Rebuild(IChessRules rules, SavedGame game)
-    {
-        if (!game.MovesNumberedInOrder)
-        {
-            throw new UnrebuildableGameException(game.Id, "its half-move numbers have a gap");
-        }
-
-        var board = rules.Load(game.StartingFen, [.. game.Moves.Select(move => move.Uci)]) switch
-        {
-            GameLoaded loaded => loaded.Game,
-            InvalidStartingPosition => throw new UnrebuildableGameException(
-                game.Id, "the starting position is not a FEN the chess interface accepts"),
-            InvalidMoveInHistory invalid => throw new UnrebuildableGameException(
-                game.Id, $"half-move {invalid.Index + 1} is {Describe(invalid.Rejection)}"),
-        };
-
-        if (game.Status == GameProgress.Ongoing && board.Status is not Ongoing)
-        {
-            throw new UnrebuildableGameException(game.Id, "it is saved as ongoing, but its moves end it");
-        }
-
-        return board;
-    }
-
-    private static string Describe(MoveRejection rejection) => rejection switch
-    {
-        IllegalMove => "illegal",
-        MalformedMove => "not a UCI move",
-        GameAlreadyOver => "after the end of the game",
-    };
 
     // The group requires a signed-in player, and the session cookie Identity
     // issues always carries the account id, so a missing one is a bug here

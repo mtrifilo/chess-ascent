@@ -356,8 +356,10 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         (await owner.ReadGameAsync(game.Id)).Should().BeEquivalentTo(game, InStrictOrder);
     }
 
+    // Sign-out deletes the cookie from this browser only: a copy taken
+    // earlier stays valid until it expires (see AccountServices).
     [Fact]
-    public async Task SigningOutEndsAccessToThePlayersGames()
+    public async Task SigningOutEndsThisBrowsersAccessToThePlayersGames()
     {
         using var client = await SignedInClientAsync();
         var game = await client.CreateGameAsync();
@@ -426,8 +428,9 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         problem.Errors.Keys.Should().BeEquivalentTo(fields);
     }
 
-    // Enumerations are read by name only; a number, even one that names a
-    // member, is refused, as is a name that is not one.
+    // A number, even one that names a member, is refused, as is a word that
+    // names no member. (Reading is looser than the document in other ways;
+    // see JsonServices.)
     [Theory]
     [InlineData("""{"playerSide":"purple","opponent":{"kind":"none"}}""")]
     [InlineData("""{"playerSide":0,"opponent":{"kind":"none"}}""")]
