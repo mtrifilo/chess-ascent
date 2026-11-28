@@ -5,9 +5,9 @@ import {
   END_REASON_TEXT,
   lastMove,
   moveNumber,
-  moveNumberAfter,
   moveRows,
   nextHalfMoveNumber,
+  positionAfter,
   promotionChoices,
   resultTitle,
   sideToMoveInCheck,
@@ -21,6 +21,7 @@ import {
   MAIA_800,
   move,
   PROMOTION_GAME,
+  START_FEN,
 } from './test-games'
 
 describe('sideToMoveInCheck', () => {
@@ -47,11 +48,11 @@ describe('sideToMoveInCheck', () => {
 describe('checkSquare', () => {
   it("is the square of the side to move's king when it is in check", () => {
     // Fool's mate: White's king on e1 is mated.
-    expect(checkSquare(FOOLS_MATE)).toBe('e1')
+    expect(checkSquare(FOOLS_MATE.fen, FOOLS_MATE.moves)).toBe('e1')
   })
 
   it('is undefined when nobody is in check', () => {
-    expect(checkSquare(game())).toBeUndefined()
+    expect(checkSquare(game().fen, [])).toBeUndefined()
   })
 })
 
@@ -120,13 +121,48 @@ describe('moveNumber', () => {
   })
 })
 
-describe('moveNumberAfter', () => {
-  it('stays on the same move after a move by White', () => {
-    expect(moveNumberAfter(game().fen)).toBe(1)
+describe('positionAfter', () => {
+  it('moves the piece and passes the turn, on the same move after White', () => {
+    expect(positionAfter(START_FEN, 'e2e4')).toBe(
+      'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b - - 0 1'
+    )
   })
 
   it('goes on to the next move after a move by Black', () => {
-    expect(moveNumberAfter(AFTER_E4.fen)).toBe(2)
+    expect(positionAfter(AFTER_E4.fen, 'e7e5')).toBe(
+      'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w - - 0 2'
+    )
+  })
+
+  it('takes a captured piece off', () => {
+    expect(positionAfter('4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1', 'e4d5')).toBe(
+      '4k3/8/8/3P4/8/8/8/4K3 b - - 0 1'
+    )
+  })
+
+  it('moves the rook too when the king castles, on either side', () => {
+    const castling = 'r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1'
+    expect(positionAfter(castling, 'e1g1')).toBe(
+      'r3k2r/8/8/8/8/8/8/R4RK1 b - - 0 1'
+    )
+    expect(positionAfter(castling, 'e1c1')).toBe(
+      'r3k2r/8/8/8/8/8/8/2KR3R b - - 0 1'
+    )
+    expect(positionAfter('r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1', 'e8c8')).toBe(
+      '2kr3r/8/8/8/8/8/8/R3K2R w - - 0 2'
+    )
+  })
+
+  it('takes the pawn beside off for an en passant capture', () => {
+    expect(positionAfter('4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 2', 'e5d6')).toBe(
+      '4k3/8/3P4/8/8/8/8/4K3 b - - 0 2'
+    )
+  })
+
+  it('puts the chosen piece on the last rank for a promotion', () => {
+    expect(positionAfter(PROMOTION_GAME.fen, 'e7e8n')).toBe(
+      '4N3/6k1/8/8/8/8/8/4K3 b - - 0 1'
+    )
   })
 })
 

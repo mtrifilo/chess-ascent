@@ -65,7 +65,9 @@ export type MoveOutcome = 'played' | 'reloaded' | 'signed-out'
 //
 // A game read that was already on its way when the move was played is
 // cancelled before the answer is recorded, so it cannot land afterwards and
-// put back the position before the move.
+// put back the position before the move. The answer is recorded before the
+// move counts as played: useComputerThinking (computer-thinking.ts) reads
+// the computer's reply from the recorded game as soon as it does.
 //
 // A move that fails is followed by a fresh read of the game, since a move
 // whose answer was lost may have been saved all the same. The read is not

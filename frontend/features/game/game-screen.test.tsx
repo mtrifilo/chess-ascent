@@ -57,6 +57,9 @@ vi.mock('@/lib/page-load', () => ({ loadPage: vi.fn(), reloadPage: vi.fn() }))
 const GAME_PATH = `/api/games/${GAME_ID}`
 const MOVES_PATH = `${GAME_PATH}/moves`
 
+// The position the board shows while the computer thinks about 1. e4.
+const AFTER_E4_FEN = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b - - 0 1'
+
 const ok = (body: unknown): Reply => ({ status: 200, body })
 const problem = (status: number): Reply => ({ status, body: { status } })
 
@@ -603,8 +606,14 @@ describe('GameScreen', () => {
       expect(screen.getByText('Thinking…').parentElement).toHaveTextContent(
         'Maia 800'
       )
-      // The board keeps the position it showed the move in.
-      expect(board.props).toMatchObject({ fen: START_FEN, readOnly: true })
+      // The board shows the move, and nothing more can move.
+      expect(board.props).toMatchObject({
+        fen: AFTER_E4_FEN,
+        lastMove: { from: 'e2', to: 'e4' },
+        readOnly: true,
+      })
+      // The move list waits for the API to name the move.
+      expect(screen.getByText('No moves yet.')).toBeInTheDocument()
 
       // Flipped, the computer's bar is the lower one, and says so.
       fireEvent.click(screen.getByRole('button', { name: 'Flip board' }))
@@ -632,11 +641,15 @@ describe('GameScreen', () => {
         'step'
       )
       expect(screen.queryByRole('cell', { name: 'e5' })).toBeNull()
-      expect(board.props).toMatchObject({ fen: START_FEN, readOnly: true })
+      expect(board.props).toMatchObject({
+        fen: AFTER_E4_FEN,
+        lastMove: { from: 'e2', to: 'e4' },
+        readOnly: true,
+      })
 
       await pass(MINIMUM_THINKING_MS - 1)
       expect(heading()).toHaveTextContent('Maia 800 is thinking')
-      expect(board.props!.fen).toBe(START_FEN)
+      expect(board.props!.fen).toBe(AFTER_E4_FEN)
 
       await pass(1)
       expect(heading()).toHaveTextContent('Your move')
@@ -696,7 +709,7 @@ describe('GameScreen', () => {
       expect(board.props).toMatchObject({ fen: mated.fen, readOnly: true })
     })
 
-    it('names the computer as the winner when its reply ends the game', async () => {
+    it('names the computer as the winner of a finished game', async () => {
       answer({
         [GAME_PATH]: ok({ ...FOOLS_MATE, opponent: MAIA_800 }),
       })
@@ -704,6 +717,101 @@ describe('GameScreen', () => {
 
       expect(heading()).toHaveTextContent('Maia 800 won')
       expect(screen.getByText('Checkmate.')).toBeInTheDocument()
+    })
+
+    it('shows the result only once the hold is over when the reply ends the game', async () => {
+      // Black's mating reply in Fool's mate, after 1. f3 e5 2. g4.
+      const beforeMate = computerGame({
+        fen: 'rnbqkbnr/pppp1ppp/8/4p3/8/5P2/PPPPP1PP/RNBQKBNR w KQkq - 0 2',
+        moves: FOOLS_MATE.moves.slice(0, 2),
+        legalMoves: { g2: ['g3', 'g4'] },
+      })
+      const mated = { ...FOOLS_MATE, opponent: MAIA_800 }
+      answer({ [GAME_PATH]: ok(beforeMate), [MOVES_PATH]: ok(mated) })
+      await renderGame()
+      fakeTheClock()
+
+      playOnBoard('g2', 'g4')
+      await pass(0)
+
+      expect(heading()).toHaveTextContent('Maia 800 is thinking')
+      expect(screen.queryByText('Checkmate.')).not.toBeInTheDocument()
+      expect(screen.queryByRole('cell', { name: 'Qh4#' })).toBeNull()
+
+      await pass(MINIMUM_THINKING_MS)
+      expect(heading()).toHaveTextContent('Maia 800 won')
+      expect(screen.getByText('Checkmate.')).toBeInTheDocument()
+      expect(board.props).toMatchObject({ fen: mated.fen, check: 'e1' })
+    })
+
+    it('shows the computer, as White, thinking about the next move when the player has Black', async () => {
+      answer({
+        [GAME_PATH]: ok({
+          ...AFTER_E4,
+          playerSide: 'black',
+          opponent: MAIA_800,
+        }),
+        [MOVES_PATH]: new Promise<Reply>(() => {}),
+      })
+      await renderGame()
+
+      playOnBoard('e7', 'e5')
+
+      await waitFor(() =>
+        expect(heading()).toHaveTextContent('Maia 800 is thinking')
+      )
+      expect(screen.getByText('White to move · move 2')).toBeInTheDocument()
+      expect(screen.getByText('Thinking…').parentElement).toHaveTextContent(
+        'Maia 800'
+      )
+    })
+
+    it('shows the chosen piece on the last rank while the computer thinks about a promotion', async () => {
+      answer({
+        [GAME_PATH]: ok({ ...PROMOTION_GAME, opponent: MAIA_800 }),
+        [MOVES_PATH]: new Promise<Reply>(() => {}),
+      })
+      await renderGame()
+
+      playOnBoard('e7', 'e8')
+      fireEvent.click(screen.getByRole('button', { name: 'Knight' }))
+
+      await waitFor(() =>
+        expect(heading()).toHaveTextContent('Maia 800 is thinking')
+      )
+      expect(board.props!.fen).toBe('4N3/6k1/8/8/8/8/8/4K3 b - - 0 1')
+    })
+
+    it('shows the move on a board mounted again while the computer thinks', async () => {
+      answer({
+        [GAME_PATH]: ok(computerGame()),
+        [MOVES_PATH]: new Promise<Reply>(() => {}),
+      })
+      const screenIn = (mode: 'visible' | 'hidden') => (
+        <PageNavItemProvider>
+          <Activity mode={mode}>
+            <GameScreen id={GAME_ID} />
+          </Activity>
+        </PageNavItemProvider>
+      )
+      const { rerender } = renderWithQueries(screenIn('visible'))
+      await screen.findByRole('img', { name: 'Chess board' })
+      playOnBoard('e2', 'e4')
+      await waitFor(() =>
+        expect(heading()).toHaveTextContent('Maia 800 is thinking')
+      )
+
+      // Next.js hides the page and shows it again, which mounts the board
+      // again: it is given the position with the move, not the one before.
+      rerender(screenIn('hidden'))
+      rerender(screenIn('visible'))
+
+      await waitFor(() => expect(board.mounts).toBe(2))
+      expect(heading()).toHaveTextContent('Maia 800 is thinking')
+      expect(board.props).toMatchObject({
+        fen: AFTER_E4_FEN,
+        lastMove: { from: 'e2', to: 'e4' },
+      })
     })
 
     it('ends the thinking state at once when the move fails, puts the board back and shows the error', async () => {

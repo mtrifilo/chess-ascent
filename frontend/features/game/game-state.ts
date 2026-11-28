@@ -1,4 +1,8 @@
-import { read as readFen } from '@lichess-org/chessground/fen'
+import {
+  read as readFen,
+  write as writePlacement,
+} from '@lichess-org/chessground/fen'
+import { key2pos, pos2key } from '@lichess-org/chessground/util'
 
 import type {
   BoardMove,
@@ -26,15 +30,25 @@ export function sideToMoveInCheck(moves: readonly Move[]): boolean {
   return latest !== undefined && /[+#]$/.test(latest)
 }
 
-// The square of the king the board marks as in check, if any.
-export function checkSquare(game: Game): Square | undefined {
-  if (!sideToMoveInCheck(game.moves)) return undefined
-  for (const [square, piece] of readFen(game.fen)) {
-    if (piece.role === 'king' && piece.color === game.sideToMove) {
+// The square of the king the board marks as in check, if any: the king of
+// the side to move in `fen`, when the latest of `moves` gave check.
+export function checkSquare(
+  fen: string,
+  moves: readonly Move[]
+): Square | undefined {
+  if (!sideToMoveInCheck(moves)) return undefined
+  const side = sideToMove(fen)
+  for (const [square, piece] of readFen(fen)) {
+    if (piece.role === 'king' && piece.color === side) {
       return square as Square
     }
   }
   return undefined
+}
+
+// The FEN's second field.
+function sideToMove(fen: string): Side {
+  return fen.split(' ')[1] === 'b' ? 'black' : 'white'
 }
 
 // The place in the game the next move takes, counted from 1 for the first
@@ -50,7 +64,7 @@ export function lastMove(moves: readonly Move[]): BoardMove | undefined {
 
 // The squares a UCI move leaves and arrives on; a promotion's piece letter,
 // the fifth character, is not one of them.
-function squaresOf(uci: string): BoardMove {
+export function squaresOf(uci: string): BoardMove {
   return { from: uci.slice(0, 2) as Square, to: uci.slice(2, 4) as Square }
 }
 
@@ -83,6 +97,48 @@ const PROMOTION_LETTERS: Record<PromotionPiece, string> = {
 
 export function toUci(move: BoardMove, promotion?: PromotionPiece): string {
   return move.from + move.to + (promotion ? PROMOTION_LETTERS[promotion] : '')
+}
+
+const PROMOTION_PIECES = Object.fromEntries(
+  Object.entries(PROMOTION_LETTERS).map(([piece, letter]) => [letter, piece])
+) as Record<string, PromotionPiece>
+
+// The position after the move `uci` is made in `fen`, as the board shows it
+// while the API has not yet answered with the position itself. The pieces
+// move as on the board: castling moves the rook too, an en passant capture
+// takes the pawn beside, and a promotion puts the chosen piece on the last
+// rank. The turn passes and the move number goes on after a move by Black.
+// Nothing is checked: the move is one the API listed as legal. Castling
+// rights and the en passant square are left out, since nothing that shows
+// this position reads them.
+export function positionAfter(fen: string, uci: string): string {
+  const pieces = readFen(fen)
+  const { from, to } = squaresOf(uci)
+  const piece = pieces.get(from)
+  if (piece) {
+    const [fromFile, fromRank] = key2pos(from)
+    const [toFile] = key2pos(to)
+    pieces.delete(from)
+    if (piece.role === 'king' && Math.abs(toFile - fromFile) === 2) {
+      const rookFrom = pos2key([toFile > fromFile ? 7 : 0, fromRank])
+      const rookTo = pos2key([(fromFile + toFile) / 2, fromRank])
+      const rook = rookFrom && pieces.get(rookFrom)
+      if (rook && rookFrom && rookTo) {
+        pieces.delete(rookFrom)
+        pieces.set(rookTo, rook)
+      }
+    }
+    if (piece.role === 'pawn' && toFile !== fromFile && !pieces.has(to)) {
+      const passed = pos2key([toFile, fromRank])
+      if (passed) pieces.delete(passed)
+    }
+    const promotion = PROMOTION_PIECES[uci.slice(4)]
+    pieces.set(to, promotion ? { ...piece, role: promotion } : piece)
+  }
+  const mover = sideToMove(fen)
+  const number = moveNumber(fen) + (mover === 'black' ? 1 : 0)
+  const next = mover === 'white' ? 'b' : 'w'
+  return `${writePlacement(pieces)} ${next} - - 0 ${number}`
 }
 
 // One line of the move list: a move number with White's move and Black's
@@ -133,12 +189,6 @@ export function playsComputer(game: Game): boolean {
 export function playerName(game: Game, side: Side): string {
   if (side === game.playerSide || !playsComputer(game)) return 'You'
   return `Maia ${game.opponent.strength}`
-}
-
-// The number of the move being played once a move is made in the position
-// `fen`: a move by Black starts the next one.
-export function moveNumberAfter(fen: string): number {
-  return moveNumber(fen) + (fen.split(' ')[1] === 'b' ? 1 : 0)
 }
 
 // The heading of the result panel.

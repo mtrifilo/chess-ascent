@@ -21,8 +21,9 @@ import {
 // creates the game and opens it: a card from `md` up, and the bare form on
 // phones, as drawn.
 //
-// "Start game" stays disabled from the press until the new game's page has
-// replaced this one, so a second press cannot start a second game: the
+// "Start game" and the choices stay disabled from the press until the new
+// game's page has replaced this one, so a second press cannot start a
+// second game, nor can the choices change from those sent: the
 // navigation runs as a transition, which is pending until it commits. Should
 // the API not answer with a game, the form stays as it was, choices
 // included, and the query cache reports why in the browser console.
@@ -35,6 +36,7 @@ export function NewGameForm() {
     DEFAULT_OPPONENT_STRENGTH
   )
   const strengthHintId = useId()
+  const starting = createGame.isPending || opening
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -58,6 +60,7 @@ export function NewGameForm() {
         label={sideLabel}
         value={playerSide}
         onChange={setPlayerSide}
+        disabled={starting}
         className="grid-cols-2"
       />
       <div className="flex flex-col gap-2">
@@ -68,6 +71,7 @@ export function NewGameForm() {
           value={strength}
           onChange={setStrength}
           describedBy={strengthHintId}
+          disabled={starting}
           className="grid-cols-3 md:grid-cols-5"
         />
         <p id={strengthHintId} className="text-body-s text-muted-foreground">
@@ -76,7 +80,7 @@ export function NewGameForm() {
       </div>
       <Button
         type="submit"
-        disabled={createGame.isPending || opening}
+        disabled={starting}
         className="h-12.75 w-full md:h-8 md:w-auto md:self-start md:px-2"
       >
         Start game
@@ -97,6 +101,7 @@ function Choices<Option extends string | number>({
   value,
   onChange,
   describedBy,
+  disabled,
   className,
 }: {
   legend: string
@@ -105,11 +110,12 @@ function Choices<Option extends string | number>({
   value: Option
   onChange: (option: Option) => void
   describedBy?: string
+  disabled: boolean
   className: string
 }) {
   const name = useId()
   return (
-    <fieldset aria-describedby={describedBy}>
+    <fieldset aria-describedby={describedBy} disabled={disabled}>
       <legend className="mb-2 text-sm font-medium">{legend}</legend>
       <div className={cn('grid gap-2', className)}>
         {options.map(option => {
@@ -119,8 +125,8 @@ function Choices<Option extends string | number>({
               key={option}
               className={cn(
                 buttonVariants({ variant: chosen ? 'default' : 'outline' }),
-                // The outline is drawn without a fill, so the card shows
-                // through, as drawn.
+                // In light mode the outline is drawn without a fill, so the
+                // card shows through.
                 !chosen && 'bg-transparent',
                 'h-12.75 cursor-pointer has-focus-visible:border-ring has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50 md:h-8'
               )}

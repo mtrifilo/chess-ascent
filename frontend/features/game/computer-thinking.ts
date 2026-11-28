@@ -2,8 +2,16 @@
 
 import { useEffect, useState } from 'react'
 
+import type { BoardMove, Square } from '@/components/chess-board/chess-board'
+
 import type { usePlayMove } from './game-api'
-import { playsComputer, type Game } from './game-state'
+import {
+  checkSquare,
+  playsComputer,
+  positionAfter,
+  squaresOf,
+  type Game,
+} from './game-state'
 
 // The shortest time the screen shows the computer thinking. One request
 // plays the player's move and brings the computer's reply, usually within
@@ -11,11 +19,17 @@ import { playsComputer, type Game } from './game-state'
 // value is a placeholder until the owner settles it.
 export const MINIMUM_THINKING_MS = 500
 
-// What the screen shows while the computer is thinking: the position the
-// player's move was made in, which the board shows with that move on it,
-// and the moves up to and including the player's. Until the API answers,
-// that move is not among them, since only the API names it in notation.
-export type Thinking = { fen: string; moves: Game['moves'] }
+// What the screen shows while the computer is thinking: the position after
+// the player's move, with that move marked, and the moves up to and
+// including the player's. Until the API answers, that move is not among
+// them, since only the API names it in notation, and so nothing is marked
+// as in check either.
+export type Thinking = {
+  fen: string
+  moves: Game['moves']
+  lastMove: BoardMove
+  check: Square | undefined
+}
 
 // Whether the computer is thinking, and if so what to show. In a game
 // against the computer it is from the moment the player's move is sent
@@ -24,6 +38,9 @@ export type Thinking = { fen: string; moves: Game['moves'] }
 // sent. A request that fails ends it at once, and so does an answer with no
 // reply, because the player's move ended the game: the API alone can tell
 // that, so the screen shows the thinking state until its answer comes.
+//
+// The reply is read from `game`, the recorded game, which usePlayMove
+// replaces with the API's answer before the move counts as played.
 export function useComputerThinking(
   game: Game,
   playMove: ReturnType<typeof usePlayMove>
@@ -36,13 +53,23 @@ export function useComputerThinking(
   const sent = playMove.variables
   if (!computer || !sent) return undefined
 
-  // `data` is set only once the move has succeeded.
+  // Half-moves count from 1, so the player's move is the `halfMoveNumber`th
+  // and a reply makes the game one longer. `data` is set only once the move
+  // has been played.
   const replied =
     playMove.data === 'played' && game.moves.length > sent.halfMoveNumber
   const thinking = playMove.isPending || (replied && holding)
   if (!thinking) return undefined
 
-  return { fen: sent.fen, moves: game.moves.slice(0, sent.halfMoveNumber) }
+  const fen = positionAfter(sent.fen, sent.uci)
+  const moves = game.moves.slice(0, sent.halfMoveNumber)
+  const answered = moves.length === sent.halfMoveNumber
+  return {
+    fen,
+    moves,
+    lastMove: squaresOf(sent.uci),
+    check: answered ? checkSquare(fen, moves) : undefined,
+  }
 }
 
 // Whether fewer than `ms` milliseconds have passed since `since`, a time

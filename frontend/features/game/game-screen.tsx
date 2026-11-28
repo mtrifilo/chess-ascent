@@ -24,7 +24,6 @@ import {
   END_REASON_TEXT,
   lastMove,
   moveNumber,
-  moveNumberAfter,
   nextHalfMoveNumber,
   playerName,
   promotionChoices,
@@ -74,8 +73,12 @@ function LoadedGame({ game }: { game: Game }) {
   // While the computer thinks, the game is shown as it stood after the
   // player's move, even when its reply has already arrived.
   const isThinking = thinking !== undefined
-  const shownFen = thinking?.fen ?? game.fen
-  const shownMoves = thinking?.moves ?? game.moves
+  const shown = thinking ?? {
+    fen: game.fen,
+    moves: game.moves,
+    lastMove: lastMove(game.moves),
+    check: checkSquare(game.fen, game.moves),
+  }
   const finished = !isThinking && game.status === 'finished'
   const opponentSide = opposite(game.playerSide)
   const orientation = flipped ? opponentSide : game.playerSide
@@ -88,7 +91,7 @@ function LoadedGame({ game }: { game: Game }) {
   const status = thinking
     ? {
         title: `${playerName(game, opponentSide)} is thinking`,
-        detail: toMoveText(opponentSide, moveNumberAfter(thinking.fen)),
+        detail: toMoveText(opponentSide, moveNumber(thinking.fen)),
       }
     : {
         title: 'Your move',
@@ -130,11 +133,11 @@ function LoadedGame({ game }: { game: Game }) {
         <div className="relative">
           <ChessBoard
             key={boardKey}
-            fen={shownFen}
+            fen={shown.fen}
             orientation={orientation}
             destinations={destinations(game)}
-            lastMove={lastMove(shownMoves)}
-            check={isThinking ? undefined : checkSquare(game)}
+            lastMove={shown.lastMove}
+            check={shown.check}
             readOnly={finished || isThinking || playMove.isPending}
             onMove={onMove}
           />
@@ -178,7 +181,7 @@ function LoadedGame({ game }: { game: Game }) {
             so: where a narrow window shrinks the board and the alert shows,
             the panel grows instead. */}
         <div className="md:relative md:min-h-34 md:flex-1">
-          <MoveList moves={shownMoves} className="md:absolute md:inset-0" />
+          <MoveList moves={shown.moves} className="md:absolute md:inset-0" />
         </div>
       </div>
     </div>

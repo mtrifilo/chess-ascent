@@ -112,6 +112,9 @@ describe('NewGameForm', () => {
 
     fireEvent.click(button)
     await waitFor(() => expect(button).toBeDisabled())
+    // The choices cannot change from those sent.
+    expect(group('Play as')).toBeDisabled()
+    expect(group('Opponent strength')).toBeDisabled()
     fireEvent.click(button)
     settle(created())
 
@@ -145,6 +148,7 @@ describe('NewGameForm', () => {
       expect(choice('Play as', 'Black')).toBeChecked()
       expect(choice('Opponent strength', '1200')).toBeChecked()
       expect(screen.getByRole('button', { name: 'Start game' })).toBeEnabled()
+      expect(group('Play as')).toBeEnabled()
       // The designs have no words for this failure, so none are shown.
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
