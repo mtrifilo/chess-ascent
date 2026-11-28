@@ -14,8 +14,8 @@ import {
 import { useNavItemForPage } from '@/components/layout/page-nav-item'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 
+import { ColourSwatch } from './colour-swatch'
 import { useComputerThinking } from './computer-thinking'
 import { useGame, usePlayMove } from './game-api'
 import {
@@ -200,13 +200,7 @@ function PlayerBar({
 }) {
   return (
     <div className="flex h-10 items-center gap-2">
-      <span
-        aria-hidden
-        className={cn(
-          'size-3.5 rounded-sm border border-separator',
-          side === 'white' ? 'bg-piece-white' : 'bg-piece-black'
-        )}
-      />
+      <ColourSwatch side={side} />
       <span className="text-sm font-semibold">{playerName(game, side)}</span>
       {thinking && (
         <span className="ml-auto text-body-s text-muted-foreground">

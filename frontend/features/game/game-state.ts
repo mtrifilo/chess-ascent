@@ -179,14 +179,18 @@ export const OPPONENT_STRENGTHS = [600, 800, 1000, 1200, 1400] as const
 export type OpponentStrength = (typeof OPPONENT_STRENGTHS)[number]
 export const DEFAULT_OPPONENT_STRENGTH: OpponentStrength = 800
 
-export function playsComputer(game: Game): boolean {
+// Who plays a game: all that naming its players needs, which a game in the
+// list of games carries too.
+type Players = Pick<Game, 'playerSide' | 'opponent'>
+
+export function playsComputer(game: Players): boolean {
   return game.opponent.kind === 'computer'
 }
 
 // The name the screen gives the player of a side. When the signed-in player
 // moves both sides, both are theirs. The computer is named after its
 // strength, as the API reports it.
-export function playerName(game: Game, side: Side): string {
+export function playerName(game: Players, side: Side): string {
   if (side === game.playerSide || !playsComputer(game)) return 'You'
   return `Maia ${game.opponent.strength}`
 }
