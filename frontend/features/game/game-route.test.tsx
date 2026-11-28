@@ -176,6 +176,42 @@ describe('GameRoute', () => {
     await waitFor(() => expect(heading()).toHaveTextContent('Replay'))
   })
 
+  it('replays a game that ended elsewhere while the player was away, on coming back by a link', async () => {
+    answer({ [GAME_PATH]: ok(BEFORE_MATE) })
+    const { rerender } = renderRoute()
+    await waitFor(() => expect(heading()).toHaveTextContent('Your move'))
+
+    // Another tab plays the last move; this tab still holds the game as it was.
+    rerender(routeIn('hidden'))
+    answer({ [GAME_PATH]: ok(FOOLS_MATE) })
+    router.bfcacheId = 'second visit'
+    rerender(routeIn('visible'))
+
+    await waitFor(() => expect(heading()).toHaveTextContent('Replay'))
+    expect(highlighted()).toHaveTextContent('/games')
+  })
+
+  it('keeps a move that is on its way when the player comes back by a link, and stays on the game screen when it does not end the game', async () => {
+    let settle!: (reply: Reply) => void
+    const playing = COMPUTER_REPLIED_E5
+    answer({
+      [GAME_PATH]: ok(playing),
+      [MOVES_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
+    })
+    const { rerender } = renderRoute()
+    await waitFor(() => expect(heading()).toHaveTextContent('Your move'))
+    act(() => board.props!.onMove!({ from: 'g1', to: 'f3' }))
+    await waitFor(() => expect(board.props!.readOnly).toBe(true))
+
+    rerender(routeIn('hidden'))
+    router.bfcacheId = 'second visit'
+    rerender(routeIn('visible'))
+
+    expect(board.props!.readOnly).toBe(true)
+    await act(async () => settle(ok(playing)))
+    expect(screen.queryByRole('heading', { name: 'Replay' })).toBeNull()
+  })
+
   it('keeps the game screen and its result when the player resigns there, and replays the game when the page opens again', async () => {
     const playing = COMPUTER_REPLIED_E5
     const resigned: typeof playing = {
