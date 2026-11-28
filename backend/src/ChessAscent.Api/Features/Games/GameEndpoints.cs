@@ -67,8 +67,9 @@ namespace ChessAscent.Api.Features.Games;
 /// Listing games answers 200 with a page of them, which is empty when there
 /// are none; 400 with a validation problem when <c>status</c> is missing, or
 /// under whichever of <c>status</c>, <c>pageSize</c> and <c>cursor</c> holds
-/// a value the list does not accept, and a plain 400 problem when
-/// <c>pageSize</c> is not a whole number that fits an int; and 401.
+/// a value the list does not accept (a <c>pageSize</c> that is not a whole
+/// number that fits an int is also refused with 400, but in Development as
+/// a plain problem); and 401.
 /// </para>
 /// </remarks>
 public static class GameEndpoints

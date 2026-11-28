@@ -41,23 +41,25 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
     }
 
     // The cursor only says where a page starts, so another player's cursor,
-    // which falls among the caller's games by time, still lists only the
-    // caller's own.
+    // whose time falls between the caller's two games, positions the page
+    // among the caller's games and lists only the caller's own: the older
+    // game, and none of the other player's.
     [Fact]
     public async Task AnotherPlayersCursorListsOnlyTheCallersGames()
     {
         using var player = await factory.SignedInClientAsync();
         using var otherPlayer = await factory.SignedInClientAsync();
-        var players = await player.CreateGameAsync();
+        var playersOlder = await player.CreateGameAsync();
         await otherPlayer.CreateGameAsync();
         await otherPlayer.CreateGameAsync();
         await otherPlayer.CreateGameAsync();
+        await player.CreateGameAsync();
         var othersFirstPage = await otherPlayer.ListGamesAsync(Ongoing, pageSize: 1);
 
         var page = await player.ListGamesAsync(Ongoing, cursor: othersFirstPage.NextCursor);
 
         othersFirstPage.NextCursor.Should().NotBeNull();
-        page.Games.Select(game => game.Id).Should().Equal(players.Id);
+        page.Games.Select(game => game.Id).Should().Equal(playersOlder.Id);
         page.NextCursor.Should().BeNull();
     }
 
@@ -275,21 +277,30 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
         problem.Errors.Keys.Should().Equal("pageSize");
     }
 
-    // A page size that is not a whole number cannot be bound to the
-    // parameter, so it is refused before validation runs, with a plain
-    // problem rather than one under pageSize.
+    // A page size that is not a whole number that fits an int cannot be
+    // bound to the parameter. It is refused with 400 either way, but the body
+    // depends on the environment: in Development the binder throws and the
+    // exception handler writes a plain problem; elsewhere the validation of
+    // pageSize answers first, under pageSize, as for one out of bounds.
     [Theory]
-    [InlineData("abc")]
-    [InlineData("1.5")]
-    [InlineData("2147483648")]
-    public async Task APageSizeThatIsNotAWholeNumberIsRefused(string pageSize)
+    [InlineData("abc", "Development", new string[0])]
+    [InlineData("1.5", "Development", new string[0])]
+    [InlineData("2147483648", "Development", new string[0])]
+    [InlineData("abc", "Production", new[] { "pageSize" })]
+    [InlineData("2147483648", "Production", new[] { "pageSize" })]
+    public async Task APageSizeThatIsNotAWholeNumberIsRefused(string pageSize, string environment, string[] errorKeys)
     {
-        using var client = await factory.SignedInClientAsync();
+        using var host = factory.WithWebHostBuilder(builder => builder.UseEnvironment(environment));
+
+        // Outside Development the session cookie is Secure, so the browser
+        // sends it back only over HTTPS.
+        using var client = host.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
+        await client.RegisterNewAsync(AccountData.NewEmail());
 
         using var response = await client.GetGameListAsync($"?status=ongoing&pageSize={pageSize}");
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        await response.ReadProblemAsync();
+        (await response.ReadProblemAsync<HttpValidationProblemDetails>()).Errors.Keys.Should().Equal(errorKeys);
     }
 
     // Only the names the game response writes select games; an unknown value
