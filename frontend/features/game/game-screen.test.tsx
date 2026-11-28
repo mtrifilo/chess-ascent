@@ -18,6 +18,7 @@ import {
 
 import { MINIMUM_THINKING_MS } from './computer-thinking'
 import { GameScreen } from './game-screen'
+import type { Game } from './game-state'
 import {
   AFTER_E4,
   AFTER_E4_E5,
@@ -56,6 +57,7 @@ vi.mock('@/lib/page-load', () => ({ loadPage: vi.fn(), reloadPage: vi.fn() }))
 
 const GAME_PATH = `/api/games/${GAME_ID}`
 const MOVES_PATH = `${GAME_PATH}/moves`
+const RESIGN_PATH = `${GAME_PATH}/resign`
 
 // The position the board shows while the computer thinks about 1. e4.
 const AFTER_E4_FEN = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b - - 0 1'
@@ -142,12 +144,11 @@ describe('GameScreen', () => {
     expect(screen.queryByText(/Maia/)).not.toBeInTheDocument()
   })
 
-  it('has no Hint or Resign control', async () => {
+  it('has no Hint control', async () => {
     answer({ [GAME_PATH]: ok(game()) })
     await renderGame()
 
     expect(screen.queryByText('Hint')).not.toBeInTheDocument()
-    expect(screen.queryByText('Resign')).not.toBeInTheDocument()
   })
 
   it('highlights Play while the game is being played', async () => {
@@ -907,6 +908,476 @@ describe('GameScreen', () => {
       expect(board.mounts).toBe(2)
       expect(board.props).toMatchObject({ fen: START_FEN, readOnly: false })
       consoleError.mockRestore()
+    })
+  })
+
+  describe('resigning', () => {
+    const QUESTION = 'Resign this game? This cannot be undone.'
+
+    // The game the API answers a resignation with: the player had White
+    // against the computer, so the computer has won.
+    const RESIGNED = computerGame({
+      ...AFTER_E4_E5,
+      opponent: MAIA_800,
+      status: 'finished',
+      result: 'blackWins',
+      endReason: 'resignation',
+      legalMoves: {},
+    })
+
+    // The finished fields of a resignation, on the game given.
+    const resignedAs = (before: Game) => ({
+      ...before,
+      status: 'finished' as const,
+      result: 'blackWins' as const,
+      endReason: 'resignation' as const,
+      legalMoves: {},
+      promotions: [],
+    })
+
+    const confirmation = () => screen.getByRole('group', { name: QUESTION })
+    const resignControl = () => screen.getByRole('button', { name: 'Resign' })
+    const resignations = (sent: ReturnType<typeof answer>) =>
+      sent.filter(request => request.call === `POST ${RESIGN_PATH}`)
+
+    async function openConfirmation(reply?: Reply | Promise<Reply>) {
+      const sent = answer({
+        [GAME_PATH]: ok(computerGame(AFTER_E4_E5)),
+        ...(reply && { [RESIGN_PATH]: reply }),
+      })
+      await renderGame()
+      fireEvent.click(resignControl())
+      return sent
+    }
+
+    it('shows Resign beside Flip board, outside the confirmation, while the game is played', async () => {
+      answer({ [GAME_PATH]: ok(computerGame()) })
+      await renderGame()
+
+      expect(resignControl()).not.toHaveAttribute('aria-disabled', 'true')
+      expect(
+        screen.getByRole('button', { name: 'Flip board' })
+      ).toBeInTheDocument()
+      expect(screen.queryByRole('group', { name: QUESTION })).toBeNull()
+    })
+
+    it('replaces the controls with the confirmation, Cancel first, and moves focus into it', async () => {
+      const sent = await openConfirmation()
+
+      const group = confirmation()
+      expect(group).toHaveTextContent(QUESTION)
+      expect(
+        within(group)
+          .getAllByRole('button')
+          .map(button => button.textContent)
+      ).toEqual(['Cancel', 'Resign'])
+      expect(
+        within(group).getByRole('button', { name: 'Cancel' })
+      ).toHaveFocus()
+      // The controls are gone: the only Resign left is the confirmation's.
+      expect(screen.queryByRole('button', { name: 'Flip board' })).toBeNull()
+      expect(screen.getAllByRole('button', { name: 'Resign' })).toHaveLength(1)
+      expect(resignations(sent)).toEqual([])
+    })
+
+    it('puts the controls back on Cancel, sends nothing, and returns focus to Resign', async () => {
+      const sent = await openConfirmation()
+
+      fireEvent.click(
+        within(confirmation()).getByRole('button', { name: 'Cancel' })
+      )
+
+      expect(screen.queryByRole('group', { name: QUESTION })).toBeNull()
+      expect(resignControl()).toHaveFocus()
+      expect(
+        screen.getByRole('button', { name: 'Flip board' })
+      ).toBeInTheDocument()
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        'Your move'
+      )
+      expect(resignations(sent)).toEqual([])
+    })
+
+    it('sends the resignation once however often it is pressed, then shows the result', async () => {
+      let settle!: (reply: Reply) => void
+      const sent = await openConfirmation(
+        new Promise<Reply>(resolve => (settle = resolve))
+      )
+      const confirm = within(confirmation()).getByRole('button', {
+        name: 'Resign',
+      })
+
+      fireEvent.click(confirm)
+      fireEvent.click(confirm)
+      fireEvent.click(confirm)
+      await waitFor(() =>
+        expect(confirm).toHaveAttribute('aria-disabled', 'true')
+      )
+      // Nor can it be cancelled once it has gone.
+      fireEvent.click(
+        within(confirmation()).getByRole('button', { name: 'Cancel' })
+      )
+      expect(confirmation()).toBeInTheDocument()
+
+      settle(ok(RESIGNED))
+
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+          'Maia 800 won'
+        )
+      )
+      expect(screen.getByText('You resigned.')).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'New game' })).toHaveAttribute(
+        'href',
+        '/play'
+      )
+      expect(screen.queryByRole('group', { name: QUESTION })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Resign' })).toBeNull()
+      expect(
+        screen.getByRole('button', { name: 'Flip board' })
+      ).toBeInTheDocument()
+      expect(board.props!.readOnly).toBe(true)
+      expect(resignations(sent)).toHaveLength(1)
+    })
+
+    describe('that fails', () => {
+      // The query cache reports each failure to the console.
+      beforeEach(() => {
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+      })
+      afterEach(() => {
+        vi.mocked(console.error).mockRestore()
+      })
+
+      it.each([
+        ['fails', () => problem(500)],
+        ['cannot be reached', unreachable],
+      ])(
+        'keeps the confirmation open, with no message, when the API %s, and sends it again on Resign',
+        async (_, reply) => {
+          const sent = await openConfirmation(reply())
+
+          fireEvent.click(
+            within(confirmation()).getByRole('button', { name: 'Resign' })
+          )
+
+          await waitFor(() => expect(resignations(sent)).toHaveLength(1))
+          const confirm = within(confirmation()).getByRole('button', {
+            name: 'Resign',
+          })
+          await waitFor(() =>
+            expect(confirm).not.toHaveAttribute('aria-disabled', 'true')
+          )
+          expect(screen.queryByRole('alert')).toBeNull()
+          expect(confirmation()).toHaveTextContent(QUESTION)
+          expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+            'Your move'
+          )
+
+          const retried = answer({
+            [GAME_PATH]: ok(RESIGNED),
+            [RESIGN_PATH]: ok(RESIGNED),
+          })
+          fireEvent.click(confirm)
+
+          await waitFor(() =>
+            expect(screen.getByText('You resigned.')).toBeInTheDocument()
+          )
+          expect(resignations(retried)).toHaveLength(1)
+        }
+      )
+    })
+
+    it('loads the game and shows its result when the API finds it already over', async () => {
+      await openConfirmation(problem(409))
+      // The game was resigned in another tab.
+      const sent = answer({
+        [GAME_PATH]: ok(RESIGNED),
+        [RESIGN_PATH]: problem(409),
+      })
+
+      fireEvent.click(
+        within(confirmation()).getByRole('button', { name: 'Resign' })
+      )
+
+      await waitFor(() =>
+        expect(screen.getByText('You resigned.')).toBeInTheDocument()
+      )
+      expect(calls(sent)).toEqual([`POST ${RESIGN_PATH}`, `GET ${GAME_PATH}`])
+      expect(screen.queryByRole('group', { name: QUESTION })).toBeNull()
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('cannot be used while a move is being sent, nor while the computer is thinking after its reply', async () => {
+      let settle!: (reply: Reply) => void
+      const sent = answer({
+        [GAME_PATH]: ok(computerGame()),
+        [MOVES_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
+      })
+      await renderGame()
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+      const pass = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms))
+
+      try {
+        playOnBoard('e2', 'e4')
+        await pass(0)
+        expect(resignControl()).toHaveAttribute('aria-disabled', 'true')
+        fireEvent.click(resignControl())
+        expect(screen.queryByRole('group', { name: QUESTION })).toBeNull()
+
+        // The reply is in, and the computer is shown thinking for the rest
+        // of the minimum time.
+        settle(ok(COMPUTER_REPLIED_E5))
+        await pass(0)
+        expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+          'Maia 800 is thinking'
+        )
+        expect(resignControl()).toHaveAttribute('aria-disabled', 'true')
+        fireEvent.click(resignControl())
+        expect(screen.queryByRole('group', { name: QUESTION })).toBeNull()
+
+        await pass(MINIMUM_THINKING_MS)
+        expect(resignControl()).not.toHaveAttribute('aria-disabled', 'true')
+        expect(resignations(sent)).toEqual([])
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('holds the board and "Try again" while the resignation is on its way', async () => {
+      // The query cache reports the failed move to the console.
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {})
+      let settle!: (reply: Reply) => void
+      answer({
+        [GAME_PATH]: ok(computerGame(AFTER_E4_E5)),
+        [MOVES_PATH]: problem(500),
+      })
+      await renderGame()
+      playOnBoard('g1', 'f3')
+      await screen.findByRole('alert')
+      const sent = answer({
+        [GAME_PATH]: ok(computerGame(AFTER_E4_E5)),
+        [MOVES_PATH]: ok(COMPUTER_REPLIED_E5),
+        [RESIGN_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
+      })
+
+      fireEvent.click(resignControl())
+      fireEvent.click(
+        within(confirmation()).getByRole('button', { name: 'Resign' })
+      )
+      await waitFor(() => expect(board.props!.readOnly).toBe(true))
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+      settle(ok(RESIGNED))
+      await waitFor(() =>
+        expect(screen.getByText('You resigned.')).toBeInTheDocument()
+      )
+      // The failed move belongs to a game that is over now.
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(calls(sent)).toEqual([`POST ${RESIGN_PATH}`])
+      consoleError.mockRestore()
+    })
+
+    it('keeps a promotion waiting, unsent, while the resignation is on its way, and sends it once the resignation fails', async () => {
+      // The query cache reports the failure to the console.
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {})
+      let settle!: (reply: Reply) => void
+      const promotionGame = { ...PROMOTION_GAME, opponent: MAIA_800 }
+      const sent = answer({
+        [GAME_PATH]: ok(promotionGame),
+        [MOVES_PATH]: new Promise<Reply>(() => {}),
+        [RESIGN_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
+      })
+      await renderGame()
+
+      playOnBoard('e7', 'e8')
+      fireEvent.click(resignControl())
+      fireEvent.click(
+        within(confirmation()).getByRole('button', { name: 'Resign' })
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Knight' }))
+
+      expect(
+        screen.getByRole('group', {
+          name: 'Choose a piece for the pawn on e8.',
+        })
+      ).toBeInTheDocument()
+      settle(problem(500))
+      await waitFor(() =>
+        expect(
+          within(confirmation()).getByRole('button', { name: 'Resign' })
+        ).not.toHaveAttribute('aria-disabled', 'true')
+      )
+      expect(sentMoves(sent)).toEqual([])
+
+      fireEvent.click(screen.getByRole('button', { name: 'Knight' }))
+      await waitFor(() =>
+        expect(sentMoves(sent)).toEqual([{ uci: 'e7e8n', halfMoveNumber: 1 }])
+      )
+      consoleError.mockRestore()
+    })
+
+    it('drops a waiting promotion once the game is resigned', async () => {
+      const promotionGame = { ...PROMOTION_GAME, opponent: MAIA_800 }
+      const sent = answer({
+        [GAME_PATH]: ok(promotionGame),
+        [RESIGN_PATH]: ok(resignedAs(promotionGame)),
+      })
+      await renderGame()
+
+      playOnBoard('e7', 'e8')
+      fireEvent.click(resignControl())
+      fireEvent.click(
+        within(confirmation()).getByRole('button', { name: 'Resign' })
+      )
+
+      await waitFor(() =>
+        expect(screen.getByText('You resigned.')).toBeInTheDocument()
+      )
+      expect(screen.queryByRole('group', { name: /Choose a piece/ })).toBeNull()
+      // A new board is mounted, which takes the unplayed pawn off e8.
+      expect(board.mounts).toBe(2)
+      expect(sentMoves(sent)).toEqual([])
+    })
+
+    it('drops a promotion chosen while the resignation was on its way, once the game is resigned', async () => {
+      let settle!: (reply: Reply) => void
+      const promotionGame = { ...PROMOTION_GAME, opponent: MAIA_800 }
+      const sent = answer({
+        [GAME_PATH]: ok(promotionGame),
+        [RESIGN_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
+      })
+      await renderGame()
+
+      playOnBoard('e7', 'e8')
+      fireEvent.click(resignControl())
+      fireEvent.click(
+        within(confirmation()).getByRole('button', { name: 'Resign' })
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Knight' }))
+      settle(ok(resignedAs(promotionGame)))
+
+      await waitFor(() =>
+        expect(screen.getByText('You resigned.')).toBeInTheDocument()
+      )
+      expect(screen.queryByRole('group', { name: /Choose a piece/ })).toBeNull()
+      expect(board.mounts).toBe(2)
+      expect(sentMoves(sent)).toEqual([])
+    })
+
+    it('can be cancelled, and sent again, after a resignation that failed while Next.js had the page hidden', async () => {
+      // The query cache reports the failure to the console.
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {})
+      let settle!: (reply: Reply) => void
+      answer({
+        [GAME_PATH]: ok(computerGame(AFTER_E4_E5)),
+        [RESIGN_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
+      })
+      const screenIn = (mode: 'visible' | 'hidden') => (
+        <PageNavItemProvider>
+          <Activity mode={mode}>
+            <GameScreen id={GAME_ID} />
+          </Activity>
+        </PageNavItemProvider>
+      )
+      const { rerender } = renderWithQueries(screenIn('visible'))
+      await screen.findByRole('img', { name: 'Chess board' })
+      fireEvent.click(resignControl())
+      fireEvent.click(
+        within(confirmation()).getByRole('button', { name: 'Resign' })
+      )
+      await waitFor(() => expect(board.props!.readOnly).toBe(true))
+
+      rerender(screenIn('hidden'))
+      settle(problem(500))
+      await waitFor(() => expect(console.error).toHaveBeenCalled())
+      rerender(screenIn('visible'))
+      await waitFor(() => expect(board.props!.readOnly).toBe(false))
+
+      fireEvent.click(
+        within(confirmation()).getByRole('button', { name: 'Cancel' })
+      )
+      expect(screen.queryByRole('group', { name: QUESTION })).toBeNull()
+      expect(resignControl()).toHaveFocus()
+
+      const retried = answer({
+        [GAME_PATH]: ok(RESIGNED),
+        [RESIGN_PATH]: ok(RESIGNED),
+      })
+      fireEvent.click(resignControl())
+      fireEvent.click(
+        within(confirmation()).getByRole('button', { name: 'Resign' })
+      )
+      await waitFor(() =>
+        expect(screen.getByText('You resigned.')).toBeInTheDocument()
+      )
+      expect(resignations(retried)).toHaveLength(1)
+      consoleError.mockRestore()
+    })
+
+    it('reads the game again after a resignation whose answer was lost, and shows the result when it was saved', async () => {
+      // The query cache reports the failure to the console.
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {})
+      await openConfirmation()
+      const sent = answer({
+        [GAME_PATH]: ok(RESIGNED),
+        [RESIGN_PATH]: unreachable(),
+      })
+
+      fireEvent.click(
+        within(confirmation()).getByRole('button', { name: 'Resign' })
+      )
+
+      await waitFor(() =>
+        expect(screen.getByText('You resigned.')).toBeInTheDocument()
+      )
+      expect(calls(sent)).toEqual([`POST ${RESIGN_PATH}`, `GET ${GAME_PATH}`])
+      expect(screen.queryByRole('group', { name: QUESTION })).toBeNull()
+      expect(screen.queryByRole('alert')).toBeNull()
+      consoleError.mockRestore()
+    })
+
+    it("refuses the confirmation's Resign while a move made meanwhile is being sent", async () => {
+      const sent = answer({
+        [GAME_PATH]: ok(game()),
+        [MOVES_PATH]: new Promise<Reply>(() => {}),
+        [RESIGN_PATH]: ok(RESIGNED),
+      })
+      await renderGame()
+      fireEvent.click(resignControl())
+
+      playOnBoard('e2', 'e4')
+      const confirm = within(confirmation()).getByRole('button', {
+        name: 'Resign',
+      })
+      await waitFor(() =>
+        expect(confirm).toHaveAttribute('aria-disabled', 'true')
+      )
+      fireEvent.click(confirm)
+
+      expect(resignations(sent)).toEqual([])
+    })
+
+    it('shows the result of a resigned game, with no Resign control', async () => {
+      answer({ [GAME_PATH]: ok(RESIGNED) })
+      await renderGame()
+
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        'Maia 800 won'
+      )
+      expect(screen.getByText('You resigned.')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Resign' })).toBeNull()
+      expect(
+        screen.getByRole('button', { name: 'Flip board' })
+      ).toBeInTheDocument()
     })
   })
 

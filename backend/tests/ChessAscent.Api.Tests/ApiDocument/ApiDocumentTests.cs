@@ -55,6 +55,7 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
         operations.Should().BeEquivalentTo(
             "post /auth/register", "post /auth/sign-in", "post /auth/sign-out", "get /auth/me",
             "get /games", "post /games", "get /games/{id}", "post /games/{id}/moves", "post /games/{id}/hints",
+            "post /games/{id}/resign",
             "get /health/ready", "get /version");
     }
 
@@ -69,6 +70,7 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
     [InlineData("/games/{id}", "get", new[] { "200", "401", "404", "500" })]
     [InlineData("/games/{id}/moves", "post", new[] { "200", "400", "401", "403", "404", "409", "422", "500", "503" })]
     [InlineData("/games/{id}/hints", "post", new[] { "200", "400", "401", "403", "404", "409", "422", "500", "503" })]
+    [InlineData("/games/{id}/resign", "post", new[] { "200", "401", "403", "404", "409", "500" })]
     public async Task DocumentListsEveryResponseOfTheGameEndpoints(string path, string method, string[] statuses)
     {
         var document = await GetDocumentAsync();

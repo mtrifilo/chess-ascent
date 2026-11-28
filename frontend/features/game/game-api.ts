@@ -1,6 +1,11 @@
 'use client'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 
@@ -96,21 +101,71 @@ export function usePlayMove(id: string) {
       uci,
       halfMoveNumber,
     }: MoveRequest): Promise<MoveOutcome> => {
-      const { data, response } = await api.POST('/games/{id}/moves', {
+      const answer = await api.POST('/games/{id}/moves', {
         params: { path: { id } },
         body: { uci, halfMoveNumber },
       })
-      if (data) {
-        await queryClient.cancelQueries({ queryKey: gameKey(id) })
-        queryClient.setQueryData(gameKey(id), data)
-        return 'played'
-      }
-      if (response.status === 409) {
-        await queryClient.invalidateQueries({ queryKey: gameKey(id) })
-        return 'reloaded'
-      }
-      if (response.status === 401) return 'signed-out'
-      throw new Error(`POST /games/{id}/moves answered ${response.status}.`)
+      const outcome = await recordAnswer(
+        queryClient,
+        id,
+        'POST /games/{id}/moves',
+        answer
+      )
+      return outcome === 'recorded' ? 'played' : outcome
     },
   })
+}
+
+// Resigns the game. Its answer is recorded as a move's is (recordAnswer),
+// and a 409 means the game was already over, by another move, or resigned in
+// another tab or by an earlier press whose answer was lost. Any other
+// failure is thrown, and, as for a move, followed by a fresh read of the
+// game that is not waited for: a resignation whose answer was lost may have
+// been saved all the same, and the read then shows the result. Resigning
+// again is safe, as the second answer is that 409.
+//
+// `onSettled` runs once the resignation is answered or has failed. It is
+// given here rather than to `mutate`, whose callbacks are skipped while
+// nothing observes the mutation, as when Next.js keeps the page hidden.
+export function useResign(id: string, onSettled?: () => void) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    networkMode: 'always',
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: gameKey(id) })
+    },
+    onSettled,
+    mutationFn: async () => {
+      const answer = await api.POST('/games/{id}/resign', {
+        params: { path: { id } },
+      })
+      await recordAnswer(queryClient, id, 'POST /games/{id}/resign', answer)
+    },
+  })
+}
+
+// What the screen does with the API's answer to a request that changes the
+// game. The game it answers with is recorded (`recorded`), after cancelling
+// any read of the game already on its way, so that the read cannot land
+// afterwards and put back the game as it was. A 409 means the game is no
+// longer where the request found it, so it is read again (`reloaded`). A 401
+// is handled by the API client, which sends the visitor to sign in
+// (`signed-out`). Any other answer is thrown, naming `request`.
+async function recordAnswer(
+  queryClient: QueryClient,
+  id: string,
+  request: string,
+  { data, response }: { data?: Game; response: Response }
+): Promise<'recorded' | 'reloaded' | 'signed-out'> {
+  if (data) {
+    await queryClient.cancelQueries({ queryKey: gameKey(id) })
+    queryClient.setQueryData(gameKey(id), data)
+    return 'recorded'
+  }
+  if (response.status === 409) {
+    await queryClient.invalidateQueries({ queryKey: gameKey(id) })
+    return 'reloaded'
+  }
+  if (response.status === 401) return 'signed-out'
+  throw new Error(`${request} answered ${response.status}.`)
 }

@@ -15,7 +15,7 @@ namespace ChessAscent.Api.Features.Games;
 /// <param name="Result">How the game ended; <c>null</c> while it is ongoing.</param>
 /// <param name="EndReason">Why the game ended; <c>null</c> while it is ongoing.</param>
 /// <param name="CreatedAt">When the game was created.</param>
-/// <param name="UpdatedAt">When the game was created or last had a move saved.</param>
+/// <param name="UpdatedAt">When the game was created, last had a move saved, or was resigned.</param>
 /// <param name="HintCount">The number of positions the player was given a hint in.</param>
 /// <param name="Moves">
 /// The moves, oldest first. When <paramref name="MovesNumberedInOrder"/>,
@@ -87,6 +87,17 @@ public union HintCountResult(HintCounted, GameNotFound, GameFinished, HalfMoveCo
 /// </summary>
 public readonly record struct HintCounted;
 
+/// <summary>The outcome of <see cref="GameStore.ResignAsync"/>.</summary>
+public union ResignResult(GameResigned, GameNotFound, GameFinished)
+{
+    // As for AppendResult: the case is what a log line or a test failure needs.
+    public override string ToString() => Value?.ToString() ?? "(no case)";
+}
+
+/// <summary>The game was ended by the player's resignation.</summary>
+/// <param name="Game">The game as the resignation left it.</param>
+public readonly record struct GameResigned(SavedGame Game);
+
 /// <summary>
 /// No game with that id belongs to that player: either there is none, or it
 /// is someone else's. The two are deliberately the same answer. Nothing was
@@ -95,8 +106,8 @@ public readonly record struct HintCounted;
 public readonly record struct GameNotFound;
 
 /// <summary>
-/// The game is over, so no move can be added, no hint is counted, and its
-/// result stands. Nothing was saved.
+/// The game is over, so no move can be added, no hint is counted, it cannot
+/// be resigned, and its result stands. Nothing was saved.
 /// </summary>
 /// <remarks>
 /// Not named GameAlreadyOver, which is the chess interface's own case for a

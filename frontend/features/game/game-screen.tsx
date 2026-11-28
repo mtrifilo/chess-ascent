@@ -3,7 +3,8 @@
 import { opposite } from '@lichess-org/chessground/util'
 import { ArrowUpDownIcon, CircleAlertIcon } from 'lucide-react'
 import { notFound } from 'next/navigation'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 
 import {
   ChessBoard,
@@ -16,7 +17,8 @@ import { Button } from '@/components/ui/button'
 
 import { ColourSwatch } from './colour-swatch'
 import { useComputerThinking } from './computer-thinking'
-import { useGame, usePlayMove } from './game-api'
+import { TEXT_CONTROL_CLASS } from './controls'
+import { useGame, usePlayMove, useResign } from './game-api'
 import {
   checkSquare,
   destinations,
@@ -35,6 +37,7 @@ import {
 import { MoveList } from './move-list'
 import { NewGameLink } from './new-game-link'
 import { PromotionPicker } from './promotion-picker'
+import { ResignConfirm } from './resign-confirm'
 
 // One game: the board between the two players' bars, and beside it (below it
 // on phones) the game's status or result, the move list and the controls.
@@ -68,6 +71,16 @@ function LoadedGame({ game }: { game: Game }) {
   // screen holds, which takes the move back off (see ChessBoard's onMove).
   const [boardKey, setBoardKey] = useState(0)
   const [pending, setPending] = useState<PendingPromotion>()
+  const [confirmingResign, setConfirmingResign] = useState(false)
+  const resignControl = useRef<HTMLButtonElement>(null)
+  // Set at the press itself, as the mutation reports itself pending only
+  // after React has rendered again, which a second press can come before.
+  // While it is set, the resignation is neither sent again nor cancelled,
+  // and no move is sent to race it.
+  const resignSent = useRef(false)
+  const resign = useResign(game.id, () => {
+    resignSent.current = false
+  })
 
   const thinking = useComputerThinking(game, playMove)
   // While the computer thinks, the game is shown as it stood after the
@@ -80,11 +93,26 @@ function LoadedGame({ game }: { game: Game }) {
     check: checkSquare(game.fen, game.moves),
   }
   const finished = !isThinking && game.status === 'finished'
+  // A move on its way, or the computer's reply to one, holds the board and
+  // keeps the game from being resigned until it is shown.
+  const moveUnderway = isThinking || playMove.isPending
+  // And a resignation on its way holds the board, so that no move is sent
+  // to race it.
+  const resigning = resign.isPending
   const opponentSide = opposite(game.playerSide)
   const orientation = flipped ? opponentSide : game.playerSide
-  const promotion = pending?.fen === game.fen ? pending : undefined
+  // A resignation ends the game without changing the position, so these
+  // check that the game is still being played as well as the position.
+  // A promotion left waiting when the game ends is dropped, and a new board
+  // is mounted to take the pawn the board moved back off; this is done
+  // while rendering, so the stale board is never shown.
+  if (finished && pending?.fen === game.fen) {
+    setPending(undefined)
+    setBoardKey(key => key + 1)
+  }
+  const promotion = !finished && pending?.fen === game.fen ? pending : undefined
   const failedMove =
-    playMove.isError && playMove.variables.fen === game.fen
+    !finished && playMove.isError && playMove.variables.fen === game.fen
       ? playMove.variables.uci
       : undefined
 
@@ -102,6 +130,10 @@ function LoadedGame({ game }: { game: Game }) {
 
   function send(uci: string) {
     const resetBoard = () => setBoardKey(key => key + 1)
+    if (resignSent.current) {
+      resetBoard()
+      return
+    }
     playMove.mutate(
       { uci, halfMoveNumber: nextHalfMoveNumber(game), fen: game.fen },
       {
@@ -111,6 +143,19 @@ function LoadedGame({ game }: { game: Game }) {
         onError: resetBoard,
       }
     )
+  }
+
+  function confirmResign() {
+    if (moveUnderway || resignSent.current) return
+    resignSent.current = true
+    resign.mutate()
+  }
+
+  function cancelResign() {
+    if (resignSent.current) return
+    // The Resign control is back in the page once this returns.
+    flushSync(() => setConfirmingResign(false))
+    resignControl.current?.focus()
   }
 
   function onMove(move: BoardMove) {
@@ -138,7 +183,7 @@ function LoadedGame({ game }: { game: Game }) {
             destinations={destinations(game)}
             lastMove={shown.lastMove}
             check={shown.check}
-            readOnly={finished || isThinking || playMove.isPending}
+            readOnly={finished || moveUnderway || resigning}
             onMove={onMove}
           />
           {promotion && (
@@ -148,6 +193,10 @@ function LoadedGame({ game }: { game: Game }) {
               orientation={orientation}
               pieces={promotion.pieces}
               onChoose={piece => {
+                // Refused, and left waiting, while a resignation is on its
+                // way: it is chosen again if the resignation fails, and
+                // dropped with the game if it does not.
+                if (resignSent.current) return
                 setPending(undefined)
                 send(toUci(promotion.move, piece))
               }}
@@ -163,17 +212,43 @@ function LoadedGame({ game }: { game: Game }) {
       <div className="flex flex-col gap-3 pt-4 md:w-90 md:shrink-0 md:gap-4 md:rounded-md md:border md:bg-card md:p-4">
         {finished ? <ResultPanel game={game} /> : <GameStatus {...status} />}
         {failedMove && <MoveFailed onTryAgain={() => send(failedMove)} />}
-        {/* Below the move list from `md` up, above it on phones. */}
-        <div className="flex items-center justify-end md:order-last md:h-25">
-          <Button
-            variant="outline"
-            aria-label="Flip board"
-            className="size-12.75 md:size-8"
-            onClick={() => setFlipped(value => !value)}
-          >
-            <ArrowUpDownIcon aria-hidden />
-          </Button>
-        </div>
+        {/* The controls, or the resign confirmation in their place: below
+            the move list from `md` up, above it on phones. A game that ends
+            while the confirmation is open, in another tab say, shows its
+            result and no confirmation. */}
+        {confirmingResign && !finished ? (
+          <ResignConfirm
+            moveUnderway={moveUnderway}
+            sending={resigning}
+            onCancel={cancelResign}
+            onResign={confirmResign}
+            className="md:order-last"
+          />
+        ) : (
+          <div className="flex items-center gap-2 md:order-last md:h-25">
+            {!finished && (
+              <Button
+                ref={resignControl}
+                variant="outline"
+                aria-disabled={moveUnderway}
+                className={TEXT_CONTROL_CLASS}
+                onClick={() => {
+                  if (!moveUnderway) setConfirmingResign(true)
+                }}
+              >
+                Resign
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              aria-label="Flip board"
+              className="ml-auto size-12.75 md:size-8"
+              onClick={() => setFlipped(value => !value)}
+            >
+              <ArrowUpDownIcon aria-hidden />
+            </Button>
+          </div>
+        )}
         {/* From `md` up the list takes the height left beside the board and
             scrolls within it. Its box is absolutely placed, so the moves
             never make the panel, and with it the row, taller than the
