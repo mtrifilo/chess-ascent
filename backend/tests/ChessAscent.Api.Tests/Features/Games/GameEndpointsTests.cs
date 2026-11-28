@@ -501,6 +501,53 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         (await factory.LoadGameAsync(ownerId, game.Id)).Should().BeEquivalentTo(before);
     }
 
+    // A move is refused as finished before the saved moves are replayed, so
+    // a finished game whose saved form is broken gets the finished answer;
+    // reading it replays the moves and finds the fault.
+    [Fact]
+    public async Task AFinishedGameWhoseSavedFormIsBrokenRefusesAMoveAsFinishedAndFailsToRead()
+    {
+        using var client = await SignedInClientAsync();
+        var game = await client.CreateGameAsync();
+        (await postgres.ExecuteAsync(
+            """
+            INSERT INTO "Moves" ("GameId", "HalfMoveNumber", "Uci", "San") VALUES (@id, 1, 'e2e5', 'e5');
+            UPDATE "Games" SET "Status" = 'Finished', "Result" = 'WhiteWins', "EndReason" = 'Resignation' WHERE "Id" = @id;
+            """,
+            game.Id)).Should().Be(2);
+
+        using var move = await client.PostMoveAsync(game.Id, "e2e4");
+        using var read = await client.GetGameAsync(game.Id);
+
+        move.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await move.ReadProblemAsync()).Detail.Should().Be(GameEndpoints.GameFinishedDetail);
+        read.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+    }
+
+    // Bodies the move endpoint cannot bind at all, as its remarks list them.
+    public static TheoryData<string?, string, HttpStatusCode> UnboundBodies => new()
+    {
+        { null, "", HttpStatusCode.BadRequest },
+        { "application/json", "{", HttpStatusCode.BadRequest },
+        { "application/json", """{"uci":5}""", HttpStatusCode.BadRequest },
+        { "text/plain", """{"uci":"e2e4"}""", HttpStatusCode.UnsupportedMediaType },
+    };
+
+    [Theory]
+    [MemberData(nameof(UnboundBodies))]
+    public async Task AMoveBodyThatCannotBeBoundIsRefusedAndSavesNothing(string? contentType, string body, HttpStatusCode status)
+    {
+        using var client = await SignedInClientAsync();
+        var game = await client.CreateGameAsync();
+        using var content = new StringContent(body);
+        content.Headers.ContentType = contentType is null ? null : new(contentType);
+
+        using var response = await client.PostAsync($"/games/{game.Id}/moves", content, Cancellation);
+
+        response.StatusCode.Should().Be(status);
+        (await client.ReadGameAsync(game.Id)).Moves.Should().BeEmpty();
+    }
+
     // The id must be a GUID for the route to match at all, so anything else
     // is an unknown path, signed in or not, and says nothing about any game.
     [Fact]

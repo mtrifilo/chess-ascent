@@ -15,8 +15,8 @@ namespace ChessAscent.Api.Features.Games;
 /// 200 with the game after the move; 400 with a validation problem under
 /// <c>Uci</c> when the text is missing, longer than
 /// <see cref="PlayMoveRequest.UciLength"/> or not a UCI move, and a plain 400
-/// problem when the body is JSON but not of that shape; 415 when it is not
-/// sent as JSON; 401 when nobody is
+/// problem when the body is missing, is not valid JSON, or is JSON of another
+/// shape; 415 when its content type is not JSON; 401 when nobody is
 /// signed in; 403 when a page on another origin started the request (see
 /// CrossSiteRequests); 404 when the player has no game with that id; 409 with
 /// <see cref="GameFinishedDetail"/> when the game is over; 409 with

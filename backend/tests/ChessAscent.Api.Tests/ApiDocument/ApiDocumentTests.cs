@@ -112,23 +112,40 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
     // two ways: oneOf with a null schema, for a reference to a shared
     // schema such as an enum, and a type list that includes "null", for a
     // plain value such as an integer.
+    //
+    // Each enum property must also refer to its enum's shared schema, which
+    // is what gives the front end a named type for it, and no property may
+    // use a form this test does not read, so a schema of another shape fails
+    // here rather than passing unread.
     [Theory]
-    [InlineData("CreateGameRequest", "playerSide", false)]
-    [InlineData("OpponentRequest", "kind", false)]
-    [InlineData("GameResponse", "result", true)]
-    [InlineData("GameResponse", "endReason", true)]
-    [InlineData("GameResponse", "playerSide", false)]
-    [InlineData("OpponentResponse", "strength", true)]
-    public async Task DocumentAllowsNullOnlyWhereTheApiSendsOrAcceptsIt(string schema, string property, bool nullable)
+    [InlineData("CreateGameRequest", "playerSide", false, true)]
+    [InlineData("OpponentRequest", "kind", false, true)]
+    [InlineData("GameResponse", "result", true, true)]
+    [InlineData("GameResponse", "endReason", true, true)]
+    [InlineData("GameResponse", "playerSide", false, true)]
+    [InlineData("OpponentResponse", "strength", true, false)]
+    public async Task DocumentAllowsNullOnlyWhereTheApiSendsOrAcceptsIt(
+        string schema, string property, bool nullable, bool isEnum)
     {
         var document = await GetDocumentAsync();
 
         var described = document["components"]!["schemas"]![schema]!["properties"]![property]!.AsObject();
-        var nullInOneOf = described["oneOf"] is JsonArray choices
-            && choices.Any(choice => choice?["type"]?.GetValue<string>() == "null");
+        described.ContainsKey("anyOf").Should().BeFalse();
+        var choices = described["oneOf"] as JsonArray ?? [];
+        var nullInOneOf = choices.Any(choice => choice?["type"]?.GetValue<string>() == "null");
         var nullInTypes = described["type"] is JsonArray types
             && types.Any(type => type?.GetValue<string>() == "null");
         (nullInOneOf || nullInTypes).Should().Be(nullable);
+
+        var references = choices.Select(choice => choice?["$ref"]).Append(described["$ref"]).OfType<JsonNode>();
+        if (isEnum)
+        {
+            references.Should().ContainSingle("an enum property refers to its enum's shared schema");
+        }
+        else
+        {
+            described["type"].Should().NotBeNull("a plain value states its type");
+        }
     }
 
     // Every response the account endpoints can give, including those that

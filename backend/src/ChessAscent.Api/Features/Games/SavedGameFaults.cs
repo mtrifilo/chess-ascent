@@ -10,9 +10,9 @@ internal static class SavedGameBoards
     /// every saved move played, through the same checks as live play.
     /// </summary>
     /// <exception cref="UnrebuildableGameException">
-    /// The saved game is broken: a saved move is refused, the half-move
-    /// numbers have a gap, or the game is saved as ongoing but its moves end
-    /// it. Every later move in such a game would be refused, and reloading
+    /// The saved game is broken: its starting position is not a FEN the chess
+    /// interface accepts, a saved move is refused, the half-move numbers have
+    /// a gap, or the game is saved as ongoing but its moves end it. Every later move in such a game would be refused, and reloading
     /// would not change that. A game saved as finished on a board that is not
     /// over is not broken: a resignation ends a game the board knows nothing
     /// about.
