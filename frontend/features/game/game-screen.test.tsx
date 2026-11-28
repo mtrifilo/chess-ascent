@@ -1659,12 +1659,11 @@ describe('GameScreen: a hint', () => {
     act(() => moveOn(queryClient))
     await waitFor(() => expect(board.props!.fen).toBe(MOVED_ON.fen))
     settle(ok(HINT))
-    // Lets the answer arrive and React render whatever it changes.
-    await act(() => new Promise(resolve => setTimeout(resolve, 0)))
+    // The control is ready again once the answer has arrived.
+    await waitFor(() => expect(control()).toBeEnabled())
 
     expect(screen.queryByText(/^Hint:/)).toBeNull()
     expect(boardMarks()).toEqual(NO_MARKS)
-    expect(control()).toBeEnabled()
   })
 
   describe("cannot be used when it is not the player's turn", () => {
