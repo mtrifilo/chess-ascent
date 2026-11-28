@@ -6,6 +6,7 @@ import {
   lastMove,
   moveNumber,
   moveRows,
+  nextHalfMoveNumber,
   promotionChoices,
   resultTitle,
   sideToMoveInCheck,
@@ -89,6 +90,13 @@ describe('moves in UCI form', () => {
     expect(
       promotionChoices(PROMOTION_GAME, { from: 'e1', to: 'e2' })
     ).toBeUndefined()
+  })
+})
+
+describe('nextHalfMoveNumber', () => {
+  it('is 1 before the first move, and one more than the moves played after', () => {
+    expect(nextHalfMoveNumber(game())).toBe(1)
+    expect(nextHalfMoveNumber(FOOLS_MATE)).toBe(5)
   })
 })
 

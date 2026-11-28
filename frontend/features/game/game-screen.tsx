@@ -22,6 +22,7 @@ import {
   END_REASON_TEXT,
   lastMove,
   moveNumber,
+  nextHalfMoveNumber,
   playerName,
   promotionChoices,
   resultTitle,
@@ -79,7 +80,7 @@ function LoadedGame({ game }: { game: Game }) {
   function send(uci: string) {
     const resetBoard = () => setBoardKey(key => key + 1)
     playMove.mutate(
-      { uci, fen: game.fen },
+      { uci, halfMoveNumber: nextHalfMoveNumber(game), fen: game.fen },
       {
         onSuccess: outcome => {
           if (outcome === 'reloaded') resetBoard()

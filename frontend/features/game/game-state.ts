@@ -37,6 +37,12 @@ export function checkSquare(game: Game): Square | undefined {
   return undefined
 }
 
+// The place in the game the next move takes, counted from 1 for the first
+// move, whichever side made it: one more than the moves played so far.
+export function nextHalfMoveNumber(game: Game): number {
+  return game.moves.length + 1
+}
+
 export function lastMove(moves: readonly Move[]): BoardMove | undefined {
   const latest = moves.at(-1)
   return latest && squaresOf(latest.uci)

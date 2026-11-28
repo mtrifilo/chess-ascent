@@ -157,7 +157,7 @@ describe('GameScreen', () => {
     playOnBoard('e2', 'e4')
 
     await waitFor(() => expect(board.props!.fen).toBe(AFTER_E4.fen))
-    expect(sentMoves(sent)).toEqual([{ uci: 'e2e4' }])
+    expect(sentMoves(sent)).toEqual([{ uci: 'e2e4', halfMoveNumber: 1 }])
     expect(board.props!.lastMove).toEqual({ from: 'e2', to: 'e4' })
     expect(screen.getByText('Black to move · move 1')).toBeInTheDocument()
     expect(screen.getByRole('cell', { name: 'e4' })).toHaveAttribute(
@@ -167,6 +167,18 @@ describe('GameScreen', () => {
     // The board showed the move itself, so it is not mounted again.
     expect(board.mounts).toBe(1)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('sends each move as the half-move the screen expects it to be', async () => {
+    const sent = answer({ [GAME_PATH]: ok(AFTER_E4), [MOVES_PATH]: ok(game()) })
+    await renderGame()
+
+    // One move has been played, so Black's reply is the second.
+    playOnBoard('e7', 'e5')
+
+    await waitFor(() =>
+      expect(sentMoves(sent)).toEqual([{ uci: 'e7e5', halfMoveNumber: 2 }])
+    )
   })
 
   it('lets nothing move while a move is being sent', async () => {
@@ -221,7 +233,9 @@ describe('GameScreen', () => {
 
       fireEvent.click(within(picker).getByRole('button', { name: 'Knight' }))
 
-      await waitFor(() => expect(sentMoves(sent)).toEqual([{ uci: 'e7e8n' }]))
+      await waitFor(() =>
+        expect(sentMoves(sent)).toEqual([{ uci: 'e7e8n', halfMoveNumber: 1 }])
+      )
       expect(screen.queryByRole('group')).not.toBeInTheDocument()
     })
 
@@ -251,7 +265,9 @@ describe('GameScreen', () => {
       playOnBoard('e1', 'd1')
 
       expect(screen.queryByRole('group')).not.toBeInTheDocument()
-      await waitFor(() => expect(sentMoves(sent)).toEqual([{ uci: 'e1d1' }]))
+      await waitFor(() =>
+        expect(sentMoves(sent)).toEqual([{ uci: 'e1d1', halfMoveNumber: 1 }])
+      )
     })
   })
 
@@ -267,6 +283,7 @@ describe('GameScreen', () => {
     it.each([
       ['refuses it', () => problem(422)],
       ['fails', () => problem(500)],
+      ['has no reply from a computer opponent', () => problem(503)],
       ['cannot be reached', unreachable],
     ])(
       'puts the board back and shows the error when the API %s',
@@ -331,7 +348,7 @@ describe('GameScreen', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
 
       await waitFor(() => expect(board.props!.fen).toBe(AFTER_E4.fen))
-      expect(sentMoves(retried)).toEqual([{ uci: 'e2e4' }])
+      expect(sentMoves(retried)).toEqual([{ uci: 'e2e4', halfMoveNumber: 1 }])
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 

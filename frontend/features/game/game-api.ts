@@ -46,9 +46,12 @@ export function useCreateGame() {
 
 // How a move ended, besides failing, which is thrown: `played`, and the
 // recorded game is the API's answer; `reloaded`, because the game was no
-// longer where this screen thought (409: it had ended, or another request
-// moved first), so it has been read again; `signed-out`, which the API
-// client already handles by sending the visitor to sign in.
+// longer where this screen thought (409: it had ended, or its next half-move
+// was not the one the move was sent as, because another tab or request moved
+// first), so it has been read again; `signed-out`, which the API client
+// already handles by sending the visitor to sign in. Every other answer is a
+// failure, a 503 included (a computer opponent that did not reply): nothing
+// was saved, and the screen offers the same move again.
 export type MoveOutcome = 'played' | 'reloaded' | 'signed-out'
 
 // Sends a move in UCI form. This is the one place a move is posted.
@@ -57,21 +60,21 @@ export type MoveOutcome = 'played' | 'reloaded' | 'signed-out'
 // cancelled before the answer is recorded, so it cannot land afterwards and
 // put back the position before the move.
 //
-// A move that fails is followed by a fresh read of the game. The screen
-// offers only moves the API listed, so a refusal means the screen's position
-// is out of date (another tab has moved), and a move whose answer was lost
-// may have been saved all the same. The read is not waited for: the failure
-// is reported at once.
+// A move that fails is followed by a fresh read of the game, since a move
+// whose answer was lost may have been saved all the same. The read is not
+// waited for: the failure is reported at once.
 //
 // The mutations here are sent even when the browser reports itself offline
 // (`networkMode: 'always'`), so that a move fails at once, as the screen
 // describes, rather than waiting unseen for the connection to come back.
 //
-// A move carries the position it was made in (`fen`), which is not sent: it
-// stays with the mutation's state, so the screen can tell whether a failure
-// is about the position it now shows, even after the page was hidden while
-// the move was on its way.
-export type MoveRequest = { uci: string; fen: string }
+// A move is sent with the half-move number the screen expects it to be, so
+// the API refuses it (409) rather than playing it in a position the screen
+// has not shown. It also carries the position it was made in (`fen`), which
+// is not sent: that stays with the mutation's state, so the screen can tell
+// whether a failure is about the position it now shows, even after the page
+// was hidden while the move was on its way.
+export type MoveRequest = { uci: string; halfMoveNumber: number; fen: string }
 
 export function usePlayMove(id: string) {
   const queryClient = useQueryClient()
@@ -80,10 +83,13 @@ export function usePlayMove(id: string) {
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: gameKey(id) })
     },
-    mutationFn: async ({ uci }: MoveRequest): Promise<MoveOutcome> => {
+    mutationFn: async ({
+      uci,
+      halfMoveNumber,
+    }: MoveRequest): Promise<MoveOutcome> => {
       const { data, response } = await api.POST('/games/{id}/moves', {
         params: { path: { id } },
-        body: { uci },
+        body: { uci, halfMoveNumber },
       })
       if (data) {
         await queryClient.cancelQueries({ queryKey: gameKey(id) })
