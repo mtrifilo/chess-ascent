@@ -90,6 +90,18 @@ describe('ReplayScreen', () => {
     ).toHaveTextContent('/games')
   })
 
+  it('has only the step controls: no Hint, Resign or Flip board, and no hint marker, which the Replay frames do not draw', () => {
+    renderReplay({ ...SPECIAL_MOVES_GAME, hintCount: 2 })
+
+    const list = screen.getByRole('table')
+    const controls = screen
+      .getAllByRole('button')
+      .filter(button => !list.contains(button))
+      .map(button => button.getAttribute('aria-label') ?? button.textContent)
+    expect(controls).toEqual(['First', 'Previous', 'Next', 'Last'])
+    expect(screen.queryByText('Hint used')).not.toBeInTheDocument()
+  })
+
   it('shows a board that cannot be played on, turned to the player', () => {
     renderReplay({ ...SPECIAL_MOVES_GAME, playerSide: 'black' })
 
