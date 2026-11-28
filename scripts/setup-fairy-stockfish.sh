@@ -101,14 +101,12 @@ BUILD_LOG="$FAIRY/build.log"
 # for the default engines directory is Chess Ascent's own checkout.
 source_git() { git --git-dir="$SOURCE/.git" --work-tree="$SOURCE" "$@"; }
 
-# Whatever a run leaves half-made is removed when it ends, however it ends:
-# a fetch in progress, or a new program not yet checked. A signal ends the
-# script through `exit`, so that the EXIT trap runs for it too: bash 3.2,
-# macOS's own, does not run it on a signal otherwise.
+# Whatever a run leaves half-made is removed when it ends, whether it
+# finishes, fails or is interrupted: a fetch in progress, or a new program
+# not yet checked.
 FETCHING=""
 CANDIDATE=""
 trap '[ -z "$FETCHING" ] || rm -rf "$FETCHING"; [ -z "$CANDIDATE" ] || rm -f "$CANDIDATE"' EXIT
-trap 'exit 130' INT TERM
 
 if [ -d "$SOURCE/.git" ] && [ "$(source_git rev-parse HEAD 2>/dev/null)" = "$FAIRY_STOCKFISH_COMMIT" ]; then
   say "using the source in $SOURCE, at commit $FAIRY_STOCKFISH_COMMIT"
