@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using ChessAscent.Api.Engine;
 using ChessAscent.Chess;
@@ -28,12 +27,10 @@ namespace ChessAscent.Api.Opponents;
 /// is rebuilt from.
 /// </para>
 /// </remarks>
-public sealed partial class MaiaOpponent(EnginePool pool, IChessRules rules, ILogger<MaiaOpponent> logger) : IOpponent
+public sealed class MaiaOpponent(EnginePool pool, IChessRules rules, ILogger<MaiaOpponent> logger) : IOpponent
 {
     /// <summary>The engine kind, in the pool's configuration, that runs Maia.</summary>
     public const string EngineKind = "maia";
-
-    private const string StandardStartingFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
     // Sampling at 1.0 draws from the predicted distribution of human moves.
     // Taking the most likely move instead (0) plays far above the rating.
@@ -47,9 +44,8 @@ public sealed partial class MaiaOpponent(EnginePool pool, IChessRules rules, ILo
     // says, so the smallest limit states that.
     private static readonly SearchLimit OneEvaluation = SearchLimit.Nodes(1);
 
-    // A real move is at most five characters; a longer reply is cut short in
-    // the log.
-    private const int LoggedReplyLength = 16;
+    /// <summary>The engine's name, in the log and in messages.</summary>
+    internal const string EngineName = "Maia";
 
     public async Task<OpponentReply> ChooseMoveAsync(IReadOnlyList<string> moves, int strength, CancellationToken cancellationToken)
     {
@@ -59,49 +55,20 @@ public sealed partial class MaiaOpponent(EnginePool pool, IChessRules rules, ILo
             return new StrengthNotOffered(strength);
         }
 
-        var loaded = rules.Load(StandardStartingFen, moves);
-        if (loaded is InvalidMoveInHistory invalid)
+        var rating = strength.ToString(CultureInfo.InvariantCulture);
+        var result = await LegalMoveSearch.FindAsync(
+            pool, kind: EngineKind, engineName: EngineName, role: "The opponent", rules, moves, (engine, token) => ConfigureAsync(engine, rating, token), OneEvaluation, logger, cancellationToken);
+        return result switch
         {
-            return invalid;
-        }
-
-        var game = loaded is GameLoaded { Game: var rebuilt }
-            ? rebuilt
-            : throw new UnreachableException("The standard starting position was refused.");
-        if (game.Status is not Ongoing)
-        {
-            return new GameAlreadyOver(game.Status);
-        }
-
-        // Configuration that leaves the kind out, as the API tests do, is a
-        // failure to report, like any other reason Maia cannot answer.
-        if (!pool.IsConfigured(EngineKind))
-        {
-            return new OpponentFailed($"No engine kind named \"{EngineKind}\" is configured.");
-        }
-
-        try
-        {
-            return await pool.RunAsync(EngineKind, lease => AskAsync(lease, game, moves, strength, cancellationToken), cancellationToken);
-        }
-        // EngineUnavailableException: no process could be had (Maia is not
-        // installed, say, or every process is busy). UciEngineException: the
-        // process timed out or ended. InvalidOperationException, which
-        // includes ObjectDisposedException: the process had become unusable,
-        // or the pool is stopping. Cancellation by the caller is not caught.
-        catch (Exception e) when (e is EngineUnavailableException or UciEngineException or InvalidOperationException)
-        {
-            LogUnavailable(logger, e);
-            return new OpponentFailed($"The opponent did not answer: {e.Message}");
-        }
+            EngineMove { Uci: var move } => new OpponentMove(move),
+            InvalidMoveInHistory invalid => invalid,
+            GameAlreadyOver over => over,
+            EngineFailed { Reason: var reason } => new OpponentFailed(reason),
+        };
     }
 
-    private async Task<OpponentReply> AskAsync(
-        EngineLease lease, IChessGame game, IReadOnlyList<string> moves, int strength, CancellationToken cancellationToken)
+    private static async Task ConfigureAsync(UciEngine engine, string rating, CancellationToken cancellationToken)
     {
-        var engine = lease.Engine;
-        var rating = strength.ToString(CultureInfo.InvariantCulture);
-
         // SelfElo is the rating of the side to move, Maia's own; OppoElo is
         // its opponent's. Both are the chosen strength: Maia then plays as
         // that rating against someone of the same rating.
@@ -109,48 +76,5 @@ public sealed partial class MaiaOpponent(EnginePool pool, IChessRules rules, ILo
         await engine.SetOptionAsync("OppoElo", rating, cancellationToken);
         await engine.SetOptionAsync("Temperature", SamplingTemperature, cancellationToken);
         await engine.SetOptionAsync("MultiPV", CandidateLines, cancellationToken);
-
-        SearchResult answer;
-        try
-        {
-            answer = await engine.SearchAsync(UciPosition.StartingPosition(moves), OneEvaluation, cancellationToken);
-        }
-        catch (UciProtocolException)
-        {
-            return Fault(lease, engineMove: null, whenNoMove: "(bestmove with no move)");
-        }
-
-        // LEARN: A `when` clause on a switch arm is a case guard, like a
-        // Java 21 `case BestMove b when ...`: the arm matches only if the type
-        // pattern matches and the condition holds; otherwise the next arm is
-        // tried. The compiler still checks that the arms cover every case of
-        // the union, counting the unguarded BestMove arm.
-        return answer switch
-        {
-            BestMove { Move: var move } when IsLegal(game, move) => new OpponentMove(move),
-            BestMove { Move: var move } => Fault(lease, move),
-            NoLegalMove => Fault(lease, engineMove: null),
-        };
     }
-
-    private static bool IsLegal(IChessGame game, string move) =>
-        game.LegalMoves().Any(legal => legal.Uci == move);
-
-    // Logs the engine's move, made safe and cut short, or `whenNoMove` when
-    // it gave none.
-    private OpponentFailed Fault(EngineLease lease, string? engineMove, string whenNoMove = "(no move)")
-    {
-        var reply = engineMove is null
-            ? whenNoMove
-            : UciText.ForLog(engineMove.Length > LoggedReplyLength ? engineMove[..LoggedReplyLength] + "..." : engineMove);
-        LogFault(logger, lease.Engine.ProcessId, reply);
-        lease.ReportBroken();
-        return new OpponentFailed("The opponent answered with something that is not a legal move in the position.");
-    }
-
-    [LoggerMessage(Level = LogLevel.Error, Message = "Engine fault: Maia process {ProcessId} replied {Reply}, which is not a legal move in the position it was sent; the reply was not used and the process will be replaced")]
-    private static partial void LogFault(ILogger logger, int processId, string reply);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The opponent could not be asked for a move")]
-    private static partial void LogUnavailable(ILogger logger, Exception exception);
 }

@@ -9,6 +9,7 @@ A web app that teaches casual chess players to play better: practise against a h
 - Front end: Next.js, with Bun for installs and scripts.
 - Back end: C# on .NET, with PostgreSQL.
 - Opponent: Maia, a neural network trained to play like people of a given rating.
+- Hints: Fairy-Stockfish, a classical chess engine, at full strength.
 
 ## Run locally
 
@@ -124,15 +125,39 @@ On an Apple Silicon Mac with a fast connection it took 30 to 40 seconds and left
 
 The API runs Maia as a child process, the kind named `maia` in the engine pool (`backend/src/ChessAscent.Api/appsettings.json`), and looks for it in `engines/maia/` at the repository root, unless `CHESS_ASCENT_ENGINES_DIR` says otherwise. (It finds the root as three levels above its content root, which is the API's project directory when it is started with `dotnet run`. That default applies only when the API runs from its project directory in a checkout. Run any other way, for example as a published application, it stops at start-up with a message until `CHESS_ASCENT_ENGINES_DIR` is set, or the `maia` kind's paths are configured directly.) Maia reads its weights from the local cache only, with the Hugging Face library set offline, and makes no network calls once installed. Without Maia installed the API still starts, `/health/ready` answers 503 and names the `maia` kind in the log, and asking the opponent for a move fails with a reason. The API tries three times to start Maia, so after installing it, restart the API.
 
-Each kind of engine is configured under `EnginePool:Kinds:<name>` (`backend/src/ChessAscent.Api/Engine/EnginePoolOptions.cs` lists every setting). An engine starts with an environment of its own, not the API's: the API's environment holds secrets such as the database connection string, and an engine is a third-party program. That keeps them from reaching the engine by accident, through a library that logs or reports its environment. It is not a sandbox: an engine runs as the API's own user, can read what that user can read, and has the network while the API runs, so a deployment that must not trust its engines runs them as another user or in a container of their own. A kind lists the names of the API's variables to copy (`CopyEnvironment`) and the variables to set to given values (`SetEnvironment`); the engine gets exactly those. With neither, its environment is empty. Maia gets three: `HF_HOME` (where its weights are), `HF_HUB_OFFLINE=1` and `OMP_NUM_THREADS=1` (one thread). Give an engine program as a full path: a bare name is looked up with the API's own `PATH`, not the engine's.
+The hint engine is Fairy-Stockfish 14, a chess engine derived from Stockfish, run as a separate program that the API asks for the best move in the position. The project publishes no macOS program, so one script builds it from source, on macOS or Linux:
 
-`dotnet test` never starts Maia: the opponent's tests use a fake engine. One test, run only when asked for, uses the real engine. With Maia installed and Docker running, from `backend/`:
+```sh
+scripts/setup-fairy-stockfish.sh
+```
+
+It needs git, make and a C++ compiler already on the machine (on macOS the Command Line Tools, `xcode-select --install`; on Linux `g++`), and stops with a message naming whichever is missing; it never installs anything system-wide. Into `engines/fairy_stockfish/` at the repository root (or `$CHESS_ASCENT_ENGINES_DIR/fairy_stockfish`), it:
+
+- fetches the source at the commit of the release tag `fairy_sf_14` into `source/`, and checks that the checkout is at that commit;
+- builds it for this machine with the project's own Makefile (Apple Silicon, x86-64 or 64-bit ARM). Newer versions of clang, Apple's among them, reject one flag that the Makefile adds for clang, `-fexperimental-new-pass-manager`; where the compiler rejects it, the script removes that one line of the Makefile. The engine's code is not changed;
+- checks that the new program answers a UCI handshake, started as the API starts it, and only then puts it in place as `fairy-stockfish`; a program that fails the check is removed, and the one already there kept.
+
+On an Apple Silicon Mac it took about 9 seconds and left 6 MB (the program is under 1 MB). Running it again keeps the source, builds again, and needs no network. Delete `engines/fairy_stockfish/` to uninstall.
+
+The API runs it as the engine-pool kind `fairy_stockfish`, found in the engines directory the same way as Maia. Every hint sets one search thread, full strength (`Skill Level` 20, `UCI_LimitStrength` off) and three candidate lines (`MultiPV` 3), clears the engine's hash table, and searches to depth 12, never for a time, so the same game always gets the same hint. The engine is sent only games the API's own chess rules have checked, never a finished one, and a reply that is not a legal move is discarded, logged and the process replaced: given an illegal move it stops reading without a word and can answer for the wrong side, and some malformed positions crash it. Without it installed the API still starts, `/health/ready` answers 503, and asking for a hint fails with a reason. The API tries three times to start it, so after installing it, restart the API.
+
+Each kind of engine is configured under `EnginePool:Kinds:<name>` (`backend/src/ChessAscent.Api/Engine/EnginePoolOptions.cs` lists every setting). An engine starts with an environment of its own, not the API's: the API's environment holds secrets such as the database connection string, and an engine is a third-party program. That keeps them from reaching the engine by accident, through a library that logs or reports its environment. It is not a sandbox: an engine runs as the API's own user, can read what that user can read, and has the network while the API runs, so a deployment that must not trust its engines runs them as another user or in a container of their own. A kind lists the names of the API's variables to copy (`CopyEnvironment`) and the variables to set to given values (`SetEnvironment`); the engine gets exactly those. With neither, its environment is empty. Maia gets three: `HF_HOME` (where its weights are), `HF_HUB_OFFLINE=1` and `OMP_NUM_THREADS=1` (one thread). Fairy-Stockfish gets none: it reads no environment variable. Give an engine program as a full path: a bare name is looked up with the API's own `PATH`, not the engine's.
+
+`dotnet test` never starts Maia or Fairy-Stockfish: their tests use a fake engine. For each, tests run only when asked for use the real engine. With Maia installed and Docker running, from `backend/`:
 
 ```sh
 dotnet test --project tests/ChessAscent.Api.Tests --explicit only --filter-trait "Category=Maia"
 ```
 
 It asks for a reply at each strength (600, 800, 1000, 1200 and 1400) through 30 half-moves of a game (the opponent plays both sides), and checks that every reply is legal. It never checks which move it is: Maia chooses at random among the moves a player of that rating might make, with a new random seed each time it starts.
+
+With Fairy-Stockfish installed and Docker running, from `backend/`:
+
+```sh
+dotnet test --project tests/ChessAscent.Api.Tests --explicit only --filter-trait "Category=FairyStockfish"
+```
+
+It asks for a hint in three tactical positions from test games, twice each with another game's hint in between, and checks that the hint is the known best move every time. Unlike Maia, Fairy-Stockfish at full strength and a fixed depth is deterministic.
 
 ## Repository layout
 
