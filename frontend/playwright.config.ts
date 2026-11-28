@@ -57,7 +57,10 @@ export default defineConfig({
         Opponent__UseFirstLegalMove: 'true',
         // The API logs to standard output, which Playwright drops; from
         // warnings up it writes to standard error instead, which Playwright
-        // shows, so the cause of a failure is in the run's output.
+        // shows, so the cause of a failure is in the run's output. Every run
+        // shows the engine pool's warnings that Maia and Fairy-Stockfish
+        // could not start, and its errors that it gave up on them: the
+        // engines directory is empty on purpose.
         Logging__Console__LogToStandardErrorThreshold: 'Warning',
       },
       ...startedHere,

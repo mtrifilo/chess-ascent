@@ -47,9 +47,15 @@ compose() {
 # One run at a time per Compose project: the clean-up below deletes the
 # project's database, which would pull it from under another run. Creating a
 # directory either succeeds or fails as one step, so of two runs that start
-# together only one gets the lock; it is removed when the run ends.
-LOCK="${TMPDIR:-/tmp}/chess-ascent-e2e-$PROJECT.lock"
-if ! mkdir "$LOCK" 2>/dev/null; then
+# together only one gets the lock; it is removed when the run ends. It is
+# under /tmp rather than $TMPDIR, which differs between processes on macOS,
+# because every run that shares the Docker daemon must find the same lock.
+LOCK="/tmp/chess-ascent-e2e-$PROJECT.lock"
+if ! mkdir "$LOCK"; then
+  if [ ! -d "$LOCK" ]; then
+    echo "e2e: could not create the lock $LOCK (see the error above)." >&2
+    exit 1
+  fi
   echo "e2e: another end-to-end run is using the Compose project $PROJECT ($LOCK exists)." >&2
   echo "e2e: wait for it to end, or set CHESS_ASCENT_E2E_COMPOSE_PROJECT (and the ports) to run beside it." >&2
   echo "e2e: if no run is using it (a run was killed), remove $LOCK and run: docker compose --project-name $PROJECT down --volumes" >&2
