@@ -1,11 +1,7 @@
 using System.Net;
 using ChessAscent.Api.Features.Games;
-using ChessAscent.Api.Opponents;
 using ChessAscent.Api.Security;
 using ChessAscent.Api.Tests.Features.Accounts;
-using Microsoft.AspNetCore.TestHost;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Net.Http.Headers;
 using static ChessAscent.Api.Tests.Features.Games.GameRequests;
 using AccountData = ChessAscent.Api.Tests.Features.Accounts.Accounts;
@@ -63,29 +59,38 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
     }
 
     // As Black against the computer, which made the first move when the
-    // game was created; resigning does not ask it for anything.
+    // game was created, after a hint: resigning asks neither engine for
+    // anything, and leaves the moves and the hint count as they were.
     [Fact]
-    public async Task ResigningAGameAgainstTheComputerGivesTheComputerTheWin()
+    public async Task ResigningAGameAgainstTheComputerGivesTheComputerTheWinAndKeepsTheHintCount()
     {
         var opponent = FakeOpponent.Playing("e2e4");
-        using var api = factory.WithWebHostBuilder(host => host.ConfigureTestServices(services =>
-        {
-            services.RemoveAll<IOpponent>();
-            services.AddSingleton<IOpponent>(opponent);
-        }));
+        var hints = FakeHintProvider.Hinting("e7e5");
+        using var api = factory.WithFakes(opponent, hints);
         using var client = api.CreateClient();
         await client.RegisterNewAsync(AccountData.NewEmail());
         var game = await client.CreateComputerGameAsync("black");
+        await client.HintAsync(game);
+        var before = await client.ReadGameAsync(game.Id);
 
         using var response = await client.PostResignAsync(game.Id);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var resigned = await response.ReadGameAsync();
-        resigned.Opponent.Should().Be(new OpponentResponse(OpponentKind.Computer, 800));
-        resigned.Result.Should().Be(GameResult.WhiteWins);
-        resigned.EndReason.Should().Be(GameEndReason.Resignation);
-        resigned.Moves.Should().Equal(new MoveResponse(1, "e2e4", "e4"));
+        before.HintCount.Should().Be(1);
+        before.Moves.Should().Equal(new MoveResponse(1, "e2e4", "e4"));
+        resigned.Should().BeEquivalentTo(
+            before with
+            {
+                Status = GameProgress.Finished,
+                Result = GameResult.WhiteWins,
+                EndReason = GameEndReason.Resignation,
+                LegalMoves = new Dictionary<string, IReadOnlyList<string>>(),
+                Promotions = [],
+            },
+            InStrictOrder);
         opponent.Calls.Should().HaveCount(1);
+        hints.Calls.Should().HaveCount(1);
     }
 
     // A game that ended by checkmate, and one already resigned, as when the
@@ -192,13 +197,16 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
     }
 
     // Each game the move endpoint's tests break by writing moves straight to
-    // the table is refused with 500 before the resignation is saved.
+    // the table is refused with 500, and logged, before the resignation is
+    // saved.
     [Theory]
     [MemberData(nameof(GameEndpointsTests.BrokenSavedGames), MemberType = typeof(GameEndpointsTests))]
     public async Task AnOngoingGameWhoseSavedFormIsBrokenAnswers500AndIsNotResigned(string sql, int rows, string reason)
     {
-        _ = reason;
-        using var client = await factory.SignedInClientAsync();
+        var logs = new CapturingLoggerProvider();
+        using var logged = factory.WithFakes(new FakeOpponent(), logs: logs);
+        using var client = logged.CreateClient();
+        await client.RegisterNewAsync(AccountData.NewEmail());
         var game = await client.CreateGameAsync();
         (await postgres.ExecuteAsync(sql, game.Id)).Should().Be(rows);
         var saved = await postgres.SavedRowsAsync(game.Id);
@@ -207,6 +215,8 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
 
         response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
         (await response.ReadProblemAsync()).Detail.Should().BeNull();
+        logs.Messages.Where(message => message.StartsWith("Saved game", StringComparison.Ordinal))
+            .Should().Equal($"Saved game {game.Id} cannot be rebuilt: {reason}.");
         (await postgres.SavedRowsAsync(game.Id)).Should().Be(saved);
     }
 }

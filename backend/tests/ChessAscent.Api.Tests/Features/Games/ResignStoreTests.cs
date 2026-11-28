@@ -1,4 +1,3 @@
-using System.Data.Common;
 using ChessAscent.Api.Database;
 using ChessAscent.Api.Features.Games;
 using ChessAscent.Chess;
@@ -12,19 +11,20 @@ namespace ChessAscent.Api.Tests.Features.Games;
 // append to the same game.
 public sealed class ResignStoreTests(ApiFactory factory, PostgresFixture postgres) : IClassFixture<ApiFactory>
 {
-    private static readonly TimeSpan PatienceForTheLockWait = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(10);
 
     private static CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     [Theory]
     [InlineData(Side.White, GameResult.BlackWins)]
     [InlineData(Side.Black, GameResult.WhiteWins)]
-    public async Task ResignEndsTheGameAsALossForThePlayersSideAndKeepsItsMoves(Side playerSide, GameResult result)
+    public async Task ResignEndsTheGameAsALossForThePlayersSideAndKeepsItsMovesAndHintCount(Side playerSide, GameResult result)
     {
         var owner = await factory.CreateOwnerAsync();
         var game = await factory.CreateGameAsync(owner, playerSide: playerSide);
         var (moves, status) = GameData.Rules.NewGame().Play("e2e4", "e7e5");
         await factory.AppendAsync(owner, game.Id, 1, moves, status);
+        (await factory.CountHintAsync(owner, game.Id, 3)).Value.Should().Be(new HintCounted());
         var before = await factory.LoadGameAsync(owner, game.Id);
 
         var outcome = await factory.WithStoreAsync(store => store.ResignAsync(owner, game.Id, Cancellation));
@@ -35,6 +35,7 @@ public sealed class ResignStoreTests(ApiFactory factory, PostgresFixture postgre
         saved.Result.Should().Be(result);
         saved.EndReason.Should().Be(GameEndReason.Resignation);
         saved.Moves.Should().Equal(before!.Moves);
+        saved.HintCount.Should().Be(1);
         saved.UpdatedAt.Should().Be(resigned.UpdatedAt).And.BeOnOrAfter(before.UpdatedAt);
         saved.CreatedAt.Should().Be(before.CreatedAt);
     }
@@ -73,8 +74,8 @@ public sealed class ResignStoreTests(ApiFactory factory, PostgresFixture postgre
     // The player has Black, so a resignation is a win for White, and a mate
     // by Black's Qh4 a win for Black: whichever finished the game shows.
     // The append is held just after its update has locked the game's row,
-    // and let go only once PostgreSQL reports the resignation waiting for
-    // that lock.
+    // and let go only once PostgreSQL reports the resignation's update
+    // waiting for that lock.
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -87,21 +88,19 @@ public sealed class ResignStoreTests(ApiFactory factory, PostgresFixture postgre
         await factory.AppendAsync(owner, game.Id, 1, opening, afterOpening);
         var (appendMoves, appendStatus) = appendMates ? board.Play("d8h4") : board.Play("a7a6", "a2a3");
 
-        var hold = new HoldAfterTheGameUpdate();
+        var hold = HoldTheFirstCommand.GameUpdates();
         await using var appendContext = NewContext(hold);
         await using var resignContext = NewContext();
-        await resignContext.Database.OpenConnectionAsync(Cancellation);
-        var resignBackend = ((NpgsqlConnection)resignContext.Database.GetDbConnection()).ProcessID;
 
         var append = Task.Run(
             () => new GameStore(appendContext, TimeProvider.System)
                 .AppendMovesAsync(owner, game.Id, 4, appendMoves, appendStatus, Cancellation),
             Cancellation);
-        await hold.Updated.WaitAsync(PatienceForTheLockWait, Cancellation);
+        await hold.FirstRan.WaitAsync(Patience, Cancellation);
         var resign = Task.Run(
             () => new GameStore(resignContext, TimeProvider.System).ResignAsync(owner, game.Id, Cancellation),
             Cancellation);
-        var resignWaitedOnTheLock = await WaitsOnALockAsync(resignBackend);
+        var resignWaitedOnTheLock = await AGameUpdateWaitsOnAsync(hold.HeldBackend);
         hold.Release();
         var appendOutcome = await append;
         var resignOutcome = await resign;
@@ -126,9 +125,9 @@ public sealed class ResignStoreTests(ApiFactory factory, PostgresFixture postgre
         }
     }
 
-    // The resignation's update is held uncommitted, in a transaction the
-    // test began, so the append meets its row lock and waits; once the
-    // resignation commits, the append finds the game over.
+    // The resignation is held just after its update has locked the game's
+    // row, so the append's update waits for that lock; once the resignation
+    // commits, the append finds the game over.
     [Fact]
     public async Task AnAppendThatWaitsOnAResignationIsRefusedAndSavesNothing()
     {
@@ -139,29 +138,27 @@ public sealed class ResignStoreTests(ApiFactory factory, PostgresFixture postgre
         await factory.AppendAsync(owner, game.Id, 1, opening, afterOpening);
         var (appendMoves, appendStatus) = board.Play("e7e5");
 
-        await using var resignContext = NewContext();
+        var hold = HoldTheFirstCommand.GameUpdates();
+        await using var resignContext = NewContext(hold);
         await using var appendContext = NewContext();
-        await appendContext.Database.OpenConnectionAsync(Cancellation);
-        var appendBackend = ((NpgsqlConnection)appendContext.Database.GetDbConnection()).ProcessID;
 
-        GameResigned resigned;
-        await using (var transaction = await resignContext.Database.BeginTransactionAsync(Cancellation))
-        {
-            var resignOutcome = await new GameStore(resignContext, TimeProvider.System).ResignAsync(owner, game.Id, Cancellation);
-            resigned = resignOutcome.Value.Should().BeOfType<GameResigned>().Subject;
-            var append = Task.Run(
-                () => new GameStore(appendContext, TimeProvider.System)
-                    .AppendMovesAsync(owner, game.Id, 2, appendMoves, appendStatus, Cancellation),
-                Cancellation);
-            var appendWaitedOnTheLock = await WaitsOnALockAsync(appendBackend);
-            await transaction.CommitAsync(Cancellation);
-            var appendOutcome = await append;
-
-            appendWaitedOnTheLock.Should().BeTrue("the append must have waited for the resignation's row lock");
-            appendOutcome.Value.Should().Be(new GameFinished());
-        }
-
+        var resign = Task.Run(
+            () => new GameStore(resignContext, TimeProvider.System).ResignAsync(owner, game.Id, Cancellation),
+            Cancellation);
+        await hold.FirstRan.WaitAsync(Patience, Cancellation);
+        var append = Task.Run(
+            () => new GameStore(appendContext, TimeProvider.System)
+                .AppendMovesAsync(owner, game.Id, 2, appendMoves, appendStatus, Cancellation),
+            Cancellation);
+        var appendWaitedOnTheLock = await AGameUpdateWaitsOnAsync(hold.HeldBackend);
+        hold.Release();
+        var resignOutcome = await resign;
+        var appendOutcome = await append;
         var saved = await factory.LoadGameAsync(owner, game.Id);
+
+        appendWaitedOnTheLock.Should().BeTrue("the append must have waited for the resignation's row lock");
+        var resigned = resignOutcome.Value.Should().BeOfType<GameResigned>().Subject;
+        appendOutcome.Value.Should().Be(new GameFinished());
         saved!.Moves.Should().Equal(opening);
         saved.Status.Should().Be(GameProgress.Finished);
         saved.Result.Should().Be(GameResult.BlackWins);
@@ -175,19 +172,25 @@ public sealed class ResignStoreTests(ApiFactory factory, PostgresFixture postgre
             .AddInterceptors(interceptors)
             .Options);
 
-    // Asks PostgreSQL, from a connection of its own, whether the backend is
-    // blocked waiting for a lock, polling until it is or patience runs out.
-    private async Task<bool> WaitsOnALockAsync(int backend)
+    // Asks PostgreSQL, from a connection of its own, whether an update of a
+    // game is blocked by the backend that holds the first update's lock,
+    // polling until one is or patience runs out.
+    private async Task<bool> AGameUpdateWaitsOnAsync(int heldBackend)
     {
         await using var connection = new NpgsqlConnection(postgres.ConnectionString);
         await connection.OpenAsync(Cancellation);
-        await using var command = new NpgsqlCommand("SELECT wait_event_type FROM pg_stat_activity WHERE pid = @pid", connection);
-        command.Parameters.AddWithValue("pid", backend);
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT count(*) FROM pg_stat_activity
+            WHERE @held = ANY(pg_blocking_pids(pid)) AND query LIKE 'UPDATE "Games"%'
+            """,
+            connection);
+        command.Parameters.AddWithValue("held", heldBackend);
 
-        var giveUpAt = DateTime.UtcNow + PatienceForTheLockWait;
+        var giveUpAt = DateTime.UtcNow + Patience;
         while (DateTime.UtcNow < giveUpAt)
         {
-            if (await command.ExecuteScalarAsync(Cancellation) is "Lock")
+            if (await command.ExecuteScalarAsync(Cancellation) is > 0L)
             {
                 return true;
             }
@@ -196,31 +199,5 @@ public sealed class ResignStoreTests(ApiFactory factory, PostgresFixture postgre
         }
 
         return false;
-    }
-
-    // Holds the append once its UPDATE of the game has run, which is when it
-    // holds the game's row lock, until the test releases it. A hold that is
-    // never released ends after PatienceForTheLockWait, so a broken test
-    // fails instead of hanging.
-    private sealed class HoldAfterTheGameUpdate : DbCommandInterceptor
-    {
-        private readonly TaskCompletionSource _updated = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public Task Updated => _updated.Task;
-
-        public void Release() => _released.TrySetResult();
-
-        public override async ValueTask<int> NonQueryExecutedAsync(
-            DbCommand command, CommandExecutedEventData eventData, int result, CancellationToken cancellationToken = default)
-        {
-            if (command.CommandText.StartsWith("UPDATE \"Games\"", StringComparison.Ordinal))
-            {
-                _updated.TrySetResult();
-                await Task.WhenAny(_released.Task, Task.Delay(PatienceForTheLockWait, cancellationToken));
-            }
-
-            return result;
-        }
     }
 }
