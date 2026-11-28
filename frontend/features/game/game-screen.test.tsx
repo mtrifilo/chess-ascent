@@ -149,7 +149,7 @@ describe('GameScreen', () => {
     expect(screen.queryByText(/Maia/)).not.toBeInTheDocument()
   })
 
-  it('has no Hint control', async () => {
+  it('has no Hint control in a game where the player moves both sides', async () => {
     answer({ [GAME_PATH]: ok(game()) })
     await renderGame()
 
@@ -1465,7 +1465,7 @@ describe('GameScreen: a hint', () => {
     answer({ [GAME_PATH]: ok(GAME) })
     await renderGame()
 
-    expect(control()).toBeEnabled()
+    expect(control()).not.toHaveAttribute('aria-disabled', 'true')
     expect(boardMarks()).toEqual(NO_MARKS)
     expect(screen.getByText('White to move · move 2')).toBeInTheDocument()
     expect(screen.queryByText('Hint used')).not.toBeInTheDocument()
@@ -1482,7 +1482,9 @@ describe('GameScreen: a hint', () => {
     fireEvent.click(control())
 
     // Waiting: the control cannot be pressed again, and nothing is marked.
-    await waitFor(() => expect(control()).toBeDisabled())
+    await waitFor(() =>
+      expect(control()).toHaveAttribute('aria-disabled', 'true')
+    )
     expect(boardMarks()).toEqual(NO_MARKS)
     expect(sentHints(sent)).toEqual([{ halfMoveNumber: 3 }])
 
@@ -1491,7 +1493,7 @@ describe('GameScreen: a hint', () => {
     expect(await screen.findByText(PIECE_TEXT)).toBeInTheDocument()
     expect(screen.queryByText('White to move · move 2')).toBeNull()
     expect(boardMarks()).toEqual({ hintSquares: ['g1'], arrows: undefined })
-    expect(control('Show move')).toBeEnabled()
+    expect(control('Show move')).not.toHaveAttribute('aria-disabled', 'true')
   })
 
   it('shows the move on the second press without asking again, and never plays it', async () => {
@@ -1508,7 +1510,7 @@ describe('GameScreen: a hint', () => {
       arrows: [{ from: 'g1', to: 'f3' }],
     })
     // Shown in full, the hint rests until the player moves.
-    expect(control()).toBeDisabled()
+    expect(control()).toHaveAttribute('aria-disabled', 'true')
     expect(sentHints(sent)).toHaveLength(1)
     // The player still makes the move: the board shows the same position
     // and still lets them move.
@@ -1570,7 +1572,7 @@ describe('GameScreen: a hint', () => {
     await waitFor(() => expect(board.props!.fen).toBe(MOVED_ON.fen))
     expect(screen.queryByText(/^Hint:/)).toBeNull()
     expect(boardMarks()).toEqual(NO_MARKS)
-    expect(control()).toBeEnabled()
+    expect(control()).not.toHaveAttribute('aria-disabled', 'true')
     expect(screen.getByText('Hint used')).toBeInTheDocument()
   })
 
@@ -1598,7 +1600,7 @@ describe('GameScreen: a hint', () => {
       expect(board.props!.fen).toBe(GAME.fen)
       expect(screen.queryByText(PIECE_TEXT)).toBeNull()
       expect(boardMarks()).toEqual(NO_MARKS)
-      expect(control()).toBeEnabled()
+      expect(control()).not.toHaveAttribute('aria-disabled', 'true')
     })
   })
 
@@ -1613,7 +1615,7 @@ describe('GameScreen: a hint', () => {
     await waitFor(() => expect(board.props!.fen).toBe(MOVED_ON.fen))
     expect(screen.queryByText(PIECE_TEXT)).toBeNull()
     expect(boardMarks()).toEqual(NO_MARKS)
-    expect(control()).toBeEnabled()
+    expect(control()).not.toHaveAttribute('aria-disabled', 'true')
   })
 
   it('clears, and is no longer offered, when the game ends', async () => {
@@ -1653,17 +1655,105 @@ describe('GameScreen: a hint', () => {
     })
     const { queryClient } = await renderGame()
     fireEvent.click(control())
-    await waitFor(() => expect(control()).toBeDisabled())
+    await waitFor(() =>
+      expect(control()).toHaveAttribute('aria-disabled', 'true')
+    )
 
     movedOn = true
     act(() => moveOn(queryClient))
     await waitFor(() => expect(board.props!.fen).toBe(MOVED_ON.fen))
     settle(ok(HINT))
     // The control is ready again once the answer has arrived.
-    await waitFor(() => expect(control()).toBeEnabled())
+    await waitFor(() =>
+      expect(control()).not.toHaveAttribute('aria-disabled', 'true')
+    )
 
     expect(screen.queryByText(/^Hint:/)).toBeNull()
     expect(boardMarks()).toEqual(NO_MARKS)
+  })
+
+  it('sits first in the controls, before Resign and Flip board', async () => {
+    answer({ [GAME_PATH]: ok(GAME) })
+    await renderGame()
+
+    const row = control().parentElement!
+    expect(
+      within(row)
+        .getAllByRole('button')
+        .map(button => button.textContent || button.getAttribute('aria-label'))
+    ).toEqual(['Hint', 'Resign', 'Flip board'])
+  })
+
+  it('refuses a second press while the API answers, and keeps focus', async () => {
+    const sent = answer({
+      [GAME_PATH]: ok(GAME),
+      [HINTS_PATH]: new Promise<Reply>(() => {}),
+    })
+    await renderGame()
+    control().focus()
+
+    fireEvent.click(control())
+    await waitFor(() =>
+      expect(control()).toHaveAttribute('aria-disabled', 'true')
+    )
+    fireEvent.click(control())
+
+    expect(sentHints(sent)).toHaveLength(1)
+    expect(control()).toHaveFocus()
+  })
+
+  describe('and the resign confirmation', () => {
+    const QUESTION = 'Resign this game? This cannot be undone.'
+
+    it('keeps the hint, unseen, while the confirmation is open, and shows it again on Cancel', async () => {
+      const sent = answer({ [GAME_PATH]: ok(GAME), [HINTS_PATH]: ok(HINT) })
+      await renderGame()
+      await revealPiece()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Resign' }))
+
+      expect(screen.getByRole('group', { name: QUESTION })).toBeInTheDocument()
+      expect(screen.queryByText(PIECE_TEXT)).toBeNull()
+      expect(screen.getByText('White to move · move 2')).toBeInTheDocument()
+      expect(boardMarks()).toEqual(NO_MARKS)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+      expect(screen.getByText(PIECE_TEXT)).toBeInTheDocument()
+      expect(boardMarks()).toEqual({ hintSquares: ['g1'], arrows: undefined })
+      expect(control('Show move')).not.toHaveAttribute('aria-disabled', 'true')
+      expect(sentHints(sent)).toHaveLength(1)
+    })
+
+    it('clears the hint, and the control goes, once the game is resigned', async () => {
+      answer({
+        [GAME_PATH]: ok(GAME),
+        [HINTS_PATH]: ok(HINT),
+        [RESIGN_PATH]: ok({
+          ...GAME,
+          status: 'finished',
+          result: 'blackWins',
+          endReason: 'resignation',
+          legalMoves: {},
+        }),
+      })
+      await renderGame()
+      await revealPiece()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Resign' }))
+      fireEvent.click(
+        within(screen.getByRole('group', { name: QUESTION })).getByRole(
+          'button',
+          { name: 'Resign' }
+        )
+      )
+
+      await screen.findByText('You resigned.')
+      expect(screen.queryByText(/^Hint:/)).toBeNull()
+      expect(boardMarks()).toEqual(NO_MARKS)
+      expect(screen.queryByRole('button', { name: 'Hint' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Show move' })).toBeNull()
+    })
   })
 
   describe("cannot be used when it is not the player's turn", () => {
@@ -1681,7 +1771,7 @@ describe('GameScreen: a hint', () => {
           'Maia 800 is thinking'
         )
       )
-      expect(control()).toBeDisabled()
+      expect(control()).toHaveAttribute('aria-disabled', 'true')
     })
 
     it('while a promotion waits for its piece', async () => {
@@ -1691,14 +1781,14 @@ describe('GameScreen: a hint', () => {
       playOnBoard('e7', 'e8')
 
       expect(screen.getByRole('group')).toBeInTheDocument()
-      expect(control()).toBeDisabled()
+      expect(control()).toHaveAttribute('aria-disabled', 'true')
     })
 
     it('while the computer is to move in the game the API returns', async () => {
       answer({ [GAME_PATH]: ok({ ...AFTER_E4, opponent: MAIA_800 }) })
       await renderGame()
 
-      expect(control()).toBeDisabled()
+      expect(control()).toHaveAttribute('aria-disabled', 'true')
     })
   })
 
@@ -1725,7 +1815,7 @@ describe('GameScreen: a hint', () => {
         fireEvent.click(control())
 
         await waitFor(() => expect(console.error).toHaveBeenCalled())
-        expect(control()).toBeEnabled()
+        expect(control()).not.toHaveAttribute('aria-disabled', 'true')
         expect(sentHints(sent)).toHaveLength(1)
         expect(screen.getByText('White to move · move 2')).toBeInTheDocument()
         expect(screen.queryByRole('alert')).toBeNull()
@@ -1746,7 +1836,7 @@ describe('GameScreen: a hint', () => {
       fireEvent.click(control())
 
       await waitFor(() => expect(console.error).toHaveBeenCalled())
-      expect(control()).toBeEnabled()
+      expect(control()).not.toHaveAttribute('aria-disabled', 'true')
       expect(sentHints(sent)).toHaveLength(1)
     })
 
@@ -1765,7 +1855,7 @@ describe('GameScreen: a hint', () => {
       expect(calls(sent)).toEqual([`POST ${HINTS_PATH}`, `GET ${GAME_PATH}`])
       expect(screen.queryByText(/^Hint:/)).toBeNull()
       expect(boardMarks()).toEqual(NO_MARKS)
-      expect(control()).toBeEnabled()
+      expect(control()).not.toHaveAttribute('aria-disabled', 'true')
     })
   })
 })

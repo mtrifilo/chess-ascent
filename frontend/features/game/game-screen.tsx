@@ -14,6 +14,7 @@ import {
 import { useNavItemForPage } from '@/components/layout/page-nav-item'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 import { ColourSwatch } from './colour-swatch'
 import { useComputerThinking } from './computer-thinking'
@@ -122,7 +123,10 @@ function LoadedGame({ game }: { game: Game }) {
   // waits for its piece.
   const playersTurn =
     !readOnly && !promotion && game.sideToMove === game.playerSide
-  const hint = useHint(game, playersTurn)
+  // While the resign confirmation stands in for the controls, Hint among
+  // them, a hint is kept but not shown, as the confirmation is drawn without
+  // one; Cancel shows it again.
+  const hint = useHint(game, playersTurn && !confirmingResign)
   const hintUsed = hintUsedText(game)
   const failedMove =
     !finished && playMove.isError && playMove.variables.fen === game.fen
@@ -246,12 +250,20 @@ function LoadedGame({ game }: { game: Game }) {
           <div className="flex items-center gap-2 md:order-last md:h-25">
             {/* Only a game against the computer has a hint, and only while
                 it is being played. Once the move is shown the control rests
-                until the player moves. */}
+                until the player moves. A press it cannot act on is refused
+                through aria-disabled rather than `disabled`, so focus stays
+                on it, and it takes the button's disabled look, as the
+                thinking state draws it. */}
             {playsComputer(game) && !finished && (
               <Button
-                className="h-12.75 flex-1 md:h-8 md:flex-none md:px-2"
-                disabled={!hint.canPress}
-                onClick={hint.press}
+                aria-disabled={!hint.canPress}
+                className={cn(
+                  TEXT_CONTROL_CLASS,
+                  'flex-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 md:flex-none'
+                )}
+                onClick={() => {
+                  if (hint.canPress) hint.press()
+                }}
               >
                 {hint.shown?.step === 'piece' ? 'Show move' : 'Hint'}
               </Button>
