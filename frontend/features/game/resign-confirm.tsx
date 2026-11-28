@@ -58,12 +58,13 @@ export function ResignConfirm({
       <p id={questionId} className="text-sm">
         Resign this game? This cannot be undone.
       </p>
-      <div className="flex gap-2">
+      {/* Two equal halves on phones, as drawn, whatever each button's border. */}
+      <div className="grid grid-cols-2 gap-2 md:flex">
         <Button
           ref={cancel}
           variant="outline"
           aria-disabled={resign.isPending}
-          className="h-12.75 flex-1 px-4 md:h-8 md:flex-none md:px-2"
+          className="h-12.75 px-4 md:h-8 md:px-2 md:text-body-s"
           onClick={() => {
             if (!sending.current) onCancel()
           }}
@@ -73,7 +74,7 @@ export function ResignConfirm({
         <Button
           variant="destructive"
           aria-disabled={moveUnderway || resign.isPending}
-          className="h-12.75 flex-1 px-4 md:h-8 md:flex-none md:px-2"
+          className="h-12.75 px-4 md:h-8 md:px-2 md:text-body-s"
           onClick={confirm}
         >
           Resign

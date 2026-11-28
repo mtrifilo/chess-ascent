@@ -189,7 +189,7 @@ function LoadedGame({ game }: { game: Game }) {
                 ref={resignControl}
                 variant="outline"
                 aria-disabled={moveUnderway}
-                className="h-12.75 px-4 md:h-8 md:px-2"
+                className="h-12.75 px-4 md:h-8 md:px-2 md:text-body-s"
                 onClick={() => {
                   if (!moveUnderway) setConfirmingResign(true)
                 }}
