@@ -316,7 +316,6 @@ export interface components {
        *     not show whether the working tree had uncommitted changes.
        */
       commit: null | string
-      builtAt?: string
     }
     /** @description The account that is signed in. */
     CurrentUserResponse: {
