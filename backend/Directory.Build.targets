@@ -1,0 +1,45 @@
+<!--
+  LEARN: Directory.Build.targets is the second half of the parent-POM idea
+  in Directory.Build.props, and the difference between the two is when
+  MSBuild reads them. A project file is not read top to bottom on its own:
+  the SDK wraps it, importing Directory.Build.props near the very start,
+  then the .props files of the NuGet packages the project uses, then the
+  project's own contents, then the packages' .targets files, and
+  Directory.Build.targets near the very end. Properties and items are
+  evaluated in that order, so props is the place for defaults a project or
+  package may override, and targets is the place for the last word: here,
+  removing an item that a package's .props file adds, which a
+  Directory.Build.props would try to remove before it exists. Maven has no
+  equivalent of a file that runs after the child POM. As with the props
+  file, MSBuild imports only the nearest Directory.Build.targets above a
+  project, so a nested one must import this one or lose what it does.
+-->
+<Project>
+
+  <ItemGroup>
+    <!--
+      xunit.v3 depends on Microsoft.Testing.Extensions.Telemetry, which sends
+      usage data to Microsoft from every test run that dotnet test starts,
+      unless the person running it has set an opt-out variable. The package
+      registers itself by adding this item, under this identifier, from its
+      .props file. Microsoft.Testing.Platform.MSBuild writes the items into a
+      generated SelfRegisteredExtensions.cs, which the test executable runs
+      at start-up; without the item, nothing in the executable calls the
+      extension. Its assembly is still copied to the output folder, unused.
+    -->
+    <TestingPlatformBuilderHook Remove="98058041-B5B6-4A75-9834-58E6DF796A22" />
+  </ItemGroup>
+
+  <!--
+    A later version of the package could register under another identifier,
+    which the removal above would miss without a sound. This fails the build
+    instead. It runs once per hook item (the %(...) syntax repeats the task
+    for each), so a project without any, such as the API, does nothing here.
+  -->
+  <Target Name="RefuseTestingPlatformTelemetry" BeforeTargets="BeforeBuild">
+    <Error
+      Condition="'%(TestingPlatformBuilderHook.DisplayName)' == 'Microsoft.Testing.Extensions.Telemetry' Or '%(TestingPlatformBuilderHook.TypeFullName)' == 'Microsoft.Testing.Extensions.Telemetry.TestingPlatformBuilderHook'"
+      Text="Microsoft.Testing.Extensions.Telemetry registers itself as TestingPlatformBuilderHook '%(TestingPlatformBuilderHook.Identity)', which backend/Directory.Build.targets does not remove. Remove that identifier there instead." />
+  </Target>
+
+</Project>
