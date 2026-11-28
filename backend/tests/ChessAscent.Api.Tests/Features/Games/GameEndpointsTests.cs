@@ -111,8 +111,7 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         var read = await client.ReadGameAsync(game.Id);
 
         read.Moves.Select(move => move.San).Should().Contain(["exf6", "O-O-O", "O-O", "gxh8=Q", "bxa1=N"]);
-        read.Moves.Select(move => move.Fen).Should().Equal(
-            GameRequests.SpecialMoves.Select((_, index) => PositionAfter(GameRequests.SpecialMoves[..(index + 1)])));
+        read.Moves.Select(move => move.Fen).Should().Equal(PositionsAfterEachMove(GameRequests.SpecialMoves));
         read.Moves[^1].Fen.Should().Be(read.Fen);
         read.Status.Should().Be(GameProgress.Finished);
         mated.Should().BeEquivalentTo(read, InStrictOrder);
@@ -645,11 +644,18 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         return client;
     }
 
-    // The chess interface's position after playing the moves from the start.
-    private static string PositionAfter(string[] uciMoves) =>
-        GameData.Rules.Load(GameData.StartingFen, uciMoves) switch
+    // The chess interface's position after each of the moves, played one by
+    // one from the start.
+    private static List<string> PositionsAfterEachMove(string[] uciMoves)
+    {
+        var board = GameData.Rules.NewGame();
+        var positions = new List<string>();
+        foreach (var uci in uciMoves)
         {
-            GameLoaded loaded => loaded.Game.Fen,
-            var other => throw new InvalidOperationException($"Expected the moves to load, but got {other.Value}."),
-        };
+            board.Play(uci);
+            positions.Add(board.Fen);
+        }
+
+        return positions;
+    }
 }

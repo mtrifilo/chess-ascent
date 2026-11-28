@@ -2,12 +2,10 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ChessBoardProps } from '@/components/chess-board/chess-board'
-import {
-  PageNavItemProvider,
-  usePageNavItem,
-} from '@/components/layout/page-nav-item'
+import { PageNavItemProvider } from '@/components/layout/page-nav-item'
 import { squaresOf, type Game } from '@/features/game/game-state'
 import { game, START_FEN } from '@/features/game/test-games'
+import { NamedNavItem } from '@/lib/test-support'
 
 import { ReplayScreen } from './replay-screen'
 import { SPECIAL_MOVES_GAME } from './test-replay-game'
@@ -30,11 +28,6 @@ beforeEach(() => {
 
 const MOVES = SPECIAL_MOVES_GAME.moves
 const LAST = MOVES.length
-
-// Shows the navigation item the page names, as the top bar would.
-function NamedNavItem() {
-  return <output aria-label="Highlighted">{usePageNavItem() ?? 'none'}</output>
-}
 
 function renderReplay(replayed: Game = SPECIAL_MOVES_GAME) {
   return render(
@@ -122,38 +115,23 @@ describe('ReplayScreen', () => {
     }
   })
 
-  it('steps through castling on each side, en passant, a promotion and an under-promotion', () => {
-    renderReplay()
-    press('First')
-
-    // The steps after each of those moves, by their notation, show the
-    // position the API answered with for that move.
-    const special = ['exf6', 'O-O-O', 'O-O', 'gxh8=Q', 'bxa1=N']
-    const seen: string[] = []
-    for (let step = 1; step <= LAST; step++) {
-      expectStep(step)
-      if (special.includes(MOVES[step - 1].san)) seen.push(MOVES[step - 1].san)
-      if (step < LAST) press('Next')
-    }
-    expect(seen).toEqual(special)
+  it('replays a game with castling on each side, en passant, a promotion and an under-promotion', () => {
+    // The walk through every step above covers each of these moves.
+    expect(MOVES.map(move => move.san)).toEqual(
+      expect.arrayContaining(['exf6', 'O-O-O', 'O-O', 'gxh8=Q', 'bxa1=N'])
+    )
   })
 
+  // "First" is the position after the first move, not the starting
+  // position: every step is a move the list can mark.
   it('goes to the first move and to the last', () => {
     renderReplay()
 
     press('First')
+    expect(board.props!.fen).not.toBe(START_FEN)
     expectStep(1)
     press('Last')
     expectStep(LAST)
-  })
-
-  it('takes "first" to mean the first move, not the starting position', () => {
-    renderReplay()
-
-    press('First')
-
-    expect(board.props!.fen).not.toBe(START_FEN)
-    expectStep(1)
   })
 
   it('disables the controls that would go past the last move', () => {

@@ -4,6 +4,7 @@ import type { useRouter } from 'next/navigation'
 import type { Middleware } from 'openapi-fetch'
 import { afterEach } from 'vitest'
 
+import { usePageNavItem } from '@/components/layout/page-nav-item'
 import { api } from '@/lib/api'
 import { createQueryClient } from '@/lib/query-client'
 
@@ -113,4 +114,10 @@ export function fillIn(email: string, password: string, submit: string) {
     target: { value: password },
   })
   fireEvent.click(screen.getByRole('button', { name: submit }))
+}
+
+// Shows the navigation item the page names, as the top bar would, under the
+// name "Highlighted"; "none" when no page names one.
+export function NamedNavItem() {
+  return <output aria-label="Highlighted">{usePageNavItem() ?? 'none'}</output>
 }

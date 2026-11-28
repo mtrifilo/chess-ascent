@@ -6,15 +6,14 @@ import { cn } from '@/lib/utils'
 
 import { moveRows, type Game } from './game-state'
 
-type Move = Game['moves'][number]
-
 const cellClass = 'h-7 px-2 font-data text-data-m font-normal'
 const headClass =
   'border-b pb-1 pl-2 text-left text-xs font-normal tracking-column-head text-muted-foreground uppercase'
 
 // The moves in standard notation, two to a numbered row, with one marked:
-// the latest, or `current` when given. Given `onSelect`, each move is a
-// button that reports it, 44px tall on phones for touch.
+// the latest, or the one whose half-move number is `current`. Given
+// `onSelect`, each move is a button that reports its half-move number, 44px
+// tall on phones for touch.
 //
 // Where the list is taller than its box (beside the board from `md` up), it
 // scrolls, and keeps the marked move in view. On phones the page scrolls
@@ -23,21 +22,17 @@ const headClass =
 // it.
 export function MoveList({
   moves,
-  current = moves.at(-1),
+  current = moves.length,
   onSelect,
   className,
 }: {
   moves: Game['moves']
-  current?: Move
-  onSelect?: (move: Move) => void
+  current?: number
+  onSelect?: (halfMoveNumber: number) => void
   className?: string
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
   const rows = moveRows(moves)
-  // By place rather than by object, so a fresh read of the same moves
-  // scrolls nothing.
-  const markedIndex = current ? moves.indexOf(current) : -1
-  const markedIsLatest = markedIndex === moves.length - 1
 
   // The list is scrolled to the marked move when a move is added or another
   // is marked, and again whenever its box changes size, as it does when the
@@ -47,14 +42,14 @@ export function MoveList({
     const scroller = scrollerRef.current
     if (!scroller) return
     const reveal = () => {
-      if (markedIsLatest) scroller.scrollTop = scroller.scrollHeight
+      if (current === moves.length) scroller.scrollTop = scroller.scrollHeight
       else keepMarkedInView(scroller)
     }
     reveal()
     const resized = new ResizeObserver(reveal)
     resized.observe(scroller)
     return () => resized.disconnect()
-  }, [moves.length, markedIndex, markedIsLatest])
+  }, [moves.length, current])
 
   return (
     <div ref={scrollerRef} className={cn('overflow-y-auto', className)}>
@@ -88,7 +83,7 @@ export function MoveList({
                   {row.number}.
                 </td>
                 {[row.white, row.black].map((move, column) => {
-                  const isMarked = move !== undefined && move === current
+                  const isMarked = move?.halfMoveNumber === current
                   const marked = isMarked ? 'step' : undefined
                   return (
                     <td
@@ -106,7 +101,7 @@ export function MoveList({
                           type="button"
                           aria-current={marked}
                           className="h-11 w-full px-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:ring-inset md:h-7"
-                          onClick={() => onSelect(move)}
+                          onClick={() => onSelect(move.halfMoveNumber)}
                         >
                           {move.san}
                         </button>

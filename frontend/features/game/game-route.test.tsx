@@ -3,11 +3,14 @@ import { notFound } from 'next/navigation'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ChessBoardProps } from '@/components/chess-board/chess-board'
+import { PageNavItemProvider } from '@/components/layout/page-nav-item'
 import {
-  PageNavItemProvider,
-  usePageNavItem,
-} from '@/components/layout/page-nav-item'
-import { answer, type Reply, renderWithQueries } from '@/lib/test-support'
+  answer,
+  calls,
+  NamedNavItem,
+  type Reply,
+  renderWithQueries,
+} from '@/lib/test-support'
 
 import { GameRoute } from './game-route'
 import { COMPUTER_REPLIED_E5, FOOLS_MATE, game, GAME_ID } from './test-games'
@@ -48,11 +51,6 @@ beforeEach(() => {
   vi.mocked(notFound).mockReset()
 })
 
-// Shows the navigation item the page names, as the top bar would.
-function NamedNavItem() {
-  return <output aria-label="Highlighted">{usePageNavItem() ?? 'none'}</output>
-}
-
 function renderRoute() {
   return renderWithQueries(
     <PageNavItemProvider>
@@ -75,12 +73,13 @@ describe('GameRoute', () => {
     expect(board.props!.readOnly).toBe(true)
   })
 
-  it('shows the game screen, under Play, for a game still being played', async () => {
-    answer({ [GAME_PATH]: ok(game()) })
+  it('shows the game screen, under Play, for a game still being played, reading it once', async () => {
+    const sent = answer({ [GAME_PATH]: ok(game()) })
     renderRoute()
 
     await waitFor(() => expect(heading()).toHaveTextContent('Your move'))
     expect(highlighted()).toHaveTextContent('/play')
+    expect(calls(sent)).toEqual([`GET ${GAME_PATH}`])
     expect(
       screen.queryByRole('button', { name: 'First' })
     ).not.toBeInTheDocument()

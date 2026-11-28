@@ -134,17 +134,15 @@ describe('MoveList', () => {
     }
   })
 
-  it('marks the move it is given rather than the latest', () => {
-    render(<MoveList moves={OPENING} current={OPENING[1]} />)
+  it('marks the move with the half-move number it is given rather than the latest', () => {
+    render(<MoveList moves={OPENING} current={2} />)
 
     expect(markedCells().map(cell => cell.textContent)).toEqual(['e5'])
   })
 
-  it('makes each move a button that reports it, marking the current one', () => {
+  it('makes each move a button that reports its half-move number, marking the current one', () => {
     const onSelect = vi.fn()
-    render(
-      <MoveList moves={OPENING} current={OPENING[2]} onSelect={onSelect} />
-    )
+    render(<MoveList moves={OPENING} current={3} onSelect={onSelect} />)
 
     const buttons = screen.getAllByRole('button')
     expect(buttons.map(button => button.textContent)).toEqual([
@@ -158,7 +156,7 @@ describe('MoveList', () => {
       buttons.filter(button => button.getAttribute('aria-current') === 'step')
     ).toEqual([buttons[2]])
     fireEvent.click(buttons[3])
-    expect(onSelect).toHaveBeenCalledWith(OPENING[3])
+    expect(onSelect).toHaveBeenCalledWith(4)
   })
 
   it('has no buttons when nothing is told of a click', () => {
@@ -169,7 +167,7 @@ describe('MoveList', () => {
 
   it('scrolls a marked move above its box down into view, below the heading', () => {
     const { container } = render(
-      <MoveList moves={OPENING} current={OPENING[4]} onSelect={() => {}} />
+      <MoveList moves={OPENING} current={5} onSelect={() => {}} />
     )
     const scroller = container.firstElementChild as HTMLElement
     // jsdom has no layout, so the boxes are given: the list's box from 0 to
@@ -183,10 +181,9 @@ describe('MoveList', () => {
     cellAt(0).getBoundingClientRect = () => box(-30, 28)
     scroller.scrollTop = 200
 
-    render(
-      <MoveList moves={OPENING} current={OPENING[0]} onSelect={() => {}} />,
-      { container }
-    )
+    render(<MoveList moves={OPENING} current={1} onSelect={() => {}} />, {
+      container,
+    })
 
     expect(scroller.scrollTop).toBe(150)
   })

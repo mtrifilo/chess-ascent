@@ -165,7 +165,7 @@ describe('GameScreen', () => {
     ).toHaveTextContent('/play')
   })
 
-  it('highlights Play while the game is still loading', () => {
+  it('highlights nothing while the game is still loading', () => {
     answer({ [GAME_PATH]: new Promise<Reply>(() => {}) })
     renderWithQueries(
       <PageNavItemProvider>
@@ -176,7 +176,7 @@ describe('GameScreen', () => {
 
     expect(
       screen.getByRole('status', { name: 'Highlighted' })
-    ).toHaveTextContent('/play')
+    ).toHaveTextContent('none')
     expect(
       screen.queryByRole('img', { name: 'Chess board' })
     ).not.toBeInTheDocument()

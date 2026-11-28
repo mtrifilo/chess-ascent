@@ -13,7 +13,7 @@ import { ChessBoard } from '@/components/chess-board/chess-board'
 import { useNavItemForPage } from '@/components/layout/page-nav-item'
 import { Button } from '@/components/ui/button'
 import { GameStatus } from '@/features/game/game-status'
-import { checkSquare, squaresOf, type Game } from '@/features/game/game-state'
+import { checkSquare, lastMove, type Game } from '@/features/game/game-state'
 import { MoveList } from '@/features/game/move-list'
 import { PlayerBar } from '@/features/game/player-bar'
 
@@ -33,10 +33,10 @@ export function ReplayScreen({ game }: { game: Game }) {
   const firstStep = Math.min(1, lastStep)
   const [step, setStep] = useState(lastStep)
 
-  const shown = moves[step - 1]
-  const fen = shown?.fen ?? game.fen
+  const played = moves.slice(0, step)
+  const fen = played.at(-1)?.fen ?? game.fen
   const stepTo = (target: number) =>
-    setStep(Math.min(lastStep, Math.max(firstStep, target)))
+    setStep(clampStep(target, firstStep, lastStep))
 
   // The arrow keys step back and forward from anywhere on the page but a
   // field, where they move the caret. A key held with a modifier is left to
@@ -56,9 +56,7 @@ export function ReplayScreen({ game }: { game: Game }) {
         return
       }
       event.preventDefault()
-      setStep(current =>
-        Math.min(lastStep, Math.max(firstStep, current + delta))
-      )
+      setStep(current => clampStep(current + delta, firstStep, lastStep))
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -81,8 +79,8 @@ export function ReplayScreen({ game }: { game: Game }) {
         <ChessBoard
           fen={fen}
           orientation={game.playerSide}
-          lastMove={shown && squaresOf(shown.uci)}
-          check={checkSquare(fen, moves.slice(0, step))}
+          lastMove={lastMove(played)}
+          check={checkSquare(fen, played)}
           readOnly
         />
         <PlayerBar game={game} side={game.playerSide} />
@@ -94,7 +92,8 @@ export function ReplayScreen({ game }: { game: Game }) {
         <div className="flex gap-2 md:order-last">
           {controls.map(({ label, Icon, target }) => {
             const reachable =
-              target >= firstStep && target <= lastStep && target !== step
+              target !== step &&
+              clampStep(target, firstStep, lastStep) === target
             return (
               <Button
                 key={label}
@@ -114,14 +113,20 @@ export function ReplayScreen({ game }: { game: Game }) {
         <div className="md:relative md:min-h-34 md:flex-1">
           <MoveList
             moves={moves}
-            current={shown}
-            onSelect={move => stepTo(moves.indexOf(move) + 1)}
+            current={step}
+            onSelect={stepTo}
             className="md:absolute md:inset-0"
           />
         </div>
       </div>
     </div>
   )
+}
+
+// A step is a move's half-move number, so the steps run from `first` to
+// `last`, the number of moves.
+function clampStep(target: number, first: number, last: number): number {
+  return Math.min(last, Math.max(first, target))
 }
 
 const ARROW_STEPS: Partial<Record<string, number>> = {

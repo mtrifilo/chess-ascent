@@ -49,12 +49,13 @@ import { ResignConfirm } from './resign-confirm'
 // on phones) the game's status or result, the move list and the controls.
 //
 // It is under Play, as drawn, whether the game is being played or is over,
-// and from before the game has loaded. Nothing else shows until then, so the
-// page does not flash a starting position. A game the player does not have
-// shows the site's not-found page.
+// once the game has loaded. Until then nothing shows, not even the item in
+// the top bar, since a game that is already over opens as a replay instead
+// (game-route.tsx), and the page does not flash a starting position. A game
+// the player does not have shows the site's not-found page.
 export function GameScreen({ id }: { id: string }) {
-  useNavItemForPage('/play')
   const { data: game } = useGame(id)
+  useNavItemForPage(game ? '/play' : undefined)
   if (game === null) notFound()
   if (!game) return null
   return <LoadedGame game={game} />
