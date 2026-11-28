@@ -42,6 +42,19 @@ internal static class GameMapping
             Promotions(legalMoves));
     }
 
+    /// <summary>The page as the list of games sends it.</summary>
+    public static GameListResponse ToResponse(GameSummaryPage page) => new(
+        [.. page.Games.Select(game => new GameSummaryResponse(
+            game.Id,
+            game.PlayerSide,
+            new OpponentResponse(game.OpponentKind, game.OpponentStrength),
+            game.Status,
+            game.Result,
+            game.EndReason,
+            game.HalfMoveCount,
+            game.UpdatedAt))],
+        page.Next?.Encode());
+
     // The four promotions of one pawn to one square are four legal moves
     // with the same two squares, so the destinations are made distinct.
     private static Dictionary<string, IReadOnlyList<string>> DestinationsByOrigin(IReadOnlyList<LegalMove> moves) =>

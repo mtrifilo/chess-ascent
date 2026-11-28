@@ -117,6 +117,46 @@ public sealed record OpponentResponse(OpponentKind Kind, int? Strength);
 /// <param name="San">The move in standard algebraic notation, such as <c>e4</c> or <c>e8=Q+</c>.</param>
 public sealed record MoveResponse(int HalfMoveNumber, string Uci, string San);
 
+/// <summary>One page of the signed-in player's games, most recent activity first.</summary>
+/// <param name="Games">
+/// The games, most recent activity first. Games with the same last activity
+/// time are in the same order on every request.
+/// </param>
+/// <param name="NextCursor">
+/// Where the next page starts: send it back unchanged as <c>cursor</c>, with
+/// the same <c>status</c>, for the next page. <c>null</c> when there are no
+/// more games. The next page holds the games after this page's last one as
+/// the list stands when it is asked for: a game that has had a move since
+/// is at the top of the list instead, where reading the list again finds it,
+/// and no game is listed on two pages while the server's clock runs forward.
+/// </param>
+public sealed record GameListResponse(IReadOnlyList<GameSummaryResponse> Games, string? NextCursor);
+
+/// <summary>A game as the list of games shows it, without its moves.</summary>
+/// <param name="Id">The game's id.</param>
+/// <param name="PlayerSide">The side the signed-in player has.</param>
+/// <param name="Opponent">Who plays the other side.</param>
+/// <param name="Status">Whether the game is still being played.</param>
+/// <param name="Result">How the game ended; <c>null</c> while it is ongoing.</param>
+/// <param name="EndReason">Why the game ended; <c>null</c> while it is ongoing.</param>
+/// <param name="HalfMoveCount">
+/// The number of half-moves played so far, by both sides: the number of
+/// moves the game's own response lists.
+/// </param>
+/// <param name="LastActivityAt">
+/// When the game was created or last had a move saved, as an ISO 8601 time
+/// in UTC.
+/// </param>
+public sealed record GameSummaryResponse(
+    Guid Id,
+    Side PlayerSide,
+    OpponentResponse Opponent,
+    GameProgress Status,
+    GameResult? Result,
+    GameEndReason? EndReason,
+    int HalfMoveCount,
+    DateTimeOffset LastActivityAt);
+
 /// <summary>A pawn move to the last rank, which needs the piece the pawn becomes.</summary>
 /// <param name="From">The square the pawn leaves.</param>
 /// <param name="To">The square it arrives on.</param>

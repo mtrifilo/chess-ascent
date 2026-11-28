@@ -18,8 +18,8 @@ namespace ChessAscent.Api.Features.Games;
 // otherwise simply empty.
 //
 // It is internal: only GameStore reads and writes it, and what leaves
-// GameStore is a SavedGame, so the rest of the API never holds a mutable
-// row.
+// GameStore is a SavedGame or a GameSummary, so the rest of the API never
+// holds a mutable row.
 /// <summary>A row of the Games table.</summary>
 internal sealed class Game
 {

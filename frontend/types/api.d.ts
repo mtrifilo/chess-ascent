@@ -264,7 +264,48 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    get?: never
+    get: {
+      parameters: {
+        query: {
+          status: components['schemas']['GameProgress']
+          pageSize?: number
+          cursor?: string
+        }
+        header?: never
+        path?: never
+        cookie?: never
+      }
+      requestBody?: never
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/json': components['schemas']['GameListResponse']
+          }
+        }
+        /** @description Bad Request */
+        400: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['HttpValidationProblemDetails']
+          }
+        }
+        /** @description Unauthorized */
+        401: {
+          headers: {
+            [name: string]: unknown
+          }
+          content: {
+            'application/problem+json': components['schemas']['ProblemDetails']
+          }
+        }
+      }
+    }
     put?: never
     post: {
       parameters: {
@@ -598,6 +639,23 @@ export interface components {
       | 'fiftyMoveRule'
       | 'deadPosition'
       | 'resignation'
+    /** @description One page of the signed-in player's games, most recent activity first. */
+    GameListResponse: {
+      /**
+       * @description The games, most recent activity first. Games with the same last activity
+       *     time are in the same order on every request.
+       */
+      games: components['schemas']['GameSummaryResponse'][]
+      /**
+       * @description Where the next page starts: send it back unchanged as `cursor`, with
+       *     the same `status`, for the next page. `null` when there are no
+       *     more games. The next page holds the games after this page's last one as
+       *     the list stands when it is asked for: a game that has had a move since
+       *     is at the top of the list instead, where reading the list again finds it,
+       *     and no game is listed on two pages while the server's clock runs forward.
+       */
+      nextCursor: null | string
+    }
     /**
      * @description Whether a game is still being played.
      * @enum {unknown}
@@ -642,6 +700,34 @@ export interface components {
     }
     /** @enum {unknown} */
     GameResult: 'whiteWins' | 'blackWins' | 'draw'
+    /** @description A game as the list of games shows it, without its moves. */
+    GameSummaryResponse: {
+      /**
+       * Format: uuid
+       * @description The game's id.
+       */
+      id: string
+      /** @description The side the signed-in player has. */
+      playerSide: components['schemas']['Side']
+      /** @description Who plays the other side. */
+      opponent: components['schemas']['OpponentResponse']
+      /** @description Whether the game is still being played. */
+      status: components['schemas']['GameProgress']
+      result: null | components['schemas']['GameResult']
+      endReason: null | components['schemas']['GameEndReason']
+      /**
+       * Format: int32
+       * @description The number of half-moves played so far, by both sides: the number of
+       *     moves the game's own response lists.
+       */
+      halfMoveCount: number
+      /**
+       * Format: date-time
+       * @description When the game was created or last had a move saved, as an ISO 8601 time
+       *     in UTC.
+       */
+      lastActivityAt: string
+    }
     HttpValidationProblemDetails: {
       type?: null | string
       title?: null | string

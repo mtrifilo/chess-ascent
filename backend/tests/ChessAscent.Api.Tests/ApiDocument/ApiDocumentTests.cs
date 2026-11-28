@@ -54,7 +54,7 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
             .SelectMany(path => path.Value!.AsObject().Select(operation => $"{operation.Key} {path.Key}"));
         operations.Should().BeEquivalentTo(
             "post /auth/register", "post /auth/sign-in", "post /auth/sign-out", "get /auth/me",
-            "post /games", "get /games/{id}", "post /games/{id}/moves",
+            "get /games", "post /games", "get /games/{id}", "post /games/{id}/moves",
             "get /health/ready", "get /version");
     }
 
@@ -64,6 +64,7 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
     // JSON is not declared, here or on the account endpoints: the typed
     // client always sends JSON. The move endpoint's remarks list it.
     [Theory]
+    [InlineData("/games", "get", new[] { "200", "400", "401" })]
     [InlineData("/games", "post", new[] { "201", "400", "401", "403", "500", "503" })]
     [InlineData("/games/{id}", "get", new[] { "200", "401", "404", "500" })]
     [InlineData("/games/{id}/moves", "post", new[] { "200", "400", "401", "403", "404", "409", "422", "500", "503" })]
@@ -78,6 +79,7 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
     // Number handling is strict, so an integer is described as a JSON
     // integer only, not also as a string of digits.
     [Theory]
+    [InlineData("GameSummaryResponse", "halfMoveCount", new[] { "integer" })]
     [InlineData("MoveResponse", "halfMoveNumber", new[] { "integer" })]
     [InlineData("OpponentResponse", "strength", new[] { "null", "integer" })]
     [InlineData("OpponentRequest", "strength", new[] { "null", "integer" })]
@@ -130,6 +132,11 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
     [InlineData("GameResponse", "result", true, "GameResult")]
     [InlineData("GameResponse", "endReason", true, "GameEndReason")]
     [InlineData("GameResponse", "playerSide", false, "Side")]
+    [InlineData("GameSummaryResponse", "playerSide", false, "Side")]
+    [InlineData("GameSummaryResponse", "status", false, "GameProgress")]
+    [InlineData("GameSummaryResponse", "result", true, "GameResult")]
+    [InlineData("GameSummaryResponse", "endReason", true, "GameEndReason")]
+    [InlineData("GameListResponse", "nextCursor", true, null)]
     [InlineData("OpponentResponse", "strength", true, null)]
     [InlineData("OpponentRequest", "strength", true, null)]
     [InlineData("PlayMoveRequest", "halfMoveNumber", false, null)]
@@ -157,6 +164,32 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
         {
             described["type"].Should().NotBeNull("a plain value states its type");
         }
+    }
+
+    // The list's status takes the same names as the game's status, through
+    // the same named type, and the page size states its bounds and default.
+    [Fact]
+    public async Task DocumentDescribesTheListsQueryParameters()
+    {
+        var document = await GetDocumentAsync();
+
+        var parameters = document["paths"]!["/games"]!["get"]!["parameters"]!.AsArray()
+            .ToDictionary(parameter => parameter!["name"]!.GetValue<string>(), parameter => parameter!.AsObject());
+        parameters.Keys.Should().BeEquivalentTo("status", "pageSize", "cursor");
+        parameters.Values.Should().AllSatisfy(parameter => parameter["in"]!.GetValue<string>().Should().Be("query"));
+
+        parameters["status"]["required"]!.GetValue<bool>().Should().BeTrue();
+        parameters["status"]["schema"]!["$ref"]!.GetValue<string>().Should().Be("#/components/schemas/GameProgress");
+
+        var pageSize = parameters["pageSize"];
+        pageSize.ContainsKey("required").Should().BeFalse();
+        pageSize["schema"]!["type"]!.GetValue<string>().Should().Be("integer");
+        pageSize["schema"]!["minimum"]!.GetValue<int>().Should().Be(1);
+        pageSize["schema"]!["maximum"]!.GetValue<int>().Should().Be(GameEndpoints.MaxPageSize);
+        pageSize["schema"]!["default"]!.GetValue<int>().Should().Be(GameEndpoints.DefaultPageSize);
+
+        parameters["cursor"].ContainsKey("required").Should().BeFalse();
+        parameters["cursor"]["schema"]!["type"]!.GetValue<string>().Should().Be("string");
     }
 
     // The strengths are written out in OpponentRequest's documentation, which

@@ -1,14 +1,18 @@
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using ChessAscent.Api.Json;
 using ChessAscent.Api.Opponents;
 using ChessAscent.Chess;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.OpenApi;
+using Microsoft.OpenApi;
 
 namespace ChessAscent.Api.Features.Games;
 
 /// <summary>
-/// Creating a game, reading it, and playing a move in it, for the signed-in
-/// player's own games only. Against the computer, one request plays the
+/// Listing games, creating a game, reading it, and playing a move in it, for
+/// the signed-in player's own games only. Against the computer, one request plays the
 /// player's move and the computer's reply.
 /// </summary>
 /// <remarks>
@@ -59,6 +63,15 @@ namespace ChessAscent.Api.Features.Games;
 /// Reading a game answers 200, 401, 404, or 500 when its saved form is
 /// broken (see SavedGameBoards.RebuildBoard), a finished game included.
 /// </para>
+/// <para>
+/// Listing games answers 200 with a page of them, which is empty when there
+/// are none; 400 with a validation problem when <c>status</c> is missing, or
+/// under whichever of <c>status</c>, <c>pageSize</c> and <c>cursor</c> holds
+/// a value the list does not accept (a <c>pageSize</c> that is not a whole
+/// number that fits an int is also refused with 400: outside Development
+/// because the binder leaves it at 0, which validation refuses, and in
+/// Development as a plain problem); and 401.
+/// </para>
 /// </remarks>
 public static class GameEndpoints
 {
@@ -97,9 +110,34 @@ public static class GameEndpoints
     /// <summary>The validation message for text that is not a move in UCI form.</summary>
     public const string MalformedMoveMessage = "Not a move in UCI form, such as e2e4 or e7e8q.";
 
+    /// <summary>The number of games on a page of the list when the request does not say.</summary>
+    public const int DefaultPageSize = 20;
+
+    /// <summary>The most games a page of the list can hold; a larger page size is refused with 400.</summary>
+    public const int MaxPageSize = 100;
+
+    // The status names the list accepts: exactly the names the game response
+    // writes, matched as they are written, so "Ongoing" and "0" are refused.
+    // Declared before the message that lists them, because static fields are
+    // initialized in the order they are written.
+    private static readonly Dictionary<string, GameProgress> ListStatuses = Enum.GetValues<GameProgress>()
+        .ToDictionary(JsonServices.WireName, StringComparer.Ordinal);
+
+    /// <summary>The validation message for a list request with no status, or one that names no status.</summary>
+    public static readonly string UnknownStatusMessage =
+        $"Give the status of the games to list: {string.Join(" or ", ListStatuses.Keys)}.";
+
+    /// <summary>The validation message for a cursor the API did not send.</summary>
+    public const string MalformedCursorMessage =
+        "Not a cursor from this list. Send a page's nextCursor back unchanged, or leave it out for the first page.";
+
     // The keys validation reports errors under: each property's path in C#.
     private const string OpponentStrengthField = nameof(CreateGameRequest.Opponent) + "." + nameof(OpponentRequest.Strength);
     private const string UciField = nameof(PlayMoveRequest.Uci);
+
+    // The list's query parameters, which are also the keys of its validation errors.
+    private const string StatusParameter = "status";
+    private const string CursorParameter = "cursor";
 
     public static IEndpointRouteBuilder MapGameEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -123,6 +161,8 @@ public static class GameEndpoints
         // a handler uses. 403 is the refusal of cross-site requests, which
         // comes from middleware (see CrossSiteRequests) and applies to every
         // POST.
+        games.MapGet("", ListAsync)
+            .AddOpenApiOperationTransformer(DescribeStatusAsGameProgress);
         games.MapPost("", CreateAsync)
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status500InternalServerError)
@@ -147,6 +187,71 @@ public static class GameEndpoints
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
         return endpoints;
+    }
+
+    /// <summary>
+    /// One page of the signed-in player's ongoing or finished games, most
+    /// recent activity first.
+    /// </summary>
+    /// <remarks>
+    /// The class remarks list its answers, and <see cref="GameListResponse.NextCursor"/>
+    /// says what a page after a cursor holds.
+    /// </remarks>
+    // LEARN: A handler parameter of a simple type (a string, a number, an
+    // enum) that is not part of the route is read from the query string, as
+    // a Spring MVC @RequestParam is, and a default value makes it optional.
+    // The [Range] attribute is checked by AddValidation (see Program.cs)
+    // before the handler runs, which answers 400 with a validation problem
+    // under "pageSize", much as @Min and @Max with @Validated do. The status
+    // is read as a string rather than as GameProgress because the binder
+    // matches an enum's C# name ("Ongoing"), not the camel-case name the API
+    // writes, and accepts numbers too.
+    private static async Task<Results<Ok<GameListResponse>, ValidationProblem>> ListAsync(
+        string? status,
+        ClaimsPrincipal principal,
+        UserManager<IdentityUser> users,
+        GameStore store,
+        CancellationToken cancellationToken,
+        [Range(1, MaxPageSize)] int pageSize = DefaultPageSize,
+        string? cursor = null)
+    {
+        if (status is null || !ListStatuses.TryGetValue(status, out var progress))
+        {
+            return FieldProblem(StatusParameter, UnknownStatusMessage);
+        }
+
+        GameListCursor? after = null;
+        if (cursor is not null)
+        {
+            if (!GameListCursor.TryDecode(cursor, out var decoded))
+            {
+                return FieldProblem(CursorParameter, MalformedCursorMessage);
+            }
+
+            after = decoded;
+        }
+
+        var page = await store.ListAsync(PlayerId(principal, users), progress, after, pageSize, cancellationToken);
+        return TypedResults.Ok(GameMapping.ToResponse(page));
+    }
+
+    // The status is bound as a string (see ListAsync), so the generator
+    // describes it as any string. It is described instead as the GameProgress
+    // schema the responses use, which gives the front end the same named type.
+    private static Task DescribeStatusAsGameProgress(
+        OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
+    {
+        var described = operation.Parameters?.SingleOrDefault(p => p.Name == StatusParameter)
+            ?? throw new InvalidOperationException($"GET /games has no {StatusParameter} parameter to describe.");
+        if (described is not OpenApiParameter parameter)
+        {
+            throw new InvalidOperationException(
+                $"GET /games describes {StatusParameter} as a {described.GetType().Name}, which cannot be edited.");
+        }
+
+        parameter.Required = true;
+        parameter.Schema = new OpenApiSchemaReference(nameof(GameProgress), context.Document);
+        return Task.CompletedTask;
     }
 
     /// <summary>

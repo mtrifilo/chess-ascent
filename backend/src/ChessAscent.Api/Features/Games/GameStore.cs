@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ChessAscent.Api.Features.Games;
 
-/// <summary>Saves players' games and their moves, and loads them back.</summary>
+/// <summary>Saves players' games and their moves, loads them back, and lists a player's games.</summary>
 /// <remarks>
 /// <para>
 /// Ownership is part of every call: each method takes the id of the account
@@ -158,6 +158,133 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
             .SingleOrDefaultAsync(g => g.Id == gameId && g.OwnerId == ownerId, cancellationToken);
 
         return game is null ? null : ToSavedGame(game);
+    }
+
+    /// <summary>
+    /// One page of the games that belong to <paramref name="ownerId"/> and
+    /// have <paramref name="status"/>, most recent activity first, in one
+    /// query that reads no move rows.
+    /// </summary>
+    /// <param name="ownerId">The id of the account whose games are listed.</param>
+    /// <param name="status">Whether to list the ongoing games or the finished ones.</param>
+    /// <param name="after">
+    /// Where the previous page ended, or <c>null</c> for the first page. The
+    /// page holds the games that come after it in the list's order as they
+    /// stand now.
+    /// </param>
+    /// <param name="pageSize">The most games the page holds, at least 1.</param>
+    /// <param name="cancellationToken">Cancels the query.</param>
+    /// <remarks>
+    /// Games with the same last activity time are ordered by id, so the order
+    /// is total and the same on every request.
+    /// </remarks>
+    public async Task<GameSummaryPage> ListAsync(
+        string ownerId, GameProgress status, GameListCursor? after, int pageSize, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pageSize);
+
+        // LEARN: LINQ's Where, OrderBy and Select are the Stream API's
+        // filter, sorted and map, and like a Stream they are lazy: this line
+        // runs no query. Two differences from a Stream. A query can be
+        // extended and run any number of times, where a Stream is used once;
+        // each run is a new round trip, so a query enumerated twice is sent
+        // twice. And the static type decides where each operator runs.
+        // database.Games is an IQueryable<Game>, whose Where takes an
+        // Expression<Func<Game, bool>>: the compiler hands EF Core the lambda
+        // as a tree of data rather than as compiled code, and EF Core
+        // translates the tree to SQL. An IEnumerable<Game>, such as a List,
+        // has a Where of the same name that takes a plain Func<Game, bool>
+        // and runs it in memory. Were `games` declared as IEnumerable<Game>,
+        // the Where on this line would still go to SQL, but every operator
+        // after it would bind to the in-memory version: the cursor condition,
+        // the ordering, Take and Select would run in the application over
+        // all of the player's games with this status, g.Moves.Count would
+        // count a collection that was never loaded and give 0, and
+        // ToListAsync, which extends only IQueryable, would not compile. The
+        // nearest JPA counterpart of an IQueryable is a Criteria query, here
+        // written as ordinary C#.
+        var games = database.Games.Where(g => g.OwnerId == ownerId && g.Status == status);
+
+        if (after is { } cursor)
+        {
+            // LEARN: Keyset paging. The next page is the rows after the
+            // previous page's last row in the list's order, found by a
+            // condition on the ordering columns, rather than by skipping the
+            // rows already seen (Skip, SQL's OFFSET, which Spring Data's
+            // Pageable uses). The database seeks to the cursor in the index
+            // instead of reading and discarding every earlier row. And a game
+            // that gains a move between two requests moves above the cursor,
+            // where offset paging would shift every game after it down one
+            // place and show the last game of one page again at the top of
+            // the next. So no game is listed twice; the moved game is on no
+            // later page, and is at the top when the list is read again.
+            // Spring Data has the same idea as ScrollPosition.keyset() with a
+            // Window result.
+            //
+            // In the list's order, newest first, "after the cursor" is
+            // (UpdatedAt, Id) < (cursor.UpdatedAt, cursor.Id), compared
+            // column by column. Both conditions below are needed for that:
+            // without the first, a newer game with a smaller id would pass the
+            // second. The first is also a plain comparison on UpdatedAt,
+            // which PostgreSQL uses to seek in the (OwnerId, UpdatedAt DESC)
+            // index; it cannot seek on the OR alone.
+            //
+            // LEARN: Guid has the comparison operators, as C# lets a type
+            // define operators and Java does not (java.util.UUID has only
+            // compareTo), and EF Core translates < on two uuids to SQL's <.
+            // What EF Core translates is a fixed list of operators and
+            // methods. A method it does not know, such as one of this class's
+            // own, compiles here but fails when the query runs: EF Core throws
+            // an InvalidOperationException saying the expression "could not be
+            // translated", before any SQL is sent. As with a JPA Criteria query
+            // that calls a function its provider lacks, the compiler cannot
+            // catch it.
+            games = games.Where(g =>
+                g.UpdatedAt <= cursor.UpdatedAt
+                && (g.UpdatedAt < cursor.UpdatedAt || g.Id < cursor.Id));
+        }
+
+        // LEARN: Select into a type that is not an entity is a projection,
+        // like a JPQL constructor expression (SELECT new GameSummary(...)) or
+        // a Spring Data DTO projection. EF Core selects only the columns the
+        // lambda reads, and turns g.Moves.Count into a COUNT subquery on
+        // Moves, so no move row reaches the application. A projection is
+        // not tracked, so it needs no AsNoTracking. Inside Where or OrderBy
+        // an untranslatable call throws, as above; in the last Select EF Core
+        // instead runs it in memory on each row, after the query.
+        //
+        // One more row than the page holds is asked for: if it comes back,
+        // there is a next page, which costs no second query to count the rows.
+        //
+        // LEARN: ToListAsync is the moment the query runs, as a Stream's
+        // terminal operation is: EF Core translates the whole chain to one
+        // SQL statement, sends it, and awaits the rows. FirstAsync, CountAsync,
+        // AnyAsync and a foreach over the query run it too.
+        var rows = await games
+            .OrderByDescending(g => g.UpdatedAt)
+            .ThenByDescending(g => g.Id)
+            .Take(pageSize + 1)
+            .Select(g => new GameSummary(
+                g.Id,
+                g.PlayerSide,
+                g.OpponentKind,
+                g.OpponentStrength,
+                g.Status,
+                g.Result,
+                g.EndReason,
+                g.Moves.Count,
+                g.UpdatedAt))
+            .ToListAsync(cancellationToken);
+
+        if (rows.Count <= pageSize)
+        {
+            return new GameSummaryPage(rows, Next: null);
+        }
+
+        rows.RemoveAt(pageSize);
+        var last = rows[^1];
+        return new GameSummaryPage(rows, new GameListCursor(last.UpdatedAt, last.Id));
     }
 
     /// <summary>

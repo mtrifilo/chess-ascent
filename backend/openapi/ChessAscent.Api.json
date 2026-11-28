@@ -194,6 +194,71 @@
       }
     },
     "/games": {
+      "get": {
+        "tags": [
+          "GameEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/GameProgress"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "GameEndpoints"
@@ -551,6 +616,30 @@
           "resignation"
         ]
       },
+      "GameListResponse": {
+        "required": [
+          "games",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "games": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameSummaryResponse"
+            },
+            "description": "The games, most recent activity first. Games with the same last activity\ntime are in the same order on every request."
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Where the next page starts: send it back unchanged as `cursor`, with\nthe same `status`, for the next page. `null` when there are no\nmore games. The next page holds the games after this page's last one as\nthe list stands when it is asked for: a game that has had a move since\nis at the top of the list instead, where reading the list again finds it,\nand no game is listed on two pages while the server's clock runs forward."
+          }
+        },
+        "description": "One page of the signed-in player's games, most recent activity first."
+      },
       "GameProgress": {
         "enum": [
           "ongoing",
@@ -654,6 +743,71 @@
           "blackWins",
           "draw"
         ]
+      },
+      "GameSummaryResponse": {
+        "required": [
+          "id",
+          "playerSide",
+          "opponent",
+          "status",
+          "result",
+          "endReason",
+          "halfMoveCount",
+          "lastActivityAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The game's id.",
+            "format": "uuid"
+          },
+          "playerSide": {
+            "description": "The side the signed-in player has.",
+            "$ref": "#/components/schemas/Side"
+          },
+          "opponent": {
+            "description": "Who plays the other side.",
+            "$ref": "#/components/schemas/OpponentResponse"
+          },
+          "status": {
+            "description": "Whether the game is still being played.",
+            "$ref": "#/components/schemas/GameProgress"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "How the game ended; `null` while it is ongoing.",
+                "$ref": "#/components/schemas/GameResult"
+              }
+            ]
+          },
+          "endReason": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "Why the game ended; `null` while it is ongoing.",
+                "$ref": "#/components/schemas/GameEndReason"
+              }
+            ]
+          },
+          "halfMoveCount": {
+            "type": "integer",
+            "description": "The number of half-moves played so far, by both sides: the number of\nmoves the game's own response lists.",
+            "format": "int32"
+          },
+          "lastActivityAt": {
+            "type": "string",
+            "description": "When the game was created or last had a move saved, as an ISO 8601 time\nin UTC.",
+            "format": "date-time"
+          }
+        },
+        "description": "A game as the list of games shows it, without its moves."
       },
       "HttpValidationProblemDetails": {
         "type": "object",

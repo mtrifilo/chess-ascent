@@ -2,9 +2,11 @@ using System.Net;
 using System.Text.Json;
 using ChessAscent.Api.Features.Games;
 using ChessAscent.Api.Json;
+using ChessAscent.Api.Tests.Features.Accounts;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using AccountData = ChessAscent.Api.Tests.Features.Accounts.Accounts;
 using HttpJsonOptions = Microsoft.AspNetCore.Http.Json.JsonOptions;
 
 namespace ChessAscent.Api.Tests.Features.Games;
@@ -98,15 +100,70 @@ internal static class GameRequests
         return game;
     }
 
+    /// <summary>Asks for a page of the list of games, with the query string as given.</summary>
+    public static Task<HttpResponseMessage> GetGameListAsync(this HttpClient client, string query) =>
+        client.GetAsync($"/games{query}", Cancellation);
+
+    /// <summary>Reads a page of the list of games, checking that it answered 200.</summary>
+    public static async Task<GameListResponse> ListGamesAsync(
+        this HttpClient client, string status, int? pageSize = null, string? cursor = null)
+    {
+        var query = $"?status={status}"
+            + (pageSize is { } size ? $"&pageSize={size}" : "")
+            + (cursor is null ? "" : $"&cursor={Uri.EscapeDataString(cursor)}");
+        using var response = await client.GetGameListAsync(query);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        return await response.ReadBodyAsync<GameListResponse>();
+    }
+
+    /// <summary>
+    /// Reads every page of the list in turn, following each page's cursor,
+    /// and returns the pages.
+    /// </summary>
+    public static async Task<List<GameListResponse>> ListEveryPageAsync(this HttpClient client, string status, int pageSize)
+    {
+        var pages = new List<GameListResponse>();
+        string? cursor = null;
+        do
+        {
+            var page = await client.ListGamesAsync(status, pageSize, cursor);
+            pages.Add(page);
+            cursor = page.NextCursor;
+
+            // A list that always had a next page would otherwise never end the test.
+            pages.Should().HaveCountLessThan(100);
+        }
+        while (cursor is not null);
+
+        return pages;
+    }
+
     /// <summary>The half-move number the game's next move has.</summary>
     public static int NextHalfMoveNumber(this GameResponse game) => game.Moves.Count + 1;
 
     /// <summary>Reads a game body with the serializer settings the API writes it with.</summary>
-    public static async Task<GameResponse> ReadGameAsync(this HttpResponseMessage response)
+    public static Task<GameResponse> ReadGameAsync(this HttpResponseMessage response) =>
+        response.ReadBodyAsync<GameResponse>();
+
+    /// <summary>Reads a JSON body with the serializer settings the API writes it with.</summary>
+    public static async Task<T> ReadBodyAsync<T>(this HttpResponseMessage response)
     {
         response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
-        var game = await response.Content.ReadFromJsonAsync<GameResponse>(ApiJson, Cancellation);
-        return game!;
+        var body = await response.Content.ReadFromJsonAsync<T>(ApiJson, Cancellation);
+        return body!;
+    }
+
+    /// <summary>A browser signed in to a new account of its own.</summary>
+    public static async Task<HttpClient> SignedInClientAsync(this ApiFactory factory) =>
+        (await factory.SignedInPlayerAsync()).Client;
+
+    /// <summary>A browser signed in to a new account of its own, and the account's id.</summary>
+    public static async Task<(HttpClient Client, string OwnerId)> SignedInPlayerAsync(this ApiFactory factory)
+    {
+        var client = factory.CreateClient();
+        var email = AccountData.NewEmail();
+        await client.RegisterNewAsync(email);
+        return (client, await factory.AccountIdAsync(email));
     }
 
     /// <summary>The account id of the player signed in under <paramref name="email"/>.</summary>
