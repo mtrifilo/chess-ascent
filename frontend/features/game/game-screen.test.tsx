@@ -708,6 +708,36 @@ describe('GameScreen', () => {
       expect(board.props).toMatchObject({ fen: replied.fen, check: undefined })
     })
 
+    it("does not take another tab's move, read meanwhile, for the player's", async () => {
+      answer({
+        [GAME_PATH]: ok(computerGame()),
+        [MOVES_PATH]: new Promise<Reply>(() => {}),
+      })
+      const { queryClient } = await renderGame()
+
+      playOnBoard('g1', 'f3')
+      await waitFor(() =>
+        expect(heading()).toHaveTextContent('Maia 800 is thinking')
+      )
+      // Another tab played 1. e4 first, and this screen read the game again.
+      act(() =>
+        queryClient.setQueryData(['game', GAME_ID], {
+          ...AFTER_E4,
+          opponent: MAIA_800,
+        })
+      )
+      // The screen has drawn the game read again.
+      await waitFor(() =>
+        expect(board.props!.destinations).toEqual(
+          new Map([['e7', ['e6', 'e5']]])
+        )
+      )
+
+      expect(heading()).toHaveTextContent('Maia 800 is thinking')
+      expect(screen.queryByRole('cell', { name: 'e4' })).toBeNull()
+      expect(screen.getByText('No moves yet.')).toBeInTheDocument()
+    })
+
     it('shows a reply slower than the minimum time as soon as it comes', async () => {
       let settle!: (reply: Reply) => void
       answer({
