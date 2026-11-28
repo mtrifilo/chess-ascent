@@ -52,7 +52,7 @@ internal sealed class Game
 
     public DateTimeOffset CreatedAt { get; set; }
 
-    /// <summary>When the game was created or last had a move saved.</summary>
+    /// <summary>When the game was created, last had a move saved, or was resigned.</summary>
     public DateTimeOffset UpdatedAt { get; set; }
 
     /// <summary>The number of positions the player was given a hint in.</summary>

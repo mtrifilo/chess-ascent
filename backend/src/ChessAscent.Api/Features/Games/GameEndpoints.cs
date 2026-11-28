@@ -11,8 +11,8 @@ using Microsoft.OpenApi;
 namespace ChessAscent.Api.Features.Games;
 
 /// <summary>
-/// Listing games, creating a game, reading it, and playing a move in it, for
-/// the signed-in player's own games only. Against the computer, one request plays the
+/// Listing games, creating a game, reading it, playing a move in it, and
+/// resigning it, for the signed-in player's own games only. Against the computer, one request plays the
 /// player's move and the computer's reply.
 /// </summary>
 /// <remarks>
@@ -62,6 +62,19 @@ namespace ChessAscent.Api.Features.Games;
 /// <para>
 /// Reading a game answers 200, 401, 404, or 500 when its saved form is
 /// broken (see SavedGameBoards.RebuildBoard), a finished game included.
+/// </para>
+/// <para>
+/// Resigning a game takes no body and answers 200 with the game as reading
+/// it then gives, finished as a win for the other side; 401; 403 when a
+/// page on another origin started the request; 404 when the player has no
+/// game with that id; 409 with <see cref="GameFinishedDetail"/> when the
+/// game is already over, however it ended; and 500 when the game is still
+/// being played but its saved form is broken. In every case but 200 nothing
+/// is saved. It works whoever's turn it is, so it takes no half-move number,
+/// and resigning again is safe: the second request gets the 409. A move
+/// that reaches the game first is kept, and the game is resigned after it,
+/// unless that move ended the game; a move that comes after the resignation
+/// gets the 409 a finished game gives.
 /// </para>
 /// <para>
 /// Listing games answers 200 with a page of them, which is empty when there
@@ -195,6 +208,11 @@ public static partial class GameEndpoints
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
             .ProducesProblem(StatusCodes.Status500InternalServerError)
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+        games.MapPost("/{id:guid}/resign", ResignAsync)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         // The handler never returns the 400 itself: validation refuses a
         // body without a half-move number before the handler runs.
@@ -333,7 +351,21 @@ public static partial class GameEndpoints
     }
 
     /// <summary>One of the signed-in player's games.</summary>
-    private static async Task<Results<Ok<GameResponse>, ProblemHttpResult>> GetAsync(
+    private static Task<Results<Ok<GameResponse>, ProblemHttpResult>> GetAsync(
+        Guid id,
+        ClaimsPrincipal principal,
+        UserManager<IdentityUser> users,
+        GameStore store,
+        IChessRules rules,
+        CancellationToken cancellationToken) =>
+        ReadAsync(store, rules, PlayerId(principal, users), id, cancellationToken);
+
+    /// <summary>
+    /// Resigns one of the signed-in player's games: it ends as a win for the
+    /// other side, by resignation, whoever's turn it is, and the answer is the
+    /// game as reading it then gives.
+    /// </summary>
+    private static async Task<Results<Ok<GameResponse>, ProblemHttpResult>> ResignAsync(
         Guid id,
         ClaimsPrincipal principal,
         UserManager<IdentityUser> users,
@@ -341,7 +373,38 @@ public static partial class GameEndpoints
         IChessRules rules,
         CancellationToken cancellationToken)
     {
-        var game = await store.LoadAsync(PlayerId(principal, users), id, cancellationToken);
+        var playerId = PlayerId(principal, users);
+        var game = await store.LoadAsync(playerId, id, cancellationToken);
+        if (game is null)
+        {
+            return NotFoundProblem();
+        }
+
+        if (game.Status == GameProgress.Finished)
+        {
+            return FinishedProblem();
+        }
+
+        // A game whose saved form is broken is refused with 500 before it is
+        // changed, as a move in it is, so the answer never reports a fault
+        // for a request that saved something.
+        game.RebuildBoard(rules);
+
+        // The game is read again after the resignation rather than built from
+        // the load above, since another request may have saved a move between
+        // the two. Once resigned, the game does not change again.
+        return await store.ResignAsync(playerId, id, cancellationToken) switch
+        {
+            GameResigned => await ReadAsync(store, rules, playerId, id, cancellationToken),
+            GameNotFound => NotFoundProblem(),
+            GameFinished => FinishedProblem(),
+        };
+    }
+
+    private static async Task<Results<Ok<GameResponse>, ProblemHttpResult>> ReadAsync(
+        GameStore store, IChessRules rules, string playerId, Guid id, CancellationToken cancellationToken)
+    {
+        var game = await store.LoadAsync(playerId, id, cancellationToken);
         return game is null
             ? NotFoundProblem()
             : TypedResults.Ok(GameMapping.ToResponse(game, game.RebuildBoard(rules)));

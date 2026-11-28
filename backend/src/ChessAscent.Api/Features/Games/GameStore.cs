@@ -5,7 +5,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ChessAscent.Api.Features.Games;
 
-/// <summary>Saves players' games and their moves, loads them back, and lists a player's games.</summary>
+/// <summary>
+/// Saves players' games and their moves, ends a game by resignation, loads
+/// games back, and lists a player's games.
+/// </summary>
 /// <remarks>
 /// <para>
 /// Ownership is part of every call: each method takes the id of the account
@@ -22,13 +25,13 @@ namespace ChessAscent.Api.Features.Games;
 /// <para>
 /// Scoped, like the <see cref="AppDbContext"/> it uses, and like it not safe
 /// for concurrent calls: await each call before the next.
-/// <see cref="AppendMovesAsync"/> and <see cref="CountHintAsync"/> begin and
-/// commit a transaction of their own, so call them while the context has no
-/// transaction open; EF Core throws if it already has one. And because
-/// SaveChanges saves everything a context tracks, the writes that call it
-/// (creating a game and appending moves) refuse to start while the context
-/// holds changes the caller has not saved, rather than save them along with
-/// the game.
+/// <see cref="AppendMovesAsync"/>, <see cref="CountHintAsync"/> and
+/// <see cref="ResignAsync"/> begin and commit a transaction of their own, so
+/// call them while the context has no transaction open; EF Core throws if it
+/// already has one. And because SaveChanges saves everything a context
+/// tracks, the writes that call it (creating a game and appending moves)
+/// refuse to start while the context holds changes the caller has not saved,
+/// rather than save them along with the game.
 /// </para>
 /// </remarks>
 // LEARN: TimeProvider is .NET's counterpart of java.time.Clock: code asks it
@@ -540,6 +543,79 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // would report a count that happened as one that did not.
         await transaction.CommitAsync(CancellationToken.None);
         return new HintCounted();
+    }
+
+    /// <summary>
+    /// Ends a game that is still being played as a loss for the player's
+    /// side, by resignation. Nothing else about the game changes: its moves
+    /// and its hint count stay as they are.
+    /// </summary>
+    /// <param name="ownerId">The id of the account the game belongs to.</param>
+    /// <param name="gameId">The game.</param>
+    /// <param name="cancellationToken">
+    /// Cancels the resignation, which then changes nothing. Once the commit
+    /// has been sent it is no longer cancelled, so a resignation that has
+    /// happened is always reported as one.
+    /// </param>
+    /// <returns>
+    /// <see cref="GameResigned"/>; <see cref="GameNotFound"/> when no game
+    /// with <paramref name="gameId"/> belongs to <paramref name="ownerId"/>;
+    /// or <see cref="GameFinished"/> when the game is already over. In the
+    /// last two cases nothing is changed.
+    /// </returns>
+    /// <remarks>
+    /// Its update takes the game's row lock, as those of
+    /// <see cref="AppendMovesAsync"/> and <see cref="CountHintAsync"/> do,
+    /// and changes the game only while it is ongoing. So a resignation and an
+    /// append to the same game run one after the other, and whichever reaches
+    /// the row second finds what the first saved: an append after a
+    /// resignation finds the game over and saves nothing; a resignation after
+    /// an append ends the game with that append's moves in it, unless they
+    /// ended it first. The game is finished once, by one of them, and never
+    /// reopened.
+    /// </remarks>
+    public async Task<ResignResult> ResignAsync(string ownerId, Guid gameId, CancellationToken cancellationToken)
+    {
+        var now = Now();
+
+        // One statement would be atomic without a transaction of its own,
+        // but it would then run at the server's default isolation level.
+        // READ COMMITTED is named for the reason AppendMovesAsync gives: a
+        // resignation that waits for an append's row lock then checks its
+        // WHERE against the row the append committed, rather than failing
+        // with a serialization error.
+        await using var transaction = await database.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+
+        // The result is an expression of the row, as CountHintAsync's count
+        // is, which EF Core translates to CASE WHEN "PlayerSide" = 'White'
+        // THEN 'BlackWins' ELSE 'WhiteWins' END. So the winner is decided
+        // from the row this statement has locked and found ongoing, and no
+        // earlier read of the game can be out of date.
+        var updated = await database.Games
+            .Where(g => g.Id == gameId && g.OwnerId == ownerId && g.Status == GameProgress.Ongoing)
+            .ExecuteUpdateAsync(
+                game => game
+                    .SetProperty(g => g.Status, GameProgress.Finished)
+                    .SetProperty(
+                        g => g.Result,
+                        g => g.PlayerSide == Side.White ? GameResult.BlackWins : GameResult.WhiteWins)
+                    .SetProperty(g => g.EndReason, GameEndReason.Resignation)
+                    .SetProperty(g => g.UpdatedAt, now),
+                cancellationToken);
+        if (updated == 0)
+        {
+            // A game is never reopened, so one the player owns that the
+            // update did not change is over. Only a game the player owns is
+            // reported as finished, so this says nothing about anyone else's
+            // games.
+            var owned = await database.Games.AnyAsync(g => g.Id == gameId && g.OwnerId == ownerId, cancellationToken);
+            return owned ? new GameFinished() : new GameNotFound();
+        }
+
+        // Not cancellable: a commit cancelled after the server has applied it
+        // would report a resignation that happened as one that did not.
+        await transaction.CommitAsync(CancellationToken.None);
+        return new GameResigned(now);
     }
 
     // Whether the game has exactly the moves before halfMoveNumber, so that

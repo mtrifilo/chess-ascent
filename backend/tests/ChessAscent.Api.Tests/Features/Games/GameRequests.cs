@@ -70,6 +70,10 @@ internal static class GameRequests
     public static Task<HintResponse> ReadHintAsync(this HttpResponseMessage response) =>
         response.ReadBodyAsync<HintResponse>();
 
+    /// <summary>Resigns the game, with no body, as the game screen sends it.</summary>
+    public static Task<HttpResponseMessage> PostResignAsync(this HttpClient client, Guid gameId) =>
+        client.PostAsync($"/games/{gameId}/resign", content: null, Cancellation);
+
     /// <summary>Creates a game, checking that it answered 201, and returns it.</summary>
     public static async Task<GameResponse> CreateGameAsync(this HttpClient client, string playerSide = "white")
     {

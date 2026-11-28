@@ -175,8 +175,8 @@ public sealed record GameListResponse(IReadOnlyList<GameSummaryResponse> Games, 
 /// used.
 /// </param>
 /// <param name="LastActivityAt">
-/// When the game was created or last had a move saved, as an ISO 8601 time
-/// in UTC.
+/// When the game was created, last had a move saved, or was resigned, as an
+/// ISO 8601 time in UTC.
 /// </param>
 public sealed record GameSummaryResponse(
     Guid Id,
