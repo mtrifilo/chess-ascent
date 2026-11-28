@@ -27,9 +27,18 @@ export function MoveList({
   const rows = moveRows(moves)
   const latest = moves.at(-1)
 
+  // The list is scrolled to its end when a move is added, and again whenever
+  // its box changes size, as it does when the alert above it comes or goes.
   useEffect(() => {
     const scroller = scrollerRef.current
-    if (scroller) scroller.scrollTop = scroller.scrollHeight
+    if (!scroller) return
+    const toEnd = () => {
+      scroller.scrollTop = scroller.scrollHeight
+    }
+    toEnd()
+    const resized = new ResizeObserver(toEnd)
+    resized.observe(scroller)
+    return () => resized.disconnect()
   }, [moves.length])
 
   return (

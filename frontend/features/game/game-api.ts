@@ -66,6 +66,13 @@ export type MoveOutcome = 'played' | 'reloaded' | 'signed-out'
 // The mutations here are sent even when the browser reports itself offline
 // (`networkMode: 'always'`), so that a move fails at once, as the screen
 // describes, rather than waiting unseen for the connection to come back.
+//
+// A move carries the position it was made in (`fen`), which is not sent: it
+// stays with the mutation's state, so the screen can tell whether a failure
+// is about the position it now shows, even after the page was hidden while
+// the move was on its way.
+export type MoveRequest = { uci: string; fen: string }
+
 export function usePlayMove(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -73,7 +80,7 @@ export function usePlayMove(id: string) {
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: gameKey(id) })
     },
-    mutationFn: async (uci: string): Promise<MoveOutcome> => {
+    mutationFn: async ({ uci }: MoveRequest): Promise<MoveOutcome> => {
       const { data, response } = await api.POST('/games/{id}/moves', {
         params: { path: { id } },
         body: { uci },

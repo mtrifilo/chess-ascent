@@ -50,15 +50,14 @@ export function GameScreen({ id }: { id: string }) {
   return <LoadedGame game={game} />
 }
 
-// A promotion waiting for the player's choice of piece, and a move that was
-// not played, each with the position it was made in, so that a new position
-// read meanwhile (after a move in another tab, say) drops it.
+// A promotion waiting for the player's choice of piece, with the position it
+// was made in, so that a new position read meanwhile (after a move in another
+// tab, say) drops it. A move that was not played is dropped the same way.
 type PendingPromotion = {
   move: BoardMove
   pieces: PromotionPiece[]
   fen: string
 }
-type FailedMove = { uci: string; fen: string }
 
 function LoadedGame({ game }: { game: Game }) {
   const playMove = usePlayMove(game.id)
@@ -68,26 +67,26 @@ function LoadedGame({ game }: { game: Game }) {
   // screen holds, which takes the move back off (see ChessBoard's onMove).
   const [boardKey, setBoardKey] = useState(0)
   const [pending, setPending] = useState<PendingPromotion>()
-  const [failed, setFailed] = useState<FailedMove>()
 
   const finished = game.status === 'finished'
   const orientation = flipped ? opposite(game.playerSide) : game.playerSide
   const promotion = pending?.fen === game.fen ? pending : undefined
-  const failedMove = failed?.fen === game.fen ? failed.uci : undefined
+  const failedMove =
+    playMove.isError && playMove.variables.fen === game.fen
+      ? playMove.variables.uci
+      : undefined
 
   function send(uci: string) {
     const resetBoard = () => setBoardKey(key => key + 1)
-    const fen = game.fen
-    setFailed(undefined)
-    playMove.mutate(uci, {
-      onSuccess: outcome => {
-        if (outcome === 'reloaded') resetBoard()
-      },
-      onError: () => {
-        resetBoard()
-        setFailed({ uci, fen })
-      },
-    })
+    playMove.mutate(
+      { uci, fen: game.fen },
+      {
+        onSuccess: outcome => {
+          if (outcome === 'reloaded') resetBoard()
+        },
+        onError: resetBoard,
+      }
+    )
   }
 
   function onMove(move: BoardMove) {
@@ -156,8 +155,10 @@ function LoadedGame({ game }: { game: Game }) {
         {/* From `md` up the list takes the height left beside the board and
             scrolls within it. Its box is absolutely placed, so the moves
             never make the panel, and with it the row, taller than the
-            board. */}
-        <div className="md:relative md:min-h-0 md:flex-1">
+            board. It keeps room for its head and four rows (136px) even
+            so: where a narrow window shrinks the board and the alert shows,
+            the panel grows instead. */}
+        <div className="md:relative md:min-h-34 md:flex-1">
           <MoveList moves={game.moves} className="md:absolute md:inset-0" />
         </div>
       </div>

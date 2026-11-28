@@ -1,5 +1,5 @@
 import { render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { MoveList } from './move-list'
 import { move } from './test-games'
@@ -84,6 +84,34 @@ describe('MoveList', () => {
     expect(within(screen.getAllByRole('row')[3]).getAllByRole('cell')[1]).toBe(
       marked[0]
     )
+  })
+
+  it('scrolls back to the latest move when its box changes size', () => {
+    // A ResizeObserver whose callbacks the test calls, as the browser does
+    // when the alert above the list takes room from it.
+    const observed: (() => void)[] = []
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(private readonly callback: () => void) {}
+        observe() {
+          observed.push(this.callback)
+        }
+        disconnect() {}
+      }
+    )
+    try {
+      const { container } = render(<MoveList moves={OPENING} />)
+      const scroller = container.firstElementChild as HTMLElement
+      Object.defineProperty(scroller, 'scrollHeight', { value: 400 })
+      scroller.scrollTop = 0
+
+      for (const resized of observed) resized()
+
+      expect(scroller.scrollTop).toBe(400)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('scrolls to the latest move as moves are added', () => {
