@@ -523,7 +523,7 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
         await browser.CancelAsync();
         var sent = async () => await move;
         await sent.Should().ThrowAsync<OperationCanceledException>();
-        await abandoned.Finished.WaitAsync(Patience, Cancellation);
+        (await abandoned.Finished.WaitAsync(Patience, Cancellation)).Should().BeTrue("the server finishes with the abandoned request");
 
         (await toldToStop.Task).Should().BeTrue("the request's cancellation reaches the opponent");
         (await postgres.SavedRowsAsync(game.Id)).Should().Be(before);
@@ -571,7 +571,7 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
         await browser.CancelAsync();
         var sent = async () => await create;
         await sent.Should().ThrowAsync<OperationCanceledException>();
-        await abandoned.Finished.WaitAsync(Patience, Cancellation);
+        (await abandoned.Finished.WaitAsync(Patience, Cancellation)).Should().BeTrue("the server finishes with the abandoned request");
 
         (await toldToStop.Task).Should().BeTrue("the request's cancellation reaches the opponent");
         (await postgres.CountGamesAsync(ownerId)).Should().Be(0);
