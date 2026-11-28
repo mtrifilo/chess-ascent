@@ -87,28 +87,48 @@ describe('MoveList', () => {
   })
 
   it('scrolls back to the latest move when its box changes size', () => {
-    // A ResizeObserver whose callbacks the test calls, as the browser does
-    // when the alert above the list takes room from it.
-    const observed: (() => void)[] = []
+    // A ResizeObserver the test drives, as the browser does when the alert
+    // above the list takes room from it. Each records what it watches and
+    // whether it has been disconnected.
+    const observers: {
+      target?: Element
+      callback: () => void
+      connected: boolean
+    }[] = []
     vi.stubGlobal(
       'ResizeObserver',
       class {
-        constructor(private readonly callback: () => void) {}
-        observe() {
-          observed.push(this.callback)
+        private readonly record
+        constructor(callback: () => void) {
+          this.record = { callback, connected: true } as (typeof observers)[0]
+          observers.push(this.record)
         }
-        disconnect() {}
+        observe(target: Element) {
+          this.record.target = target
+        }
+        disconnect() {
+          this.record.connected = false
+        }
       }
     )
     try {
-      const { container } = render(<MoveList moves={OPENING} />)
+      const { container, rerender, unmount } = render(
+        <MoveList moves={OPENING.slice(0, 4)} />
+      )
       const scroller = container.firstElementChild as HTMLElement
       Object.defineProperty(scroller, 'scrollHeight', { value: 400 })
       scroller.scrollTop = 0
 
-      for (const resized of observed) resized()
-
+      const live = () => observers.filter(observer => observer.connected)
+      expect(live().map(observer => observer.target)).toEqual([scroller])
+      live()[0].callback()
       expect(scroller.scrollTop).toBe(400)
+
+      // One observer at a time, as moves are added and when the list goes.
+      rerender(<MoveList moves={OPENING} />)
+      expect(live().map(observer => observer.target)).toEqual([scroller])
+      unmount()
+      expect(live()).toEqual([])
     } finally {
       vi.unstubAllGlobals()
     }

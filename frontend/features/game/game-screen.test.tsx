@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { onlineManager } from '@tanstack/react-query'
 import { notFound } from 'next/navigation'
+import { Activity } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ChessBoardProps } from '@/components/chess-board/chess-board'
@@ -284,6 +285,35 @@ describe('GameScreen', () => {
         expect(board.props!.fen).toBe(game().fen)
       }
     )
+
+    it('shows the error when the move fails while Next.js has the page hidden', async () => {
+      let settle!: (reply: Reply) => void
+      answer({
+        [GAME_PATH]: ok(game()),
+        [MOVES_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
+      })
+      const screenIn = (mode: 'visible' | 'hidden') => (
+        <PageNavItemProvider>
+          <Activity mode={mode}>
+            <GameScreen id={GAME_ID} />
+          </Activity>
+        </PageNavItemProvider>
+      )
+      const { rerender } = renderWithQueries(screenIn('visible'))
+      await screen.findByRole('img', { name: 'Chess board' })
+      playOnBoard('e2', 'e4')
+
+      // The player leaves before the answer comes, and it is a failure.
+      rerender(screenIn('hidden'))
+      settle(problem(500))
+      await waitFor(() => expect(console.error).toHaveBeenCalled())
+      rerender(screenIn('visible'))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Your move was not sent'
+      )
+      expect(board.props!.fen).toBe(game().fen)
+    })
 
     it('sends the same move again on "Try again"', async () => {
       answer({
