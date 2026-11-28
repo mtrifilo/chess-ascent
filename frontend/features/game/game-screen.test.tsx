@@ -181,6 +181,20 @@ describe('GameScreen', () => {
     )
   })
 
+  it('counts the half-move on from each move played on the screen', async () => {
+    answer({ [GAME_PATH]: ok(game()), [MOVES_PATH]: ok(AFTER_E4) })
+    await renderGame()
+    playOnBoard('e2', 'e4')
+    await waitFor(() => expect(board.props!.fen).toBe(AFTER_E4.fen))
+
+    const sent = answer({ [GAME_PATH]: ok(AFTER_E4), [MOVES_PATH]: ok(game()) })
+    playOnBoard('e7', 'e5')
+
+    await waitFor(() =>
+      expect(sentMoves(sent)).toEqual([{ uci: 'e7e5', halfMoveNumber: 2 }])
+    )
+  })
+
   it('lets nothing move while a move is being sent', async () => {
     let settle!: (reply: Reply) => void
     answer({
@@ -352,30 +366,22 @@ describe('GameScreen', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
-    it.each([
-      ['refuses it', () => problem(422)],
-      ['saved it but its answer was lost', unreachable],
-    ])(
-      'reads the game again, and shows where it stands, when the API %s',
-      async (_, reply) => {
-        answer({ [GAME_PATH]: ok(game()), [MOVES_PATH]: reply() })
-        await renderGame()
-        // The game has moved on: another tab played 1. e4, or this move
-        // was saved before its answer was lost.
-        const sent = answer({
-          [GAME_PATH]: ok(AFTER_E4),
-          [MOVES_PATH]: reply(),
-        })
+    it('reads the game again, and shows where it stands, when the move was saved but its answer was lost', async () => {
+      answer({ [GAME_PATH]: ok(game()), [MOVES_PATH]: unreachable() })
+      await renderGame()
+      const sent = answer({
+        [GAME_PATH]: ok(AFTER_E4),
+        [MOVES_PATH]: unreachable(),
+      })
 
-        playOnBoard('e2', 'e4')
+      playOnBoard('e2', 'e4')
 
-        await waitFor(() => expect(board.props!.fen).toBe(AFTER_E4.fen))
-        expect(calls(sent)).toEqual([`POST ${MOVES_PATH}`, `GET ${GAME_PATH}`])
-        // The error was about the position before; the board now shows
-        // the position the API holds.
-        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-      }
-    )
+      await waitFor(() => expect(board.props!.fen).toBe(AFTER_E4.fen))
+      expect(calls(sent)).toEqual([`POST ${MOVES_PATH}`, `GET ${GAME_PATH}`])
+      // The error was about the position before; the board now shows the
+      // position the API holds.
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
 
     it('fails at once, rather than waiting, while the browser is offline', async () => {
       answer({ [GAME_PATH]: ok(game()), [MOVES_PATH]: unreachable() })
@@ -411,6 +417,24 @@ describe('GameScreen', () => {
       expect(board.mounts).toBe(2)
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       expect(calls(sent)).toEqual([`POST ${MOVES_PATH}`, `GET ${GAME_PATH}`])
+    })
+
+    it('sends the next move as the half-move after the game it loaded', async () => {
+      answer({ [GAME_PATH]: ok(game()), [MOVES_PATH]: problem(409) })
+      await renderGame()
+      answer({ [GAME_PATH]: ok(AFTER_E4), [MOVES_PATH]: problem(409) })
+      playOnBoard('g1', 'f3')
+      await waitFor(() => expect(board.props!.fen).toBe(AFTER_E4.fen))
+
+      const sent = answer({
+        [GAME_PATH]: ok(AFTER_E4),
+        [MOVES_PATH]: ok(game()),
+      })
+      playOnBoard('e7', 'e5')
+
+      await waitFor(() =>
+        expect(sentMoves(sent)).toEqual([{ uci: 'e7e5', halfMoveNumber: 2 }])
+      )
     })
 
     it('shows no error for a signed-out visitor, whom the API client sends to sign in', async () => {

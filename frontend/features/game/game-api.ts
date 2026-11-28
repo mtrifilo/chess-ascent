@@ -47,8 +47,9 @@ export function useCreateGame() {
 // How a move ended, besides failing, which is thrown: `played`, and the
 // recorded game is the API's answer; `reloaded`, because the game was no
 // longer where this screen thought (409: it had ended, or its next half-move
-// was not the one the move was sent as, because another tab or request moved
-// first), so it has been read again; `signed-out`, which the API client
+// was not the one the move was sent as, as when another tab or request moved
+// first; a wrong number from this screen would look the same), so it has
+// been read again; `signed-out`, which the API client
 // already handles by sending the visitor to sign in. Every other answer is a
 // failure, a 503 included (a computer opponent that did not reply): nothing
 // was saved, and the screen offers the same move again.
