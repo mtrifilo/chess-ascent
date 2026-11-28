@@ -22,8 +22,8 @@ public sealed class OpponentHostingTests(PostgresFixture postgres)
         var missing = Directory.CreateTempSubdirectory("no-engines-");
         try
         {
-            await using var factory = new ApiFactory(postgres) { KeepsMaia = true };
-            await using var api = factory.WithWebHostBuilder(host => host.UseSetting(MaiaInstallation.EnginesDirectorySetting, missing.FullName));
+            await using var factory = new ApiFactory(postgres) { KeptEngineKinds = [MaiaOpponent.EngineKind] };
+            await using var api = factory.WithWebHostBuilder(host => host.UseSetting(EngineInstallation.EnginesDirectorySetting, missing.FullName));
             using var client = api.CreateClient();
             var opponent = api.Services.GetRequiredService<IOpponent>();
             var maia = api.Services.GetRequiredService<IOptions<EnginePoolOptions>>().Value.Kinds[MaiaOpponent.EngineKind];
@@ -51,7 +51,7 @@ public sealed class OpponentHostingTests(PostgresFixture postgres)
     [Trait("Category", "Maia")]
     public async Task InstalledMaiaGivesALegalReplyAtEveryPreset()
     {
-        await using var api = new ApiFactory(postgres) { KeepsMaia = true };
+        await using var api = new ApiFactory(postgres) { KeptEngineKinds = [MaiaOpponent.EngineKind] };
         using var client = api.CreateClient();
         await Eventually.TrueAsync(
             async () =>

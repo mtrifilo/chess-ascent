@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using ChessAscent.Api.Engine;
 using ChessAscent.Api.Opponents;
-using Microsoft.Extensions.Configuration;
+using ChessAscent.Api.Tests.Engine;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
@@ -17,84 +17,10 @@ public sealed partial class MaiaInstallationTests
     private static readonly string Maia = Path.Combine(Engines, "maia");
 
     [Fact]
-    public void FromTheApiProjectDirectoryTheEnginesDirectoryDefaultsToTheRepositorysOwn()
-    {
-        var contentRoot = Path.Combine(RepositoryRoot, "backend", "src", "ChessAscent.Api");
-
-        MaiaInstallation.EnginesDirectory(null, contentRoot).Should().Be(Path.Combine(RepositoryRoot, "engines"));
-        MaiaInstallation.EnginesDirectory(" ", contentRoot).Should().Be(Path.Combine(RepositoryRoot, "engines"));
-        MaiaInstallation.EnginesDirectory(Engines, contentRoot).Should().Be(Engines);
-    }
-
-    [Fact]
-    public void ElsewhereThereIsNoDefault()
-    {
-        // A published application, which has no project file, under a
-        // shared directory where the repository's own files could be faked.
-        var published = Directory.CreateTempSubdirectory("published-api-");
-        try
-        {
-            Directory.CreateDirectory(Path.Combine(published.FullName, "scripts"));
-            File.WriteAllText(Path.Combine(published.FullName, "scripts", "setup-maia.sh"), "");
-            var contentRoot = Directory.CreateDirectory(Path.Combine(published.FullName, "backend", "src", "ChessAscent.Api")).FullName;
-
-            MaiaInstallation.EnginesDirectory(null, contentRoot).Should().BeNull();
-        }
-        finally
-        {
-            published.Delete(recursive: true);
-        }
-    }
-
-    [Fact]
-    public void WithoutADefaultStartUpStopsUnlessEveryPathOfTheKindIsConfigured()
-    {
-        var elsewhere = Path.GetTempPath();
-        var program = new Dictionary<string, string?> { ["EnginePool:Kinds:maia:ExecutablePath"] = "/opt/maia/venv/bin/python" };
-        var everything = new Dictionary<string, string?>(program)
-        {
-            ["EnginePool:Kinds:maia:WorkingDirectory"] = "/opt/maia",
-            ["EnginePool:Kinds:maia:SetEnvironment:HF_HOME"] = "/opt/maia/huggingface",
-        };
-
-        var unset = () => new ConfigurationManager().AddMaiaInstallation(elsewhere);
-        var programOnly = () => With(program).AddMaiaInstallation(elsewhere);
-        var misspelt = () => With(new Dictionary<string, string?>(program)
-        {
-            ["EnginePool:Kinds:maia:WorkingDirectory"] = "/opt/maia",
-            ["EnginePool:Kinds:maia:SetEnvironment:hf_home"] = "/opt/maia/huggingface",
-        }).AddMaiaInstallation(elsewhere);
-        var configured = With(everything);
-        configured.AddMaiaInstallation(elsewhere);
-
-        unset.Should().Throw<InvalidOperationException>().WithMessage($"{MaiaInstallation.EnginesDirectorySetting} is not set*");
-        programOnly.Should().Throw<InvalidOperationException>()
-            .WithMessage("*missing: EnginePool:Kinds:maia:WorkingDirectory, EnginePool:Kinds:maia:SetEnvironment:HF_HOME.");
-        misspelt.Should().Throw<InvalidOperationException>("the engine would get hf_home, which Hugging Face does not read")
-            .WithMessage("*missing: EnginePool:Kinds:maia:SetEnvironment:HF_HOME.");
-        configured["EnginePool:Kinds:maia:WorkingDirectory"].Should().Be("/opt/maia", "nothing is added over the configured paths");
-
-        static ConfigurationManager With(Dictionary<string, string?> settings)
-        {
-            var configuration = new ConfigurationManager();
-            configuration.AddInMemoryCollection(settings);
-            return configuration;
-        }
-    }
-
-    [Fact]
-    public void ARelativeEnginesDirectoryIsRefused()
-    {
-        var relative = () => MaiaInstallation.EnginesDirectory("engines", Engines);
-
-        relative.Should().Throw<InvalidOperationException>().WithMessage($"{MaiaInstallation.EnginesDirectorySetting} must be a full path*");
-    }
-
-    [Fact]
     public void TheSetUpScriptChecksTheEngineWithTheSameCommandLineEnvironmentAndPaths()
     {
-        var script = File.ReadAllText(Path.Combine(RepositoryRoot, "scripts", "setup-maia.sh"));
-        var maia = Kind(BaseConfiguration());
+        var script = SetUpScripts.Read("setup-maia.sh");
+        var maia = Kind();
         var revision = WeightsRevision().Match(script).Groups["value"].Value;
 
         // The handshake's command line, after `env -i "${ENGINE_ENV[@]}" "$PYTHON"`.
@@ -115,11 +41,7 @@ public sealed partial class MaiaInstallationTests
 
         // The paths it installs to, under $ENGINES/maia, are the ones the API runs from.
         script.Should().Contain("MAIA=\"$(cd \"$ENGINES/maia\" && pwd)\"");
-        var paths = new Dictionary<string, string> { ["MAIA"] = Maia };
-        foreach (Match assignment in PathAssignment().Matches(script))
-        {
-            paths[assignment.Groups["name"].Value] = Variable().Replace(assignment.Groups["value"].Value, name => paths[name.Groups["name"].Value]);
-        }
+        var paths = SetUpScripts.Paths(script, "MAIA", Maia, "VENV", "PYTHON", "HF_CACHE");
 
         paths["PYTHON"].Should().Be(maia.ExecutablePath);
         paths["HF_CACHE"].Should().Be(maia.SetEnvironment["HF_HOME"]);
@@ -128,7 +50,7 @@ public sealed partial class MaiaInstallationTests
     [Fact]
     public void TheKindRunsTheEnvironmentsPythonOfflineWithOnlyWhatItNeeds()
     {
-        var maia = Kind(BaseConfiguration());
+        var maia = Kind();
 
         maia.ExecutablePath.Should().Be(Path.Combine(Maia, "venv", "bin", "python"));
         maia.WorkingDirectory.Should().Be(Maia);
@@ -148,7 +70,7 @@ public sealed partial class MaiaInstallationTests
     public void TheKindPassesValidation()
     {
         var options = new EnginePoolOptions();
-        options.Kinds[MaiaOpponent.EngineKind] = Kind(BaseConfiguration());
+        options.Kinds[MaiaOpponent.EngineKind] = Kind();
 
         var result = new EnginePoolOptionsValidator(Options.Create(new HostOptions())).Validate(null, options);
 
@@ -158,12 +80,7 @@ public sealed partial class MaiaInstallationTests
     [Fact]
     public void EveryOtherSourceOverridesTheInstallationsSettings()
     {
-        var configuration = BaseConfiguration(new Dictionary<string, string?>
-        {
-            ["EnginePool:Kinds:maia:ExecutablePath"] = "/elsewhere/python",
-        });
-
-        var maia = Kind(configuration);
+        var maia = Kind(new Dictionary<string, string?> { ["EnginePool:Kinds:maia:ExecutablePath"] = "/elsewhere/python" });
 
         maia.ExecutablePath.Should().Be("/elsewhere/python");
         maia.WorkingDirectory.Should().Be(Maia);
@@ -173,42 +90,11 @@ public sealed partial class MaiaInstallationTests
     public void TheEnginesDirectorySettingMovesEveryPath()
     {
         var elsewhere = Path.Combine(Path.GetTempPath(), "other-engines");
-        var configuration = BaseConfiguration(new Dictionary<string, string?> { [MaiaInstallation.EnginesDirectorySetting] = elsewhere });
-
-        var maia = Kind(configuration);
+        var maia = Kind(new Dictionary<string, string?> { [EngineInstallation.EnginesDirectorySetting] = elsewhere });
 
         maia.ExecutablePath.Should().Be(Path.Combine(elsewhere, "maia", "venv", "bin", "python"));
         maia.WorkingDirectory.Should().Be(Path.Combine(elsewhere, "maia"));
         maia.SetEnvironment["HF_HOME"].Should().Be(Path.Combine(elsewhere, "maia", "huggingface"));
-    }
-
-    // The API's appsettings.json, which the build copies next to the tests;
-    // the engines directory, and then any other settings given, as sources
-    // added after it (environment variables, say); and the installation's
-    // settings, added as Program.cs adds them.
-    private static ConfigurationManager BaseConfiguration(Dictionary<string, string?>? later = null)
-    {
-        var configuration = new ConfigurationManager();
-        configuration.AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.json"), optional: false);
-        configuration.AddInMemoryCollection(new Dictionary<string, string?> { [MaiaInstallation.EnginesDirectorySetting] = Engines });
-        configuration.AddInMemoryCollection(later ?? []);
-        configuration.AddMaiaInstallation(contentRootPath: Path.Combine(Engines, "unused"));
-        return configuration;
-    }
-
-    private static string RepositoryRoot { get; } = FindRepositoryRoot();
-
-    private static string FindRepositoryRoot()
-    {
-        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "scripts", "setup-maia.sh")))
-            {
-                return directory.FullName;
-            }
-        }
-
-        throw new InvalidOperationException($"No scripts/setup-maia.sh above {AppContext.BaseDirectory}.");
     }
 
     [GeneratedRegex(@"^WEIGHTS_REVISION=(?<value>[0-9a-f]+)$", RegexOptions.Multiline)]
@@ -220,16 +106,8 @@ public sealed partial class MaiaInstallationTests
     [GeneratedRegex(@"ENGINE_ENV=\((?<variables>[^)]*)\)")]
     private static partial Regex EngineEnvironment();
 
-    [GeneratedRegex(@"^(?<name>VENV|PYTHON|HF_CACHE)=""(?<value>[^""]*)""$", RegexOptions.Multiline)]
-    private static partial Regex PathAssignment();
-
-    [GeneratedRegex(@"\$(?<name>[A-Z_]+)")]
-    private static partial Regex Variable();
-
-    private static EngineKindOptions Kind(ConfigurationManager configuration)
-    {
-        var options = new EnginePoolOptions();
-        configuration.GetSection(EnginePoolOptions.SectionName).Bind(options, binder => binder.ErrorOnUnknownConfiguration = true);
-        return options.Kinds[MaiaOpponent.EngineKind];
-    }
+    // The kind as the API configures it, with the engines directory at
+    // Engines unless a later setting moves it.
+    private static EngineKindOptions Kind(Dictionary<string, string?>? later = null) =>
+        SetUpScripts.Kind(MaiaOpponent.EngineKind, Engines, configuration => configuration.AddMaiaInstallation(contentRootPath: Path.Combine(Engines, "unused")), later);
 }

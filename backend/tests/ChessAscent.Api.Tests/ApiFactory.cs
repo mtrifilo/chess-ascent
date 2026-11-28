@@ -1,5 +1,6 @@
 using ChessAscent.Api.Database;
 using ChessAscent.Api.Engine;
+using ChessAscent.Api.Hints;
 using ChessAscent.Api.Opponents;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -42,16 +43,21 @@ public sealed class ApiFactory(PostgresFixture postgres) : WebApplicationFactory
     // through this method too.
     private static readonly Lock StartUpLock = new();
 
+    // The kinds appsettings.json configures for the real engines.
+    private static readonly string[] RealEngineKinds = [MaiaOpponent.EngineKind, FairyStockfishHintProvider.EngineKind];
+
     /// <summary>
-    /// Whether the application keeps the Maia engine kind that its
-    /// configuration describes. Off unless set: on a machine where the set-up
-    /// script has run, every test class's application would otherwise start
-    /// a Maia process, and where it has not, readiness would fail. Without
-    /// the kind, the application's IOpponent answers every request with
-    /// OpponentFailed. The opponent's own tests build an engine pool around
-    /// the fake engine (see MaiaOpponentTests).
+    /// Which of the real engines' kinds, as its configuration describes
+    /// them, the application keeps: none unless set. On a machine where the
+    /// set-up scripts have run, every test class's application would
+    /// otherwise start the engines, and where they have not, readiness would
+    /// fail. Without its kind, the application's IOpponent answers every
+    /// request with OpponentFailed, and its IHintProvider with HintFailed.
+    /// Their own tests build an engine pool around the fake engine (see
+    /// MaiaOpponentTests and FairyStockfishHintProviderTests). Kinds a test
+    /// configures for itself are kept.
     /// </summary>
-    public bool KeepsMaia { get; init; }
+    public IReadOnlyCollection<string> KeptEngineKinds { get; init; } = [];
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -59,13 +65,15 @@ public sealed class ApiFactory(PostgresFixture postgres) : WebApplicationFactory
         // application loads, so the API cannot reach the development database.
         builder.UseSetting(ConnectionStringKey, postgres.ConnectionString);
 
-        if (!KeepsMaia)
+        // PostConfigure runs after the configuration is bound, and before
+        // the options are validated and the pool reads them.
+        builder.ConfigureServices(services => services.PostConfigure<EnginePoolOptions>(options =>
         {
-            // PostConfigure runs after the configuration is bound, and before
-            // the options are validated and the pool reads them.
-            builder.ConfigureServices(services =>
-                services.PostConfigure<EnginePoolOptions>(options => options.Kinds.Remove(MaiaOpponent.EngineKind)));
-        }
+            foreach (var kind in RealEngineKinds.Except(KeptEngineKinds))
+            {
+                options.Kinds.Remove(kind);
+            }
+        }));
     }
 
     protected override IHost CreateHost(IHostBuilder builder)
