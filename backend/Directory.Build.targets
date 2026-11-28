@@ -31,7 +31,8 @@
 
   <!--
     The target RefuseTestingPlatformTelemetry in Directory.Build.props fails
-    the build if this removal ever misses.
+    the build if a hook with the extension's display name is still
+    registered.
   -->
 
 </Project>
