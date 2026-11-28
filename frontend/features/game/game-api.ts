@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 
-import type { Game } from './game-state'
+import type { Side } from '@/components/chess-board/chess-board'
+
+import type { Game, OpponentStrength } from './game-state'
 
 const gameKey = (id: string) => ['game', id] as const
 
@@ -26,16 +28,20 @@ export function useGame(id: string) {
   })
 }
 
-// Starts a game in which the signed-in player moves both sides, as White,
-// and records it, so the game's page shows it at once rather than waiting
-// for its own read of the game.
+// The choices a game against the computer starts with.
+export type NewGame = { playerSide: Side; strength: OpponentStrength }
+
+// Starts a game against the computer and records it, so the game's page
+// shows it at once rather than waiting for its own read of the game. When
+// the player has Black, the API's answer already holds the computer's first
+// move.
 export function useCreateGame() {
   const queryClient = useQueryClient()
   return useMutation({
     networkMode: 'always',
-    mutationFn: async (): Promise<Game> => {
+    mutationFn: async ({ playerSide, strength }: NewGame): Promise<Game> => {
       const { data, response } = await api.POST('/games', {
-        body: { playerSide: 'white', opponent: { kind: 'none' } },
+        body: { playerSide, opponent: { kind: 'computer', strength } },
       })
       if (!data) throw new Error(`POST /games answered ${response.status}.`)
       queryClient.setQueryData(gameKey(data.id), data)

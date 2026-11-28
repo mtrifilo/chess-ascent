@@ -16,15 +16,19 @@ import {
   renderWithQueries,
 } from '@/lib/test-support'
 
+import { MINIMUM_THINKING_MS } from './computer-thinking'
 import { GameScreen } from './game-screen'
 import {
   AFTER_E4,
   AFTER_E4_E5,
+  COMPUTER_REPLIED_E5,
+  computerGame,
   FOOLS_MATE,
   game,
   GAME_ID,
   move,
   PROMOTION_GAME,
+  START_FEN,
 } from './test-games'
 
 // A stand-in for the board, which records what it is given and how many
@@ -486,9 +490,10 @@ describe('GameScreen', () => {
         'You won'
       )
       expect(screen.getByText('Checkmate.')).toBeInTheDocument()
-      expect(
-        screen.getByRole('button', { name: 'New game' })
-      ).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'New game' })).toHaveAttribute(
+        'href',
+        '/play'
+      )
       expect(screen.queryByText('Your move')).not.toBeInTheDocument()
     })
 
@@ -526,6 +531,243 @@ describe('GameScreen', () => {
         expect(screen.getByText(reason)).toBeInTheDocument()
       }
     )
+  })
+
+  describe('a game against the computer', () => {
+    // Lets `ms` pass on the fake clock, and React render what that changes.
+    const pass = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms))
+
+    // The clock is faked only once the game has loaded, since the queries
+    // that find it wait on real timers.
+    const fakeTheClock = () =>
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    const heading = () => screen.getByRole('heading', { level: 1 })
+
+    it('names the computer by its strength, and the player "You"', async () => {
+      answer({
+        [GAME_PATH]: ok(
+          computerGame({ opponent: { kind: 'computer', strength: 1400 } })
+        ),
+      })
+      await renderGame()
+
+      expect(screen.getByText('Maia 1400')).toBeInTheDocument()
+      expect(screen.getAllByText('You')).toHaveLength(1)
+      expect(heading()).toHaveTextContent('Your move')
+      expect(screen.queryByText('Thinking…')).not.toBeInTheDocument()
+    })
+
+    it("opens a game as Black with the board turned and the computer's first move played", async () => {
+      answer({
+        [GAME_PATH]: ok(
+          computerGame({
+            playerSide: 'black',
+            fen: AFTER_E4.fen,
+            sideToMove: 'black',
+            moves: AFTER_E4.moves,
+            legalMoves: AFTER_E4.legalMoves,
+          })
+        ),
+      })
+      await renderGame()
+
+      expect(board.props).toMatchObject({
+        fen: AFTER_E4.fen,
+        orientation: 'black',
+        lastMove: { from: 'e2', to: 'e4' },
+        readOnly: false,
+      })
+      expect(heading()).toHaveTextContent('Your move')
+      expect(screen.getByText('Black to move · move 1')).toBeInTheDocument()
+      expect(screen.getByRole('cell', { name: 'e4' })).toHaveAttribute(
+        'aria-current',
+        'step'
+      )
+    })
+
+    it('shows the computer thinking, and locks the board, from the moment the move is sent', async () => {
+      answer({
+        [GAME_PATH]: ok(computerGame()),
+        [MOVES_PATH]: new Promise<Reply>(() => {}),
+      })
+      await renderGame()
+
+      playOnBoard('e2', 'e4')
+
+      await waitFor(() =>
+        expect(heading()).toHaveTextContent('Maia 800 is thinking')
+      )
+      expect(screen.getByText('Black to move · move 1')).toBeInTheDocument()
+      expect(screen.getByText('Thinking…')).toBeInTheDocument()
+      // The board keeps the position it showed the move in.
+      expect(board.props).toMatchObject({ fen: START_FEN, readOnly: true })
+    })
+
+    it('puts "Thinking…" on the bar of the side the computer plays', async () => {
+      answer({
+        [GAME_PATH]: ok(computerGame()),
+        [MOVES_PATH]: new Promise<Reply>(() => {}),
+      })
+      await renderGame()
+      playOnBoard('e2', 'e4')
+      // Flipped, the computer's bar is the lower one.
+      fireEvent.click(screen.getByRole('button', { name: 'Flip board' }))
+
+      const thinking = await screen.findByText('Thinking…')
+      expect(thinking.parentElement).toHaveTextContent('Maia 800')
+    })
+
+    it('holds the thinking state for the minimum time, then shows the reply', async () => {
+      answer({
+        [GAME_PATH]: ok(computerGame()),
+        [MOVES_PATH]: ok(COMPUTER_REPLIED_E5),
+      })
+      await renderGame()
+      fakeTheClock()
+
+      playOnBoard('e2', 'e4')
+      await pass(0)
+
+      // The answer is in, with the reply, but the state holds: the list
+      // shows the player's move and not the reply, and the board is locked.
+      expect(heading()).toHaveTextContent('Maia 800 is thinking')
+      expect(screen.getByRole('cell', { name: 'e4' })).toHaveAttribute(
+        'aria-current',
+        'step'
+      )
+      expect(screen.queryByRole('cell', { name: 'e5' })).toBeNull()
+      expect(board.props).toMatchObject({ fen: START_FEN, readOnly: true })
+
+      await pass(MINIMUM_THINKING_MS - 1)
+      expect(heading()).toHaveTextContent('Maia 800 is thinking')
+      expect(board.props!.fen).toBe(START_FEN)
+
+      await pass(1)
+      expect(heading()).toHaveTextContent('Your move')
+      expect(screen.getByText('White to move · move 2')).toBeInTheDocument()
+      expect(screen.queryByText('Thinking…')).not.toBeInTheDocument()
+      expect(screen.getByRole('cell', { name: 'e5' })).toHaveAttribute(
+        'aria-current',
+        'step'
+      )
+      expect(board.props).toMatchObject({
+        fen: COMPUTER_REPLIED_E5.fen,
+        lastMove: { from: 'e7', to: 'e5' },
+        readOnly: false,
+      })
+      // The reply moved the pieces on the same board.
+      expect(board.mounts).toBe(1)
+    })
+
+    it('shows a reply slower than the minimum time as soon as it comes', async () => {
+      let settle!: (reply: Reply) => void
+      answer({
+        [GAME_PATH]: ok(computerGame()),
+        [MOVES_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
+      })
+      await renderGame()
+      fakeTheClock()
+
+      playOnBoard('e2', 'e4')
+      await pass(MINIMUM_THINKING_MS + 200)
+      expect(heading()).toHaveTextContent('Maia 800 is thinking')
+
+      settle(ok(COMPUTER_REPLIED_E5))
+      await pass(0)
+
+      expect(heading()).toHaveTextContent('Your move')
+      expect(board.props!.fen).toBe(COMPUTER_REPLIED_E5.fen)
+    })
+
+    it("shows the result at once, without the thinking state's hold, when the player's move ends the game", async () => {
+      const mated = computerGame({
+        ...FOOLS_MATE,
+        playerSide: 'black',
+        opponent: { kind: 'computer', strength: 800 },
+      })
+      const beforeMate = computerGame({
+        playerSide: 'black',
+        fen: 'rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2',
+        sideToMove: 'black',
+        moves: FOOLS_MATE.moves.slice(0, 3),
+        legalMoves: { d8: ['h4'] },
+      })
+      answer({ [GAME_PATH]: ok(beforeMate), [MOVES_PATH]: ok(mated) })
+      await renderGame()
+      fakeTheClock()
+
+      playOnBoard('d8', 'h4')
+      await pass(0)
+
+      expect(heading()).toHaveTextContent('You won')
+      expect(screen.queryByText('Thinking…')).not.toBeInTheDocument()
+      expect(board.props).toMatchObject({ fen: mated.fen, readOnly: true })
+    })
+
+    it('names the computer as the winner when its reply ends the game', async () => {
+      answer({
+        [GAME_PATH]: ok(
+          computerGame({
+            ...FOOLS_MATE,
+            opponent: { kind: 'computer', strength: 800 },
+          })
+        ),
+      })
+      await renderGame()
+
+      expect(heading()).toHaveTextContent('Maia 800 won')
+      expect(screen.getByText('Checkmate.')).toBeInTheDocument()
+    })
+
+    describe('a move that is not played', () => {
+      beforeEach(() => {
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+      })
+      afterEach(() => {
+        vi.mocked(console.error).mockRestore()
+      })
+
+      it('ends the thinking state at once, puts the board back and shows the error', async () => {
+        answer({
+          [GAME_PATH]: ok(computerGame()),
+          [MOVES_PATH]: problem(503),
+        })
+        await renderGame()
+        fakeTheClock()
+
+        playOnBoard('e2', 'e4')
+        await pass(0)
+
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          'Your move was not sent'
+        )
+        expect(heading()).toHaveTextContent('Your move')
+        expect(screen.queryByText('Thinking…')).not.toBeInTheDocument()
+        expect(board.mounts).toBe(2)
+        expect(board.props).toMatchObject({ fen: START_FEN, readOnly: false })
+      })
+    })
+  })
+
+  it('shows no thinking state in a game where the player moves both sides', async () => {
+    answer({
+      [GAME_PATH]: ok(game()),
+      [MOVES_PATH]: new Promise<Reply>(() => {}),
+    })
+    await renderGame()
+
+    playOnBoard('e2', 'e4')
+
+    await waitFor(() => expect(board.props!.readOnly).toBe(true))
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      'Your move'
+    )
+    expect(screen.queryByText('Thinking…')).not.toBeInTheDocument()
   })
 
   it('flips the board and the players with it', async () => {

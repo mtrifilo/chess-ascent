@@ -2,6 +2,7 @@
 
 import { opposite } from '@lichess-org/chessground/util'
 import { ArrowUpDownIcon, CircleAlertIcon } from 'lucide-react'
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { useState } from 'react'
 
@@ -15,6 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
+import { useComputerThinking } from './computer-thinking'
 import { useGame, usePlayMove } from './game-api'
 import {
   checkSquare,
@@ -22,6 +24,7 @@ import {
   END_REASON_TEXT,
   lastMove,
   moveNumber,
+  moveNumberAfterPlayer,
   nextHalfMoveNumber,
   playerName,
   promotionChoices,
@@ -32,7 +35,6 @@ import {
   type PromotionPiece,
 } from './game-state'
 import { MoveList } from './move-list'
-import { NewGameButton } from './new-game-button'
 import { PromotionPicker } from './promotion-picker'
 
 // One game: the board between the two players' bars, and beside it (below it
@@ -68,8 +70,14 @@ function LoadedGame({ game }: { game: Game }) {
   const [boardKey, setBoardKey] = useState(0)
   const [pending, setPending] = useState<PendingPromotion>()
 
-  const finished = game.status === 'finished'
-  const orientation = flipped ? opposite(game.playerSide) : game.playerSide
+  const thinking = useComputerThinking(game, playMove)
+  // While the computer thinks, the game is shown as it stood after the
+  // player's move, even when its reply has already arrived.
+  const shownFen = thinking?.fen ?? game.fen
+  const shownMoves = thinking?.moves ?? game.moves
+  const finished = !thinking && game.status === 'finished'
+  const opponentSide = opposite(game.playerSide)
+  const orientation = flipped ? opponentSide : game.playerSide
   const promotion = pending?.fen === game.fen ? pending : undefined
   const failedMove =
     playMove.isError && playMove.variables.fen === game.fen
@@ -101,16 +109,20 @@ function LoadedGame({ game }: { game: Game }) {
     // back; change the two together.
     <div className="-mt-4 flex flex-col md:mt-0 md:flex-row md:justify-center md:gap-8">
       <div className="flex min-w-0 flex-col md:w-160 md:gap-2">
-        <PlayerBar game={game} side={opposite(orientation)} />
+        <PlayerBar
+          game={game}
+          side={opposite(orientation)}
+          thinking={Boolean(thinking)}
+        />
         <div className="relative">
           <ChessBoard
             key={boardKey}
-            fen={game.fen}
+            fen={shownFen}
             orientation={orientation}
             destinations={destinations(game)}
-            lastMove={lastMove(game.moves)}
-            check={checkSquare(game)}
-            readOnly={finished || playMove.isPending}
+            lastMove={lastMove(shownMoves)}
+            check={thinking ? undefined : checkSquare(game)}
+            readOnly={finished || Boolean(thinking) || playMove.isPending}
             onMove={onMove}
           />
           {promotion && (
@@ -126,13 +138,23 @@ function LoadedGame({ game }: { game: Game }) {
             />
           )}
         </div>
-        <PlayerBar game={game} side={orientation} />
+        <PlayerBar
+          game={game}
+          side={orientation}
+          thinking={Boolean(thinking)}
+        />
       </div>
       <div className="flex flex-col gap-3 pt-4 md:w-90 md:shrink-0 md:gap-4 md:rounded-md md:border md:bg-card md:p-4">
         {finished ? (
           <ResultPanel game={game} />
+        ) : thinking ? (
+          <GameStatus
+            title={`${playerName(game, opponentSide)} is thinking`}
+            detail={`${sideLabel(opponentSide)} to move · move ${moveNumberAfterPlayer(game, thinking.fen)}`}
+          />
         ) : (
           <GameStatus
+            title="Your move"
             detail={
               promotion
                 ? `Choose a piece for the pawn on ${promotion.move.to}.`
@@ -159,14 +181,23 @@ function LoadedGame({ game }: { game: Game }) {
             so: where a narrow window shrinks the board and the alert shows,
             the panel grows instead. */}
         <div className="md:relative md:min-h-34 md:flex-1">
-          <MoveList moves={game.moves} className="md:absolute md:inset-0" />
+          <MoveList moves={shownMoves} className="md:absolute md:inset-0" />
         </div>
       </div>
     </div>
   )
 }
 
-function PlayerBar({ game, side }: { game: Game; side: Side }) {
+// One side's player. The computer's bar says so while it thinks.
+function PlayerBar({
+  game,
+  side,
+  thinking,
+}: {
+  game: Game
+  side: Side
+  thinking: boolean
+}) {
   return (
     <div className="flex h-10 items-center gap-2">
       <span
@@ -177,14 +208,19 @@ function PlayerBar({ game, side }: { game: Game; side: Side }) {
         )}
       />
       <span className="text-sm font-semibold">{playerName(game, side)}</span>
+      {thinking && side !== game.playerSide && (
+        <span className="ml-auto text-body-s text-muted-foreground">
+          Thinking…
+        </span>
+      )}
     </div>
   )
 }
 
-function GameStatus({ detail }: { detail: string }) {
+function GameStatus({ title, detail }: { title: string; detail: string }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <h1 className="font-display text-display-s font-semibold">Your move</h1>
+      <h1 className="font-display text-display-s font-semibold">{title}</h1>
       <p className="text-body-s text-muted-foreground">{detail}</p>
     </div>
   )
@@ -201,7 +237,12 @@ function ResultPanel({ game }: { game: Game }) {
           {game.endReason && END_REASON_TEXT[game.endReason]}
         </p>
       </div>
-      <NewGameButton className="h-12.75 w-full md:h-8 md:w-auto md:self-start md:px-2" />
+      <Button
+        asChild
+        className="h-12.75 w-full md:h-8 md:w-auto md:self-start md:px-2"
+      >
+        <Link href="/play">New game</Link>
+      </Button>
     </div>
   )
 }

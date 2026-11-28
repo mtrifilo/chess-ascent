@@ -56,6 +56,20 @@ export const PROMOTION_GAME = game({
   ],
 })
 
+// A game against the computer at strength 800, the player as White, at the
+// starting position; `overrides` replaces any field.
+export function computerGame(overrides: Partial<Game> = {}): Game {
+  return game({ opponent: { kind: 'computer', strength: 800 }, ...overrides })
+}
+
+// The answer to 1. e4 in a game against the computer: the player's move and
+// the computer's reply, 1... e5.
+export const COMPUTER_REPLIED_E5 = computerGame({
+  fen: AFTER_E4_E5.fen,
+  moves: AFTER_E4_E5.moves,
+  legalMoves: AFTER_E4_E5.legalMoves,
+})
+
 // Fool's mate: Black has mated White.
 export const FOOLS_MATE = game({
   fen: 'rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3',

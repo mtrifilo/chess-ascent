@@ -112,11 +112,28 @@ export function sideLabel(side: Side): 'White' | 'Black' {
   return side === 'white' ? 'White' : 'Black'
 }
 
+// The computer opponent's strengths the API accepts, weakest first, and the
+// one a new game offers first.
+export const OPPONENT_STRENGTHS = [600, 800, 1000, 1200, 1400] as const
+export type OpponentStrength = (typeof OPPONENT_STRENGTHS)[number]
+export const DEFAULT_OPPONENT_STRENGTH: OpponentStrength = 800
+
+export function playsComputer(game: Game): boolean {
+  return game.opponent.kind === 'computer'
+}
+
 // The name the screen gives the player of a side. When the signed-in player
-// moves both sides, both are theirs.
+// moves both sides, both are theirs. The computer is named after its
+// strength, as the API reports it.
 export function playerName(game: Game, side: Side): string {
-  if (side === game.playerSide || game.opponent.kind === 'none') return 'You'
+  if (side === game.playerSide || !playsComputer(game)) return 'You'
   return `Maia ${game.opponent.strength}`
+}
+
+// The number of the move being played once the player's move, made in the
+// position `fen`, is on the board: a move by Black starts the next one.
+export function moveNumberAfterPlayer(game: Game, fen: string): number {
+  return moveNumber(fen) + (game.playerSide === 'black' ? 1 : 0)
 }
 
 // The heading of the result panel.
