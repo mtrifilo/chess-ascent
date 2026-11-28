@@ -57,9 +57,10 @@ internal static class ComputerMoves
             },
             OpponentFailed => new OpponentUnavailable(),
 
-            // The game is rebuilt and its strength validated before the
-            // opponent is asked, so each of these means the opponent and the
-            // saved game disagree about what the game is.
+            // The game is rebuilt by the same chess rules before the opponent
+            // is asked, and its strength was checked when the game was
+            // created. So each of these means the saved game is wrong, such
+            // as a strength no longer offered, or the opponent is.
             StrengthNotOffered notOffered => new OpponentFault($"it does not offer the strength {notOffered.Strength}"),
             InvalidMoveInHistory invalid => new OpponentFault($"it refused half-move {invalid.Index + 1} of the game"),
             GameAlreadyOver => new OpponentFault("it found the game already over"),

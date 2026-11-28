@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text.Json.Nodes;
+using ChessAscent.Api.Features.Games;
+using ChessAscent.Api.Opponents;
 using Microsoft.AspNetCore.Hosting;
 
 namespace ChessAscent.Api.Tests.ApiDocument;
@@ -155,6 +157,21 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
         {
             described["type"].Should().NotBeNull("a plain value states its type");
         }
+    }
+
+    // The strengths are written out in OpponentRequest's documentation, which
+    // becomes this description, so they must be the ones offered.
+    [Fact]
+    public async Task DocumentNamesTheStrengthsOfferedAndTheDefault()
+    {
+        var document = await GetDocumentAsync();
+        var offered = OpponentStrengths.Offered;
+
+        var description = document["components"]!["schemas"]!["OpponentRequest"]!["properties"]!["strength"]!["description"]!
+            .GetValue<string>().ReplaceLineEndings(" ");
+
+        description.Should().Contain($"{string.Join(", ", offered.Take(offered.Count - 1))} or {offered[^1]},");
+        description.Should().Contain($"it is {OpponentRequest.DefaultStrength}.");
     }
 
     // A request field is required in the document exactly when the API

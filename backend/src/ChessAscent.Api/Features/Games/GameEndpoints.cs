@@ -76,7 +76,7 @@ public static class GameEndpoints
     /// game's next one, or that another request's move got to first.
     /// </summary>
     public const string MoveConflictDetail =
-        "Another move was saved while this one was being played, so this one was not saved. Load the game to see where it stands.";
+        "This move was not saved: the game is not where the request expected it, because another move was saved first or the half-move number is not the game's next one. Load the game to see where it stands.";
 
     /// <summary>
     /// The detail of the 503 for a game the computer did not create, or a
@@ -320,11 +320,15 @@ public static class GameEndpoints
     // lock, for the few milliseconds of its own transaction, and check that
     // the game still has the number of moves this request found. The
     // half-move number plays the part of @Version. A lock held from the load
-    // would make every other request for this game, a read included, wait
-    // for the engine, and a slow or dead engine would hold it until the
-    // engine timed out. Two posts of the same move both ask the computer;
-    // the second to reach the lock finds the first's moves saved, and is
-    // refused with 409.
+    // would keep a database connection and transaction open while the engine
+    // thinks, and make every other move in this game wait for the engine; a
+    // slow or dead engine would hold it until the engine timed out. (Reading
+    // the game would not wait: in PostgreSQL a row lock blocks only writes
+    // and other locking reads, not a plain SELECT.) A move posted again after
+    // the first was saved is refused before the computer is asked, by its
+    // half-move number. Two posts of the same move that overlap both ask the
+    // computer; the second to reach the lock finds the first's moves saved,
+    // and is refused with 409.
     private static async Task<Results<Ok<GameResponse>, ValidationProblem, ProblemHttpResult>> ReplyAndSaveAsync(
         GameStore store,
         IOpponent computer,
@@ -389,8 +393,13 @@ public static class GameEndpoints
         _ => null,
     };
 
-    // The JSON converter reads only the names of OpponentKind's members, so
-    // the kind is always one of them; see GameStore.WinFor for CS8524.
+    // The JSON converter refuses numbers, and reads a comma-separated list of
+    // names as the members combined bit by bit (see JsonServices). With
+    // OpponentKind's two members, 0 and 1, every value it can produce is a
+    // named member, so the unnamed-value check (CS8524, see GameStore.WinFor)
+    // is switched off here. A third member would make "computer,<new>" an
+    // unnamed value that throws, and would need Enum.IsDefined refused with
+    // 400 before this switch.
 #pragma warning disable CS8524
     private static Opponent ChosenOpponent(OpponentRequest opponent) => opponent.Kind!.Value switch
     {

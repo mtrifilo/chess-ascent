@@ -511,8 +511,8 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
                 return new OpponentMove("e7e5");
             },
         };
-        var finished = new FinishedMoveRequests();
-        using var api = ApiWith(opponent, configure: services => services.AddSingleton<IStartupFilter>(finished));
+        var abandoned = new AbandonedRequests();
+        using var api = ApiWith(opponent, configure: services => services.AddSingleton<IStartupFilter>(abandoned));
         using var client = await SignedInClientAsync(api);
         var game = await client.CreateComputerGameAsync("white");
         var before = await postgres.SavedRowsAsync(game.Id);
@@ -523,12 +523,58 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
         await browser.CancelAsync();
         var sent = async () => await move;
         await sent.Should().ThrowAsync<OperationCanceledException>();
-        await finished.One.WaitAsync(Patience, Cancellation);
+        await abandoned.Finished.WaitAsync(Patience, Cancellation);
 
         (await toldToStop.Task).Should().BeTrue("the request's cancellation reaches the opponent");
         (await postgres.SavedRowsAsync(game.Id)).Should().Be(before);
         opponent.Calls.Should().HaveCount(1);
     }
+
+    // The browser goes away while the computer thinks about its first move.
+    [Fact]
+    public async Task CreatingAGameAsBlackWhoseRequestIsCancelledWhileTheComputerThinksCreatesNothing()
+    {
+        var thinking = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var toldToStop = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var opponent = new FakeOpponent
+        {
+            Answer = async (_, cancellationToken) =>
+            {
+                thinking.TrySetResult();
+                try
+                {
+                    await Task.Delay(Patience, cancellationToken);
+                }
+                finally
+                {
+                    toldToStop.TrySetResult(cancellationToken.IsCancellationRequested);
+                }
+
+                return new OpponentMove("e2e4");
+            },
+        };
+        var abandoned = new AbandonedRequests();
+        using var api = ApiWith(opponent, configure: services => services.AddSingleton<IStartupFilter>(abandoned));
+        var (signedIn, ownerId) = await SignedInPlayerAsync(api);
+        using var client = signedIn;
+
+        using var browser = CancellationTokenSource.CreateLinkedTokenSource(Cancellation);
+        var create = client.PostAsJsonAsync("/games", new { playerSide = "black", opponent = new { kind = "computer" } }, browser.Token);
+        await thinking.Task.WaitAsync(Patience, Cancellation);
+        await browser.CancelAsync();
+        var sent = async () => await create;
+        await sent.Should().ThrowAsync<OperationCanceledException>();
+        await abandoned.Finished.WaitAsync(Patience, Cancellation);
+
+        (await toldToStop.Task).Should().BeTrue("the request's cancellation reaches the opponent");
+        (await postgres.CountGamesAsync(ownerId)).Should().Be(0);
+    }
+
+    // The default is written out in OpponentRequest's documentation and
+    // applied without being checked against the strengths offered.
+    [Fact]
+    public void TheDefaultStrengthIsOneTheComputerOffers() =>
+        OpponentStrengths.Offered.Should().Contain(OpponentRequest.DefaultStrength);
 
     private static OpponentReply FaultyReply(string reply) => reply switch
     {
@@ -582,12 +628,13 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     }
 
 
-    // Counts move requests that the server has finished with, whatever
-    // their outcome, so a test can wait for one the client has given up on.
-    // A startup filter's middleware runs before the application's own.
-    private sealed class FinishedMoveRequests : IStartupFilter
+    // Counts requests that the server has finished with after their client
+    // gave up on them, so a test can wait for the server to be done with one
+    // the client no longer hears about. A startup filter's middleware runs
+    // before the application's own.
+    private sealed class AbandonedRequests : IStartupFilter
     {
-        public SemaphoreSlim One { get; } = new(0);
+        public SemaphoreSlim Finished { get; } = new(0);
 
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
         {
@@ -599,9 +646,9 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
                 }
                 finally
                 {
-                    if (context.Request.Path.Value?.EndsWith("/moves", StringComparison.Ordinal) == true)
+                    if (context.RequestAborted.IsCancellationRequested)
                     {
-                        One.Release();
+                        Finished.Release();
                     }
                 }
             });

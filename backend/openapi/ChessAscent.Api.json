@@ -788,7 +788,7 @@
           },
           "halfMoveNumber": {
             "type": "integer",
-            "description": "The half-move number this move is meant to have, numbered as the\nresponse's moves are: one more than the number of moves in the game the\nclient is showing. When the game has moved on from\nthere, the move is refused with 409 and nothing is saved, so sending the\nsame move again is always safe.",
+            "description": "The half-move number this move is meant to have, numbered as the\nresponse's moves are: one more than the number of moves in the game the\nclient is showing. Any other number, whether the game has moved on since\nor the number is simply wrong, is refused with 409 before the move is\nplayed, and nothing is saved, so sending the same move again is always\nsafe.",
             "format": "int32"
           }
         },

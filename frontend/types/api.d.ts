@@ -709,9 +709,10 @@ export interface components {
        * Format: int32
        * @description The half-move number this move is meant to have, numbered as the
        *     response's moves are: one more than the number of moves in the game the
-       *     client is showing. When the game has moved on from
-       *     there, the move is refused with 409 and nothing is saved, so sending the
-       *     same move again is always safe.
+       *     client is showing. Any other number, whether the game has moved on since
+       *     or the number is simply wrong, is refused with 409 before the move is
+       *     played, and nothing is saved, so sending the same move again is always
+       *     safe.
        */
       halfMoveNumber: number
     }
