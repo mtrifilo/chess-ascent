@@ -36,7 +36,7 @@ import {
 import { MoveList } from './move-list'
 import { NewGameLink } from './new-game-link'
 import { PromotionPicker } from './promotion-picker'
-import { ResignConfirm } from './resign-confirm'
+import { RESIGN_BUTTON_CLASS, ResignConfirm } from './resign-confirm'
 
 // One game: the board between the two players' bars, and beside it (below it
 // on phones) the game's status or result, the move list and the controls.
@@ -171,7 +171,9 @@ function LoadedGame({ game }: { game: Game }) {
         {finished ? <ResultPanel game={game} /> : <GameStatus {...status} />}
         {failedMove && <MoveFailed onTryAgain={() => send(failedMove)} />}
         {/* The controls, or the resign confirmation in their place: below
-            the move list from `md` up, above it on phones. */}
+            the move list from `md` up, above it on phones. A game that ends
+            while the confirmation is open, in another tab say, shows its
+            result and no confirmation. */}
         {confirmingResign && !finished ? (
           <ResignConfirm
             gameId={game.id}
@@ -189,7 +191,7 @@ function LoadedGame({ game }: { game: Game }) {
                 ref={resignControl}
                 variant="outline"
                 aria-disabled={moveUnderway}
-                className="h-12.75 px-4 md:h-8 md:px-2 md:text-body-s"
+                className={RESIGN_BUTTON_CLASS}
                 onClick={() => {
                   if (!moveUnderway) setConfirmingResign(true)
                 }}

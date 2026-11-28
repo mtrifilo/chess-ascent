@@ -71,10 +71,9 @@ namespace ChessAscent.Api.Features.Games;
 /// game is already over, however it ended; and 500 when the game is still
 /// being played but its saved form is broken. In every case but 200 nothing
 /// is saved. It works whoever's turn it is, so it takes no half-move number,
-/// and resigning again is safe: the second request gets the 409. A move
-/// that reaches the game first is kept, and the game is resigned after it,
-/// unless that move ended the game; a move that comes after the resignation
-/// gets the 409 a finished game gives.
+/// and resigning again is safe: the second request gets the 409. How a
+/// resignation and a move sent at the same moment are ordered is in
+/// <see cref="GameStore.ResignAsync"/>.
 /// </para>
 /// <para>
 /// Listing games answers 200 with a page of them, which is empty when there

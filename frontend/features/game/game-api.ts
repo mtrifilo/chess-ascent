@@ -1,6 +1,11 @@
 'use client'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 
@@ -96,57 +101,61 @@ export function usePlayMove(id: string) {
       uci,
       halfMoveNumber,
     }: MoveRequest): Promise<MoveOutcome> => {
-      const { data, response } = await api.POST('/games/{id}/moves', {
+      const answer = await api.POST('/games/{id}/moves', {
         params: { path: { id } },
         body: { uci, halfMoveNumber },
       })
-      if (data) {
-        await queryClient.cancelQueries({ queryKey: gameKey(id) })
-        queryClient.setQueryData(gameKey(id), data)
-        return 'played'
-      }
-      if (response.status === 409) {
-        await queryClient.invalidateQueries({ queryKey: gameKey(id) })
-        return 'reloaded'
-      }
-      if (response.status === 401) return 'signed-out'
-      throw new Error(`POST /games/{id}/moves answered ${response.status}.`)
+      const outcome = await recordAnswer(
+        queryClient,
+        id,
+        'POST /games/{id}/moves',
+        answer
+      )
+      return outcome === 'recorded' ? 'played' : outcome
     },
   })
 }
 
-// How a resignation ended, besides failing, which is thrown: `resigned`, and
-// the recorded game is the API's answer; `reloaded`, because the game was
-// already over (409: it ended by another move, or was resigned in another
-// tab or by an earlier press whose answer was lost), so it has been read
-// again; `signed-out`, which the API client already handles by sending the
-// visitor to sign in. Every other answer is a failure, after which the
-// player may send it again: resigning twice is safe, since the second
-// answer is the 409.
-export type ResignOutcome = 'resigned' | 'reloaded' | 'signed-out'
-
-// Resigns the game. A game read already on its way is cancelled before the
-// answer is recorded, as for a move, so it cannot put back the game as it
-// stood before.
+// Resigns the game. Its answer is recorded as a move's is (recordAnswer),
+// and a 409 means the game was already over, by another move, or resigned in
+// another tab or by an earlier press whose answer was lost. Any other
+// failure is thrown, and resigning again is safe, as the second answer is
+// that 409.
 export function useResign(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
     networkMode: 'always',
-    mutationFn: async (): Promise<ResignOutcome> => {
-      const { data, response } = await api.POST('/games/{id}/resign', {
+    mutationFn: async () => {
+      const answer = await api.POST('/games/{id}/resign', {
         params: { path: { id } },
       })
-      if (data) {
-        await queryClient.cancelQueries({ queryKey: gameKey(id) })
-        queryClient.setQueryData(gameKey(id), data)
-        return 'resigned'
-      }
-      if (response.status === 409) {
-        await queryClient.invalidateQueries({ queryKey: gameKey(id) })
-        return 'reloaded'
-      }
-      if (response.status === 401) return 'signed-out'
-      throw new Error(`POST /games/{id}/resign answered ${response.status}.`)
+      await recordAnswer(queryClient, id, 'POST /games/{id}/resign', answer)
     },
   })
+}
+
+// What the screen does with the API's answer to a request that changes the
+// game. The game it answers with is recorded (`recorded`), after cancelling
+// any read of the game already on its way, so that the read cannot land
+// afterwards and put back the game as it was. A 409 means the game is no
+// longer where the request found it, so it is read again (`reloaded`). A 401
+// is handled by the API client, which sends the visitor to sign in
+// (`signed-out`). Any other answer is thrown, naming `request`.
+async function recordAnswer(
+  queryClient: QueryClient,
+  id: string,
+  request: string,
+  { data, response }: { data?: Game; response: Response }
+): Promise<'recorded' | 'reloaded' | 'signed-out'> {
+  if (data) {
+    await queryClient.cancelQueries({ queryKey: gameKey(id) })
+    queryClient.setQueryData(gameKey(id), data)
+    return 'recorded'
+  }
+  if (response.status === 409) {
+    await queryClient.invalidateQueries({ queryKey: gameKey(id) })
+    return 'reloaded'
+  }
+  if (response.status === 401) return 'signed-out'
+  throw new Error(`${request} answered ${response.status}.`)
 }

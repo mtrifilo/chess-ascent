@@ -26,7 +26,7 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
     [InlineData("black", GameResult.WhiteWins)]
     public async Task ResigningEndsTheGameAsAWinForTheOtherSideWhoeverIsToMove(string playerSide, GameResult result)
     {
-        using var client = await SignedInClientAsync();
+        using var client = await factory.SignedInClientAsync();
         var game = await client.CreateGameAsync(playerSide);
         var before = await client.PlayAsync(game.Id, "e2e4");
 
@@ -50,7 +50,7 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
     [Fact]
     public async Task AGameWithNoMovesCanBeResigned()
     {
-        using var client = await SignedInClientAsync();
+        using var client = await factory.SignedInClientAsync();
         var game = await client.CreateGameAsync();
 
         using var response = await client.PostResignAsync(game.Id);
@@ -95,7 +95,7 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
     [InlineData(false)]
     public async Task AFinishedGameCannotBeResignedAndIsLeftAsItIs(bool mated)
     {
-        using var client = await SignedInClientAsync();
+        using var client = await factory.SignedInClientAsync();
         var game = await client.CreateGameAsync();
         if (mated)
         {
@@ -120,7 +120,7 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
     [Fact]
     public async Task AMoveAfterTheResignationIsRefusedAsInAFinishedGame()
     {
-        using var client = await SignedInClientAsync();
+        using var client = await factory.SignedInClientAsync();
         var game = await client.CreateGameAsync();
         await client.PlayAsync(game.Id, "e2e4");
         using (var resign = await client.PostResignAsync(game.Id))
@@ -138,9 +138,9 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
     [Fact]
     public async Task AnotherPlayersGameIsNotFoundJustLikeAGameThatDoesNotExist()
     {
-        using var owner = await SignedInClientAsync();
+        using var owner = await factory.SignedInClientAsync();
         var game = await owner.CreateGameAsync();
-        using var otherPlayer = await SignedInClientAsync();
+        using var otherPlayer = await factory.SignedInClientAsync();
         var saved = await postgres.SavedRowsAsync(game.Id);
 
         using var resignOthers = await otherPlayer.PostResignAsync(game.Id);
@@ -159,7 +159,7 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
     [Fact]
     public async Task ASignedOutResignationIs401AndChangesNothing()
     {
-        using var owner = await SignedInClientAsync();
+        using var owner = await factory.SignedInClientAsync();
         var game = await owner.CreateGameAsync();
         using var signedOut = factory.CreateClient(new() { AllowAutoRedirect = false });
         var saved = await postgres.SavedRowsAsync(game.Id);
@@ -177,7 +177,7 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
     [Fact]
     public async Task AResignationStartedByAnotherSiteIsRefusedAndChangesNothing()
     {
-        using var client = await SignedInClientAsync();
+        using var client = await factory.SignedInClientAsync();
         var game = await client.CreateGameAsync();
         var saved = await postgres.SavedRowsAsync(game.Id);
 
@@ -191,16 +191,16 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
         (await postgres.SavedRowsAsync(game.Id)).Should().Be(saved);
     }
 
-    // A move written straight to the table that the rules refuse: the game
-    // is broken, and is refused with 500 before the resignation is saved.
-    [Fact]
-    public async Task AnOngoingGameWhoseSavedFormIsBrokenAnswers500AndIsNotResigned()
+    // Each game the move endpoint's tests break by writing moves straight to
+    // the table is refused with 500 before the resignation is saved.
+    [Theory]
+    [MemberData(nameof(GameEndpointsTests.BrokenSavedGames), MemberType = typeof(GameEndpointsTests))]
+    public async Task AnOngoingGameWhoseSavedFormIsBrokenAnswers500AndIsNotResigned(string sql, int rows, string reason)
     {
-        using var client = await SignedInClientAsync();
+        _ = reason;
+        using var client = await factory.SignedInClientAsync();
         var game = await client.CreateGameAsync();
-        (await postgres.ExecuteAsync(
-            """INSERT INTO "Moves" ("GameId", "HalfMoveNumber", "Uci", "San") VALUES (@id, 1, 'e2e5', 'e5')""",
-            game.Id)).Should().Be(1);
+        (await postgres.ExecuteAsync(sql, game.Id)).Should().Be(rows);
         var saved = await postgres.SavedRowsAsync(game.Id);
 
         using var response = await client.PostResignAsync(game.Id);
@@ -208,12 +208,5 @@ public sealed class ResignEndpointTests(ApiFactory factory, PostgresFixture post
         response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
         (await response.ReadProblemAsync()).Detail.Should().BeNull();
         (await postgres.SavedRowsAsync(game.Id)).Should().Be(saved);
-    }
-
-    private async Task<HttpClient> SignedInClientAsync()
-    {
-        var client = factory.CreateClient();
-        await client.RegisterNewAsync(AccountData.NewEmail());
-        return client;
     }
 }

@@ -21,6 +21,10 @@ import { useResign } from './game-api'
 // resignation is on its way, so that it is sent once and is not cancelled
 // after it has gone. A resignation that fails leaves this open, with no
 // message, so that Resign can be pressed again.
+// The size of the Resign control and of the confirmation's buttons: large
+// on phones and medium from `md` up, as drawn.
+export const RESIGN_BUTTON_CLASS = 'h-12.75 px-4 md:h-8 md:px-2 md:text-body-s'
+
 export function ResignConfirm({
   gameId,
   moveUnderway,
@@ -64,7 +68,7 @@ export function ResignConfirm({
           ref={cancel}
           variant="outline"
           aria-disabled={resign.isPending}
-          className="h-12.75 px-4 md:h-8 md:px-2 md:text-body-s"
+          className={RESIGN_BUTTON_CLASS}
           onClick={() => {
             if (!sending.current) onCancel()
           }}
@@ -74,7 +78,7 @@ export function ResignConfirm({
         <Button
           variant="destructive"
           aria-disabled={moveUnderway || resign.isPending}
-          className="h-12.75 px-4 md:h-8 md:px-2 md:text-body-s"
+          className={RESIGN_BUTTON_CLASS}
           onClick={confirm}
         >
           Resign
