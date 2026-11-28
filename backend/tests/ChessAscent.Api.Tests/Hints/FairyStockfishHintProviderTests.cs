@@ -82,13 +82,12 @@ public sealed class FairyStockfishHintProviderTests : IDisposable
         reply.Value.Should().Be(new GameAlreadyOver(new Checkmate(Side.Black)));
     }
 
+    // How a reply is made safe and cut short in the log is shared with Maia,
+    // and MaiaOpponentTests covers it.
     [Theory]
     [InlineData("e7e5", "e7e5")]
-    [InlineData("0000", "(no move)")]
     [InlineData("(none)", "(no move)")]
     [InlineData("", "(bestmove with no move)")]
-    [InlineData("e2e4\u001b[31m", "e2e4?[31m")]
-    [InlineData("a1a2a3a4a5a6a7a8a9", "a1a2a3a4a5a6a7a8...")]
     public async Task ReplyThatIsNotALegalMoveIsAnEngineFault(string reply, string logged)
     {
         await using var hints = Start("--bestmove", reply);

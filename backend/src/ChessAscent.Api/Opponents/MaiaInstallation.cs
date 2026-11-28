@@ -15,9 +15,9 @@ namespace ChessAscent.Api.Opponents;
 /// </remarks>
 public static class MaiaInstallation
 {
-    internal static EngineInstallation Installation { get; } = new(
+    private static readonly EngineInstallation Installation = new(
         MaiaOpponent.EngineKind,
-        "Maia",
+        MaiaOpponent.EngineName,
         "scripts/setup-maia.sh",
         new Dictionary<string, Func<string, string>>
         {

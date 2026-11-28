@@ -88,7 +88,7 @@ internal sealed class EngineInstallation(string kind, string engine, string setU
     }
 
     /// <summary>The pool settings that depend on where the engine is installed, by configuration key.</summary>
-    internal Dictionary<string, string?> PoolSettings(string enginesDirectory)
+    private Dictionary<string, string?> PoolSettings(string enginesDirectory)
     {
         var directory = Path.Combine(enginesDirectory, kind);
         return settings.ToDictionary(setting => Key(setting.Key), setting => (string?)setting.Value(directory));

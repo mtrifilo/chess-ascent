@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using ChessAscent.Api.Engine;
 using ChessAscent.Chess;
@@ -28,7 +27,7 @@ namespace ChessAscent.Api.Opponents;
 /// is rebuilt from.
 /// </para>
 /// </remarks>
-public sealed partial class MaiaOpponent(EnginePool pool, IChessRules rules, ILogger<MaiaOpponent> logger) : IOpponent
+public sealed class MaiaOpponent(EnginePool pool, IChessRules rules, ILogger<MaiaOpponent> logger) : IOpponent
 {
     /// <summary>The engine kind, in the pool's configuration, that runs Maia.</summary>
     public const string EngineKind = "maia";
@@ -45,6 +44,9 @@ public sealed partial class MaiaOpponent(EnginePool pool, IChessRules rules, ILo
     // says, so the smallest limit states that.
     private static readonly SearchLimit OneEvaluation = SearchLimit.Nodes(1);
 
+    /// <summary>The engine's name, in the log and in messages.</summary>
+    internal const string EngineName = "Maia";
+
     public async Task<OpponentReply> ChooseMoveAsync(IReadOnlyList<string> moves, int strength, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(moves);
@@ -53,48 +55,20 @@ public sealed partial class MaiaOpponent(EnginePool pool, IChessRules rules, ILo
             return new StrengthNotOffered(strength);
         }
 
-        var loaded = rules.Load(LegalMoveSearch.StandardStartingFen, moves);
-        if (loaded is InvalidMoveInHistory invalid)
+        var rating = strength.ToString(CultureInfo.InvariantCulture);
+        var result = await LegalMoveSearch.FindAsync(
+            pool, EngineKind, EngineName, "The opponent", rules, moves, (engine, token) => ConfigureAsync(engine, rating, token), OneEvaluation, logger, cancellationToken);
+        return result switch
         {
-            return invalid;
-        }
-
-        var game = loaded is GameLoaded { Game: var rebuilt }
-            ? rebuilt
-            : throw new UnreachableException("The standard starting position was refused.");
-        if (game.Status is not Ongoing)
-        {
-            return new GameAlreadyOver(game.Status);
-        }
-
-        // Configuration that leaves the kind out, as the API tests do, is a
-        // failure to report, like any other reason Maia cannot answer.
-        if (!pool.IsConfigured(EngineKind))
-        {
-            return new OpponentFailed($"No engine kind named \"{EngineKind}\" is configured.");
-        }
-
-        try
-        {
-            return await pool.RunAsync(EngineKind, lease => AskAsync(lease, game, strength, cancellationToken), cancellationToken);
-        }
-        // EngineUnavailableException: no process could be had (Maia is not
-        // installed, say, or every process is busy). UciEngineException: the
-        // process timed out or ended. InvalidOperationException, which
-        // includes ObjectDisposedException: the process had become unusable,
-        // or the pool is stopping. Cancellation by the caller is not caught.
-        catch (Exception e) when (e is EngineUnavailableException or UciEngineException or InvalidOperationException)
-        {
-            LogUnavailable(logger, e);
-            return new OpponentFailed($"The opponent did not answer: {e.Message}");
-        }
+            EngineMove { Uci: var move } => new OpponentMove(move),
+            InvalidMoveInHistory invalid => invalid,
+            GameAlreadyOver over => over,
+            EngineFailed { Reason: var reason } => new OpponentFailed(reason),
+        };
     }
 
-    private async Task<OpponentReply> AskAsync(EngineLease lease, IChessGame game, int strength, CancellationToken cancellationToken)
+    private static async Task ConfigureAsync(UciEngine engine, string rating, CancellationToken cancellationToken)
     {
-        var engine = lease.Engine;
-        var rating = strength.ToString(CultureInfo.InvariantCulture);
-
         // SelfElo is the rating of the side to move, Maia's own; OppoElo is
         // its opponent's. Both are the chosen strength: Maia then plays as
         // that rating against someone of the same rating.
@@ -102,12 +76,5 @@ public sealed partial class MaiaOpponent(EnginePool pool, IChessRules rules, ILo
         await engine.SetOptionAsync("OppoElo", rating, cancellationToken);
         await engine.SetOptionAsync("Temperature", SamplingTemperature, cancellationToken);
         await engine.SetOptionAsync("MultiPV", CandidateLines, cancellationToken);
-
-        return await LegalMoveSearch.SearchAsync(lease, game, OneEvaluation, "Maia", logger, cancellationToken) is { } move
-            ? new OpponentMove(move)
-            : new OpponentFailed("The opponent answered with something that is not a legal move in the position.");
     }
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The opponent could not be asked for a move")]
-    private static partial void LogUnavailable(ILogger logger, Exception exception);
 }

@@ -16,9 +16,9 @@ namespace ChessAscent.Api.Hints;
 /// </remarks>
 public static class FairyStockfishInstallation
 {
-    internal static EngineInstallation Installation { get; } = new(
+    private static readonly EngineInstallation Installation = new(
         FairyStockfishHintProvider.EngineKind,
-        "Fairy-Stockfish",
+        FairyStockfishHintProvider.EngineName,
         "scripts/setup-fairy-stockfish.sh",
         new Dictionary<string, Func<string, string>>
         {
