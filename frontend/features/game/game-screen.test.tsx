@@ -26,6 +26,7 @@ import {
   FOOLS_MATE,
   game,
   GAME_ID,
+  MAIA_800,
   move,
   PROMOTION_GAME,
   START_FEN,
@@ -50,7 +51,7 @@ vi.mock('@/components/chess-board/chess-board', async () => {
   }
 })
 
-vi.mock('next/navigation', () => ({ notFound: vi.fn(), useRouter: vi.fn() }))
+vi.mock('next/navigation', () => ({ notFound: vi.fn() }))
 vi.mock('@/lib/page-load', () => ({ loadPage: vi.fn(), reloadPage: vi.fn() }))
 
 const GAME_PATH = `/api/games/${GAME_ID}`
@@ -564,15 +565,11 @@ describe('GameScreen', () => {
 
     it("opens a game as Black with the board turned and the computer's first move played", async () => {
       answer({
-        [GAME_PATH]: ok(
-          computerGame({
-            playerSide: 'black',
-            fen: AFTER_E4.fen,
-            sideToMove: 'black',
-            moves: AFTER_E4.moves,
-            legalMoves: AFTER_E4.legalMoves,
-          })
-        ),
+        [GAME_PATH]: ok({
+          ...AFTER_E4,
+          playerSide: 'black',
+          opponent: MAIA_800,
+        }),
       })
       await renderGame()
 
@@ -603,23 +600,17 @@ describe('GameScreen', () => {
         expect(heading()).toHaveTextContent('Maia 800 is thinking')
       )
       expect(screen.getByText('Black to move · move 1')).toBeInTheDocument()
-      expect(screen.getByText('Thinking…')).toBeInTheDocument()
+      expect(screen.getByText('Thinking…').parentElement).toHaveTextContent(
+        'Maia 800'
+      )
       // The board keeps the position it showed the move in.
       expect(board.props).toMatchObject({ fen: START_FEN, readOnly: true })
-    })
 
-    it('puts "Thinking…" on the bar of the side the computer plays', async () => {
-      answer({
-        [GAME_PATH]: ok(computerGame()),
-        [MOVES_PATH]: new Promise<Reply>(() => {}),
-      })
-      await renderGame()
-      playOnBoard('e2', 'e4')
-      // Flipped, the computer's bar is the lower one.
+      // Flipped, the computer's bar is the lower one, and says so.
       fireEvent.click(screen.getByRole('button', { name: 'Flip board' }))
-
-      const thinking = await screen.findByText('Thinking…')
-      expect(thinking.parentElement).toHaveTextContent('Maia 800')
+      expect(screen.getByText('Thinking…').parentElement).toHaveTextContent(
+        'Maia 800'
+      )
     })
 
     it('holds the thinking state for the minimum time, then shows the reply', async () => {
@@ -685,11 +676,7 @@ describe('GameScreen', () => {
     })
 
     it("shows the result at once, without the thinking state's hold, when the player's move ends the game", async () => {
-      const mated = computerGame({
-        ...FOOLS_MATE,
-        playerSide: 'black',
-        opponent: { kind: 'computer', strength: 800 },
-      })
+      const mated = { ...FOOLS_MATE, playerSide: 'black', opponent: MAIA_800 }
       const beforeMate = computerGame({
         playerSide: 'black',
         fen: 'rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2',
@@ -711,12 +698,7 @@ describe('GameScreen', () => {
 
     it('names the computer as the winner when its reply ends the game', async () => {
       answer({
-        [GAME_PATH]: ok(
-          computerGame({
-            ...FOOLS_MATE,
-            opponent: { kind: 'computer', strength: 800 },
-          })
-        ),
+        [GAME_PATH]: ok({ ...FOOLS_MATE, opponent: MAIA_800 }),
       })
       await renderGame()
 
@@ -724,33 +706,29 @@ describe('GameScreen', () => {
       expect(screen.getByText('Checkmate.')).toBeInTheDocument()
     })
 
-    describe('a move that is not played', () => {
-      beforeEach(() => {
-        vi.spyOn(console, 'error').mockImplementation(() => {})
+    it('ends the thinking state at once when the move fails, puts the board back and shows the error', async () => {
+      // The query cache reports the failure to the console.
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {})
+      answer({
+        [GAME_PATH]: ok(computerGame()),
+        [MOVES_PATH]: problem(503),
       })
-      afterEach(() => {
-        vi.mocked(console.error).mockRestore()
-      })
+      await renderGame()
+      fakeTheClock()
 
-      it('ends the thinking state at once, puts the board back and shows the error', async () => {
-        answer({
-          [GAME_PATH]: ok(computerGame()),
-          [MOVES_PATH]: problem(503),
-        })
-        await renderGame()
-        fakeTheClock()
+      playOnBoard('e2', 'e4')
+      await pass(0)
 
-        playOnBoard('e2', 'e4')
-        await pass(0)
-
-        expect(screen.getByRole('alert')).toHaveTextContent(
-          'Your move was not sent'
-        )
-        expect(heading()).toHaveTextContent('Your move')
-        expect(screen.queryByText('Thinking…')).not.toBeInTheDocument()
-        expect(board.mounts).toBe(2)
-        expect(board.props).toMatchObject({ fen: START_FEN, readOnly: false })
-      })
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Your move was not sent'
+      )
+      expect(heading()).toHaveTextContent('Your move')
+      expect(screen.queryByText('Thinking…')).not.toBeInTheDocument()
+      expect(board.mounts).toBe(2)
+      expect(board.props).toMatchObject({ fen: START_FEN, readOnly: false })
+      consoleError.mockRestore()
     })
   })
 

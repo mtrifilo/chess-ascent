@@ -24,12 +24,12 @@ import {
   END_REASON_TEXT,
   lastMove,
   moveNumber,
-  moveNumberAfterPlayer,
+  moveNumberAfter,
   nextHalfMoveNumber,
   playerName,
   promotionChoices,
   resultTitle,
-  sideLabel,
+  toMoveText,
   toUci,
   type Game,
   type PromotionPiece,
@@ -73,9 +73,10 @@ function LoadedGame({ game }: { game: Game }) {
   const thinking = useComputerThinking(game, playMove)
   // While the computer thinks, the game is shown as it stood after the
   // player's move, even when its reply has already arrived.
+  const isThinking = thinking !== undefined
   const shownFen = thinking?.fen ?? game.fen
   const shownMoves = thinking?.moves ?? game.moves
-  const finished = !thinking && game.status === 'finished'
+  const finished = !isThinking && game.status === 'finished'
   const opponentSide = opposite(game.playerSide)
   const orientation = flipped ? opponentSide : game.playerSide
   const promotion = pending?.fen === game.fen ? pending : undefined
@@ -83,6 +84,18 @@ function LoadedGame({ game }: { game: Game }) {
     playMove.isError && playMove.variables.fen === game.fen
       ? playMove.variables.uci
       : undefined
+
+  const status = thinking
+    ? {
+        title: `${playerName(game, opponentSide)} is thinking`,
+        detail: toMoveText(opponentSide, moveNumberAfter(thinking.fen)),
+      }
+    : {
+        title: 'Your move',
+        detail: promotion
+          ? `Choose a piece for the pawn on ${promotion.move.to}.`
+          : toMoveText(game.sideToMove, moveNumber(game.fen)),
+      }
 
   function send(uci: string) {
     const resetBoard = () => setBoardKey(key => key + 1)
@@ -112,7 +125,7 @@ function LoadedGame({ game }: { game: Game }) {
         <PlayerBar
           game={game}
           side={opposite(orientation)}
-          thinking={Boolean(thinking)}
+          thinking={isThinking && opposite(orientation) === opponentSide}
         />
         <div className="relative">
           <ChessBoard
@@ -121,8 +134,8 @@ function LoadedGame({ game }: { game: Game }) {
             orientation={orientation}
             destinations={destinations(game)}
             lastMove={lastMove(shownMoves)}
-            check={thinking ? undefined : checkSquare(game)}
-            readOnly={finished || Boolean(thinking) || playMove.isPending}
+            check={isThinking ? undefined : checkSquare(game)}
+            readOnly={finished || isThinking || playMove.isPending}
             onMove={onMove}
           />
           {promotion && (
@@ -141,27 +154,11 @@ function LoadedGame({ game }: { game: Game }) {
         <PlayerBar
           game={game}
           side={orientation}
-          thinking={Boolean(thinking)}
+          thinking={isThinking && orientation === opponentSide}
         />
       </div>
       <div className="flex flex-col gap-3 pt-4 md:w-90 md:shrink-0 md:gap-4 md:rounded-md md:border md:bg-card md:p-4">
-        {finished ? (
-          <ResultPanel game={game} />
-        ) : thinking ? (
-          <GameStatus
-            title={`${playerName(game, opponentSide)} is thinking`}
-            detail={`${sideLabel(opponentSide)} to move · move ${moveNumberAfterPlayer(game, thinking.fen)}`}
-          />
-        ) : (
-          <GameStatus
-            title="Your move"
-            detail={
-              promotion
-                ? `Choose a piece for the pawn on ${promotion.move.to}.`
-                : `${sideLabel(game.sideToMove)} to move · move ${moveNumber(game.fen)}`
-            }
-          />
-        )}
+        {finished ? <ResultPanel game={game} /> : <GameStatus {...status} />}
         {failedMove && <MoveFailed onTryAgain={() => send(failedMove)} />}
         {/* Below the move list from `md` up, above it on phones. */}
         <div className="flex items-center justify-end md:order-last md:h-25">
@@ -188,7 +185,7 @@ function LoadedGame({ game }: { game: Game }) {
   )
 }
 
-// One side's player. The computer's bar says so while it thinks.
+// One side's player, and whether that player is the computer thinking.
 function PlayerBar({
   game,
   side,
@@ -208,7 +205,7 @@ function PlayerBar({
         )}
       />
       <span className="text-sm font-semibold">{playerName(game, side)}</span>
-      {thinking && side !== game.playerSide && (
+      {thinking && (
         <span className="ml-auto text-body-s text-muted-foreground">
           Thinking…
         </span>

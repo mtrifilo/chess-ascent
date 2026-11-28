@@ -1,9 +1,11 @@
 'use client'
 
+import { colors } from '@lichess-org/chessground/types'
 import { useRouter } from 'next/navigation'
 import { useId, useState, useTransition } from 'react'
 
 import type { Side } from '@/components/chess-board/chess-board'
+import { PageHeading } from '@/components/layout/page-heading'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -14,8 +16,6 @@ import {
   sideLabel,
   type OpponentStrength,
 } from './game-state'
-
-const SIDES: readonly Side[] = ['white', 'black']
 
 // The choices for a game against the computer, and "Start game", which
 // creates the game and opens it: a card from `md` up, and the bare form on
@@ -51,10 +51,10 @@ export function NewGameForm() {
       onSubmit={onSubmit}
       className="mx-auto flex flex-col gap-6 md:w-120 md:rounded-md md:border md:bg-card md:p-6"
     >
-      <h1 className="font-display text-display-s font-semibold">New game</h1>
+      <PageHeading className="text-display-s">New game</PageHeading>
       <Choices
         legend="Play as"
-        options={SIDES}
+        options={colors}
         label={sideLabel}
         value={playerSide}
         onChange={setPlayerSide}
@@ -112,30 +112,31 @@ function Choices<Option extends string | number>({
     <fieldset aria-describedby={describedBy}>
       <legend className="mb-2 text-sm font-medium">{legend}</legend>
       <div className={cn('grid gap-2', className)}>
-        {options.map(option => (
-          <label
-            key={option}
-            className={cn(
-              buttonVariants({
-                variant: option === value ? 'default' : 'outline',
-              }),
-              // The outline is drawn without a fill, so the card shows
-              // through, as drawn.
-              option !== value && 'bg-transparent',
-              'h-12.75 cursor-pointer has-focus-visible:border-ring has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50 md:h-8'
-            )}
-          >
-            <input
-              type="radio"
-              name={name}
-              value={option}
-              checked={option === value}
-              onChange={() => onChange(option)}
-              className="sr-only"
-            />
-            {label(option)}
-          </label>
-        ))}
+        {options.map(option => {
+          const chosen = option === value
+          return (
+            <label
+              key={option}
+              className={cn(
+                buttonVariants({ variant: chosen ? 'default' : 'outline' }),
+                // The outline is drawn without a fill, so the card shows
+                // through, as drawn.
+                !chosen && 'bg-transparent',
+                'h-12.75 cursor-pointer has-focus-visible:border-ring has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50 md:h-8'
+              )}
+            >
+              <input
+                type="radio"
+                name={name}
+                value={option}
+                checked={chosen}
+                onChange={() => onChange(option)}
+                className="sr-only"
+              />
+              {label(option)}
+            </label>
+          )
+        })}
       </div>
     </fieldset>
   )

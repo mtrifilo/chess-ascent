@@ -28,15 +28,19 @@ export function useComputerThinking(
   game: Game,
   playMove: ReturnType<typeof usePlayMove>
 ): Thinking | undefined {
-  const holding = useStillWithin(playMove.submittedAt, MINIMUM_THINKING_MS)
+  const computer = playsComputer(game)
+  const holding = useStillWithin(
+    computer ? playMove.submittedAt : 0,
+    MINIMUM_THINKING_MS
+  )
   const sent = playMove.variables
-  if (!playsComputer(game) || !sent) return undefined
+  if (!computer || !sent) return undefined
 
+  // `data` is set only once the move has succeeded.
   const replied =
-    playMove.isSuccess &&
-    playMove.data === 'played' &&
-    game.moves.length > sent.halfMoveNumber
-  if (!playMove.isPending && !(replied && holding)) return undefined
+    playMove.data === 'played' && game.moves.length > sent.halfMoveNumber
+  const thinking = playMove.isPending || (replied && holding)
+  if (!thinking) return undefined
 
   return { fen: sent.fen, moves: game.moves.slice(0, sent.halfMoveNumber) }
 }

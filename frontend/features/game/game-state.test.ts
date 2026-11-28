@@ -5,14 +5,23 @@ import {
   END_REASON_TEXT,
   lastMove,
   moveNumber,
+  moveNumberAfter,
   moveRows,
   nextHalfMoveNumber,
   promotionChoices,
   resultTitle,
   sideToMoveInCheck,
+  toMoveText,
   toUci,
 } from './game-state'
-import { FOOLS_MATE, game, move, PROMOTION_GAME } from './test-games'
+import {
+  AFTER_E4,
+  FOOLS_MATE,
+  game,
+  MAIA_800,
+  move,
+  PROMOTION_GAME,
+} from './test-games'
 
 describe('sideToMoveInCheck', () => {
   it('is false before the first move', () => {
@@ -111,6 +120,23 @@ describe('moveNumber', () => {
   })
 })
 
+describe('moveNumberAfter', () => {
+  it('stays on the same move after a move by White', () => {
+    expect(moveNumberAfter(game().fen)).toBe(1)
+  })
+
+  it('goes on to the next move after a move by Black', () => {
+    expect(moveNumberAfter(AFTER_E4.fen)).toBe(2)
+  })
+})
+
+describe('toMoveText', () => {
+  it('words the side to move and the move number', () => {
+    expect(toMoveText('white', 6)).toBe('White to move · move 6')
+    expect(toMoveText('black', 1)).toBe('Black to move · move 1')
+  })
+})
+
 describe('result wording', () => {
   it('names the player as the winner of either side when they move both', () => {
     const bothSides = game({ playerSide: 'white' })
@@ -118,6 +144,13 @@ describe('result wording', () => {
     expect(resultTitle(bothSides, 'whiteWins')).toBe('You won')
     expect(resultTitle(bothSides, 'blackWins')).toBe('You won')
     expect(resultTitle(bothSides, 'draw')).toBe('Draw')
+  })
+
+  it('names the computer by its strength when it wins', () => {
+    const black = game({ playerSide: 'black', opponent: MAIA_800 })
+
+    expect(resultTitle(black, 'whiteWins')).toBe('Maia 800 won')
+    expect(resultTitle(black, 'blackWins')).toBe('You won')
   })
 
   it('has the approved wording for every reason a game can end', () => {

@@ -112,6 +112,11 @@ export function sideLabel(side: Side): 'White' | 'Black' {
   return side === 'white' ? 'White' : 'Black'
 }
 
+// The status line under the heading, such as "White to move · move 6".
+export function toMoveText(side: Side, number: number): string {
+  return `${sideLabel(side)} to move · move ${number}`
+}
+
 // The computer opponent's strengths the API accepts, weakest first, and the
 // one a new game offers first.
 export const OPPONENT_STRENGTHS = [600, 800, 1000, 1200, 1400] as const
@@ -130,10 +135,10 @@ export function playerName(game: Game, side: Side): string {
   return `Maia ${game.opponent.strength}`
 }
 
-// The number of the move being played once the player's move, made in the
-// position `fen`, is on the board: a move by Black starts the next one.
-export function moveNumberAfterPlayer(game: Game, fen: string): number {
-  return moveNumber(fen) + (game.playerSide === 'black' ? 1 : 0)
+// The number of the move being played once a move is made in the position
+// `fen`: a move by Black starts the next one.
+export function moveNumberAfter(fen: string): number {
+  return moveNumber(fen) + (fen.split(' ')[1] === 'b' ? 1 : 0)
 }
 
 // The heading of the result panel.
