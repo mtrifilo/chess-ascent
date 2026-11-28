@@ -53,20 +53,18 @@ internal static partial class LegalMoveSearch
         ILogger logger,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(moves);
-
-        var loaded = rules.Load(StandardStartingFen, moves);
-        if (loaded is InvalidMoveInHistory invalid)
+        IChessGame game;
+        switch (Rebuild(rules, moves))
         {
-            return invalid;
-        }
-
-        var game = loaded is GameLoaded { Game: var rebuilt }
-            ? rebuilt
-            : throw new UnreachableException("The standard starting position was refused.");
-        if (game.Status is not Ongoing)
-        {
-            return new GameAlreadyOver(game.Status);
+            case OngoingGame { Game: var ongoing }:
+                game = ongoing;
+                break;
+            case InvalidMoveInHistory invalid:
+                return invalid;
+            case GameAlreadyOver over:
+                return over;
+            default:
+                throw new UnreachableException();
         }
 
         // Configuration that leaves the kind out, as the API tests do, is a
@@ -97,6 +95,28 @@ internal static partial class LegalMoveSearch
             LogUnavailable(logger, engineName, e);
             return new EngineFailed($"{role} did not answer: {e.Message}");
         }
+    }
+
+    /// <summary>
+    /// Rebuilds a game from the standard starting position with the chess
+    /// rules, before anything is asked for a move in it.
+    /// </summary>
+    /// <param name="rules">The chess rules the game is rebuilt with.</param>
+    /// <param name="moves">The moves played so far, in UCI coordinate form.</param>
+    /// <returns>
+    /// The game, when it is still being played; the first move the rules
+    /// refuse; or, for a finished game, how it ended.
+    /// </returns>
+    public static RebuiltGame Rebuild(IChessRules rules, IReadOnlyList<string> moves)
+    {
+        ArgumentNullException.ThrowIfNull(moves);
+        return rules.Load(StandardStartingFen, moves) switch
+        {
+            InvalidMoveInHistory invalid => invalid,
+            GameLoaded { Game.Status: not Ongoing and var status } => new GameAlreadyOver(status),
+            GameLoaded { Game: var game } => new OngoingGame(game),
+            InvalidStartingPosition => throw new UnreachableException("The standard starting position was refused."),
+        };
     }
 
     // Sends the game from the standard starting position and searches it;
@@ -150,6 +170,13 @@ internal static partial class LegalMoveSearch
 /// and in both no engine was asked.
 /// </summary>
 internal union LegalMoveResult(EngineMove, InvalidMoveInHistory, GameAlreadyOver, EngineFailed);
+
+/// <summary>The outcome of <see cref="LegalMoveSearch.Rebuild"/>: a game still being played, or why a move cannot be chosen in it.</summary>
+internal union RebuiltGame(OngoingGame, InvalidMoveInHistory, GameAlreadyOver);
+
+/// <summary>A game the chess rules have rebuilt, which is still being played.</summary>
+/// <param name="Game">The game, after every move was played.</param>
+internal readonly record struct OngoingGame(IChessGame Game);
 
 /// <summary>The engine's move, which the chess rules have confirmed is legal in the position.</summary>
 /// <param name="Uci">The move in UCI coordinate form, such as <c>e2e4</c>.</param>

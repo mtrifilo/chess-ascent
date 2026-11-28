@@ -1,5 +1,5 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [react()],
@@ -11,6 +11,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
+    // The end-to-end test is Playwright's (playwright.config.ts), run by
+    // scripts/e2e.sh.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
     // One time zone for every run, whatever the machine's, so a test of a
     // date in the viewer's own zone means the same everywhere. Los Angeles
     // is behind UTC, so a late-evening time there is a different UTC day.

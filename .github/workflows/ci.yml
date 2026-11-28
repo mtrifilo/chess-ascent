@@ -151,8 +151,8 @@ jobs:
         with:
           bun-version-file: frontend/package.json
 
-      # Bun's package cache, keyed on the lockfile; the api-types job uses the
-      # same key.
+      # Bun's package cache, keyed on the lockfile; the api-types and
+      # end-to-end jobs use the same key.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
@@ -225,6 +225,63 @@ jobs:
             echo "::error::Regenerating the API contract changed the files listed above. Run scripts/gen-api-types.sh (or bun run api:types in frontend/) and commit what it changes."
             exit 1
           fi
+
+  # The whole application through a browser: scripts/e2e.sh starts the
+  # database, the API and the web app's development server, runs the
+  # Playwright test in Chromium, and stops them. The computer opponent is the
+  # API's first-legal-move stand-in, so no engine is installed.
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: backend/global.json
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: frontend/.node-version
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: frontend/package.json
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('frontend/bun.lock') }}
+
+      - name: Install front-end packages
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      # The browser build that the installed Playwright names, downloaded
+      # from Playwright's own servers, with the system libraries it needs from
+      # Ubuntu's. It is not cached: Playwright's documentation says restoring
+      # a cache takes about as long as the download.
+      - name: Install Chromium
+        working-directory: frontend
+        run: bun run playwright install --with-deps --only-shell chromium
+
+      - name: End-to-end test
+        run: scripts/e2e.sh
+
+      # The trace and screenshot of a failure. They hold nothing but what the
+      # test typed and saw: its made-up account, and the pages and API
+      # responses of its own game. No workflow reads an artifact back.
+      - name: Keep the trace and screenshot of a failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-test-results
+          path: frontend/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
 
   # Gitleaks (MIT) scans every commit in the history of the commit under
   # test, not only the files as they stand, because a secret committed and

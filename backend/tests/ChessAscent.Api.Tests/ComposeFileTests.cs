@@ -4,9 +4,10 @@ using Npgsql;
 
 namespace ChessAscent.Api.Tests;
 
-// docker-compose.yml, appsettings.Development.json and PostgresFixture each
-// hold a copy of the same facts. Nothing can share one value between YAML,
-// JSON and C#, so these tests fail when the copies drift apart.
+// docker-compose.yml, appsettings.Development.json, PostgresFixture and the
+// end-to-end test's Playwright configuration each hold a copy of the same
+// facts. Nothing can share one value between YAML, JSON, C# and TypeScript,
+// so these tests fail when the copies drift apart.
 public sealed partial class ComposeFileTests
 {
     private static readonly string RepositoryRoot = FindRepositoryRoot();
@@ -26,6 +27,23 @@ public sealed partial class ComposeFileTests
         var settings = new NpgsqlConnectionStringBuilder(DevelopmentConnectionString());
 
         settings.Port.Should().Be(int.Parse(ComposeValue(DefaultPortLine()), System.Globalization.CultureInfo.InvariantCulture));
+        settings.Username.Should().Be(ComposeValue(EnvironmentLine("POSTGRES_USER")));
+        settings.Password.Should().Be(ComposeValue(EnvironmentLine("POSTGRES_PASSWORD")));
+        settings.Database.Should().Be(ComposeValue(EnvironmentLine("POSTGRES_DB")));
+    }
+
+    // The end-to-end test's API reads a connection string written in its
+    // Playwright configuration, with the port of the database that the test
+    // starts from this file.
+    [Fact]
+    public void EndToEndConnectionStringMatchesTheComposeDatabase()
+    {
+        var path = Path.Combine(RepositoryRoot, "frontend", "playwright.config.ts");
+        var match = EndToEndConnectionString().Match(File.ReadAllText(path));
+        match.Success.Should().BeTrue($"{path} should hold the API's connection string");
+        // The port is the script's to choose; any number stands in for it.
+        var settings = new NpgsqlConnectionStringBuilder(Placeholder().Replace(match.Groups["value"].Value, "1"));
+
         settings.Username.Should().Be(ComposeValue(EnvironmentLine("POSTGRES_USER")));
         settings.Password.Should().Be(ComposeValue(EnvironmentLine("POSTGRES_PASSWORD")));
         settings.Database.Should().Be(ComposeValue(EnvironmentLine("POSTGRES_DB")));
@@ -57,6 +75,14 @@ public sealed partial class ComposeFileTests
 
     [GeneratedRegex(@"\$\{CHESS_ASCENT_DB_PORT:-(?<value>\d+)\}")]
     private static partial Regex DefaultPortLine();
+
+    // The template literal ConnectionStrings__ChessAscent: `Host=...;Port=${databasePort};...`
+    [GeneratedRegex(@"ConnectionStrings__ChessAscent:\s*`(?<value>[^`]*)`")]
+    private static partial Regex EndToEndConnectionString();
+
+    // The placeholders in a template literal, such as ${databasePort}.
+    [GeneratedRegex(@"\$\{[^}]*\}")]
+    private static partial Regex Placeholder();
 
     private static string FindRepositoryRoot()
     {
