@@ -11,7 +11,8 @@ import { createQueryClient } from '@/lib/query-client'
 
 export type Reply = { status: number; body?: unknown }
 
-// A request the client sent: "METHOD /path", and its JSON body.
+// A request the client sent: "METHOD /path", with "?query" after the path
+// when it has one, and its JSON body.
 export type Sent = { call: string; body: unknown }
 
 export const SIGNED_OUT: Reply = { status: 401, body: { status: 401 } }

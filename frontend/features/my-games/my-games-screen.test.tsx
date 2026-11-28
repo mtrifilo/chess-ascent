@@ -41,9 +41,13 @@ function lists(replies: {
 }
 
 // An IntersectionObserver that reports what the test says is near the
-// window.
+// window. As a browser's does, it reports each element's state once soon
+// after it starts observing it, and then whenever the test says the element
+// has come near. `endsInView` is that first state: false, as when each list
+// ends below the window, unless a test sets it.
 type Observed = { target: Element; report: IntersectionObserverCallback }
 const observed = new Set<Observed>()
+let endsInView = false
 
 class TestIntersectionObserver {
   private readonly entries: Observed[] = []
@@ -52,6 +56,10 @@ class TestIntersectionObserver {
     const entry = { target, report: this.callback }
     this.entries.push(entry)
     observed.add(entry)
+    const near = endsInView
+    setTimeout(() => {
+      if (observed.has(entry)) act(() => report(entry, near))
+    })
   }
   unobserve() {}
   disconnect() {
@@ -62,22 +70,28 @@ class TestIntersectionObserver {
   }
 }
 
-// Reports every observed element inside `container` as near the window, as
-// when the reader scrolls to the end of that list.
+function report({ target, report }: Observed, isIntersecting: boolean) {
+  report(
+    [{ target, isIntersecting } as IntersectionObserverEntry],
+    {} as IntersectionObserver
+  )
+}
+
+// Reports every observed element inside `container` as near the window.
+function reportNear(container: HTMLElement) {
+  for (const entry of [...observed]) {
+    if (container.contains(entry.target)) report(entry, true)
+  }
+}
+
+// As when the reader scrolls to the end of the list in `container`.
 function scrollToEndOf(container: HTMLElement) {
-  act(() => {
-    for (const { target, report } of [...observed]) {
-      if (!container.contains(target)) continue
-      report(
-        [{ target, isIntersecting: true } as IntersectionObserverEntry],
-        {} as IntersectionObserver
-      )
-    }
-  })
+  act(() => reportNear(container))
 }
 
 beforeEach(() => {
   observed.clear()
+  endsInView = false
   vi.stubGlobal('IntersectionObserver', TestIntersectionObserver)
 })
 
@@ -202,6 +216,20 @@ describe('MyGamesScreen', () => {
     ).not.toBeInTheDocument()
   })
 
+  it("dates each row in the viewer's own time zone", async () => {
+    // 03:00 on 26 November in UTC is the evening of 25 November in the
+    // zone the tests run in (vitest.config.mts).
+    lists({
+      ongoing: ok(
+        page([unfinishedGame({ lastActivityAt: '2026-11-26T03:00:00Z' })])
+      ),
+    })
+    renderWithQueries(<MyGamesScreen />)
+
+    await screen.findByRole('table', { name: 'Unfinished' })
+    expect(tableRows('Unfinished')[0][3]).toBe('25 Nov 2026')
+  })
+
   it('opens each game at its own address from a link', async () => {
     const ongoing = unfinishedGame()
     const finished = finishedGame()
@@ -297,6 +325,25 @@ describe('MyGamesScreen', () => {
       )
     })
 
+    it('keeps the empty state when reading the lists again fails', async () => {
+      lists({})
+      const { queryClient } = renderWithQueries(<MyGamesScreen />)
+      await screen.findByText('No games yet.')
+
+      lists({ ongoing: problem(500), finished: problem(500) })
+      await act(() => queryClient.refetchQueries())
+      // The query cache tells the screen of the failure on a later tick.
+      await act(() => new Promise(resolve => setTimeout(resolve, 20)))
+
+      expect(
+        queryClient
+          .getQueryCache()
+          .getAll()
+          .map(query => query.state.status)
+      ).toEqual(['error', 'error'])
+      expect(screen.getByText('No games yet.')).toBeInTheDocument()
+    })
+
     it('does not show the empty state', async () => {
       lists({ ongoing: problem(500) })
       renderWithQueries(<MyGamesScreen />)
@@ -360,6 +407,43 @@ describe('MyGamesScreen', () => {
       expect(lastLink).toHaveFocus()
     })
 
+    it('asks once when the end comes near and the keyboard reaches the last row together', async () => {
+      const sent = twoPages()
+      renderWithQueries(<MyGamesScreen />)
+      await screen.findByRole('table', { name: 'Unfinished' })
+
+      // Both signals before the screen has rendered the first's request, as
+      // when focusing the last row scrolls the list's end into view.
+      const lastLink = within(table('Unfinished')).getByRole('link')
+      act(() => {
+        reportNear(section('Unfinished'))
+        lastLink.focus()
+      })
+
+      await waitFor(() => expect(unfinishedLinks()).toHaveLength(2))
+      expect(pageTwoCalls(sent)).toHaveLength(1)
+    })
+
+    it('keeps loading pages while the end of the list stays in view', async () => {
+      endsInView = true
+      const third = unfinishedGame()
+      const sent = lists({
+        ongoing: ok(page([first], 'page-2')),
+        pages: {
+          'page-2': ok(page([second], 'page-3')),
+          'page-3': ok(page([third])),
+        },
+      })
+      renderWithQueries(<MyGamesScreen />)
+
+      await waitFor(() => expect(unfinishedLinks()).toHaveLength(3))
+      expect(calls(sent).filter(call => call.startsWith(ONGOING))).toEqual([
+        ONGOING,
+        `${ONGOING}&cursor=page-2`,
+        `${ONGOING}&cursor=page-3`,
+      ])
+    })
+
     it('asks for each page once, and no more after the last', async () => {
       const sent = twoPages()
       renderWithQueries(<MyGamesScreen />)
@@ -415,5 +499,6 @@ describe('MyGamesScreen', () => {
     await waitFor(() =>
       expect(tableRows('Unfinished')[0][2]).toBe('In progress, move 4')
     )
+    expect(calls(sent).sort()).toEqual([FINISHED, ONGOING])
   })
 })

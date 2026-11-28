@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef } from 'react'
 // What a list paged with TanStack Query's useInfiniteQuery tells about its
 // next page.
 type PagedList = {
+  data: { pages: readonly unknown[] } | undefined
   hasNextPage: boolean
   isFetching: boolean
   isFetchNextPageError: boolean
@@ -31,9 +32,11 @@ const LOOK_AHEAD = '0px 0px 100% 0px'
 // last row into view, and the second comes before the screen knows of the
 // first: `cancelRefetch: false` makes a request already on its way answer
 // it, where TanStack Query would otherwise cancel that request and send it
-// again. A page that fails is not asked for again: the rows already shown
-// stay, and the query cache reports the failure.
+// again. A page that fails is not asked for again until the list has been
+// read afresh: the rows already shown stay, and the query cache reports the
+// failure.
 export function useNextPage({
+  data,
   hasNextPage,
   isFetching,
   isFetchNextPageError,
@@ -46,7 +49,10 @@ export function useNextPage({
 
   // A new observer after each page reports at once whether the end is still
   // near, as it is when a page does not fill the window, so pages keep
-  // coming until it is not.
+  // coming until it is not. The count of pages, not only `canLoad`, starts
+  // one: a page that arrives quickly can be shown in the same render that
+  // would have shown its request, and `canLoad` is then true throughout.
+  const pageCount = data?.pages.length ?? 0
   const endRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const end = endRef.current
@@ -59,7 +65,7 @@ export function useNextPage({
     )
     observer.observe(end)
     return () => observer.disconnect()
-  }, [canLoad, loadNextPage])
+  }, [canLoad, loadNextPage, pageCount])
 
   return { endRef, onLastRowFocus: loadNextPage }
 }

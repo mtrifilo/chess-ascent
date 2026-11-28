@@ -26,14 +26,17 @@ import { useNextPage } from './next-page'
 // the screen says there are no games yet. Below the heading nothing shows
 // until both lists have their first page or have failed, so one list never
 // appears above the other after it, and nothing passes for the empty state
-// before it is known. A list that fails is left out, and the query cache
-// reports why in the browser console.
+// before it is known. A list whose first page fails is left out, and the
+// query cache reports why in the browser console. A list that fails when it
+// is read again keeps what it showed: its rows, or its part in the empty
+// state, which is decided from what the lists hold rather than from how
+// their last read went.
 export function MyGamesScreen() {
   const { unfinished, finished } = useGameLists()
   const settled = !unfinished.isPending && !finished.isPending
   const noGames =
-    unfinished.isSuccess &&
-    finished.isSuccess &&
+    unfinished.data !== undefined &&
+    finished.data !== undefined &&
     !hasGames(unfinished) &&
     !hasGames(finished)
 

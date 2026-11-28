@@ -1,7 +1,7 @@
 'use client'
 
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { useLayoutEffect, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 
 import { api } from '@/lib/api'
 import type { components } from '@/types/api'
@@ -29,13 +29,20 @@ export function useGameLists() {
 export type GameListQuery = ReturnType<typeof useGameList>
 
 // One list, most recent activity first, a page at a time. The query is
-// idle until the first visit starts. A page the API does not answer with
-// games is a failure, reported by the query cache.
+// idle outside a visit. A page the API does not answer with games is a
+// failure, reported by the query cache.
+//
+// A failed page is not tried again. The screen shows nothing for a list that
+// failed, so trying again would only hold back the other list, which waits
+// for this one so as to appear below it, by the seconds TanStack Query's
+// default retries take. The list is read again on the next visit, and when
+// the window regains focus or the browser comes back online.
 function useGameList(status: GameProgress, visit: number) {
   return useInfiniteQuery({
     queryKey: ['games', status, visit],
     enabled: visit > 0,
     gcTime: 0,
+    retry: false,
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam, signal }) => {
       const { data, response } = await api.GET('/games', {
@@ -49,19 +56,22 @@ function useGameList(status: GameProgress, visit: number) {
   })
 }
 
-// Counts the times the calling component has been shown: 0 before it first
-// is. React runs layout effects again each time hidden content is shown, and
-// a state set in one renders again before the browser paints, so a new
-// visit never shows the last one's lists even for a frame.
+// The number of the current showing of the calling component, counting
+// from 1, or 0 while it is not shown. React runs layout effects again each
+// time hidden content is shown, and a state set in one renders again before
+// the browser paints, so a new visit never shows the last one's lists even
+// for a frame.
 //
-// The lint rule below warns that a state set in an effect renders again at
-// once. Here that second render, before the paint, is the purpose: it is
-// what React documents useLayoutEffect for.
+// Hiding sets it back to 0, so the render that shows the component again has
+// no visit: its lists are idle, and the last visit's are not read again for
+// the moment before the new visit starts.
 function useVisit(): number {
+  const visits = useRef(0)
   const [visit, setVisit] = useState(0)
   useLayoutEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setVisit(count => count + 1)
+    visits.current += 1
+    setVisit(visits.current)
+    return () => setVisit(0)
   }, [])
   return visit
 }
