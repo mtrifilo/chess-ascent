@@ -90,6 +90,9 @@ public sealed class EnginePool : IAsyncDisposable
         }
     }
 
+    /// <summary>Whether a kind of that name is configured, whether or not it has a working process.</summary>
+    public bool IsConfigured(string kind) => _kinds.ContainsKey(kind);
+
     /// <summary>The configured kinds that have no working process at the moment, idle or busy.</summary>
     internal IReadOnlyList<string> KindsWithoutWorkingEngine() =>
         [.. _kinds.Values.Where(pool => !pool.HasWorkingEngine).Select(pool => pool.Kind)];

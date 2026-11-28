@@ -5,6 +5,7 @@ using ChessAscent.Api.Features.Accounts;
 using ChessAscent.Api.Features.AppVersion;
 using ChessAscent.Api.Features.Games;
 using ChessAscent.Api.Features.Health;
+using ChessAscent.Api.Opponents;
 using ChessAscent.Api.Security;
 
 // LEARN: This file has no class and no `static void Main`. C# allows one file
@@ -22,6 +23,10 @@ using ChessAscent.Api.Security;
 // last, much like Spring's
 // property sources), logging, and an empty dependency-injection container.
 var builder = WebApplication.CreateBuilder(args);
+
+// Points the engine pool's Maia kind at where scripts/setup-maia.sh installs
+// it (see MaiaInstallation).
+builder.Configuration.AddMaiaInstallation(builder.Environment.ContentRootPath);
 
 // LEARN: Service registration. builder.Services is the DI container, the
 // counterpart of Spring's ApplicationContext. There is no classpath scanning
@@ -42,7 +47,8 @@ var builder = WebApplication.CreateBuilder(args);
 // below. AddValidation checks request bodies against their validation
 // attributes (see AccountContracts). AddAccounts registers ASP.NET Core
 // Identity, the session cookie and authorization. AddGames registers the
-// store that saves and loads games.
+// store that saves and loads games. AddOpponent registers the computer
+// opponent, which plays through the engine pool.
 builder.Services.AddProblemDetails();
 builder.Services.AddValidation();
 builder.Services.AddHealthChecks();
@@ -51,6 +57,7 @@ builder.Services.AddEnginePool();
 builder.Services.AddApiDocument();
 builder.Services.AddAccounts();
 builder.Services.AddGames();
+builder.Services.AddOpponent();
 
 // LEARN: Build() freezes the container: no services can be added after this
 // line. What comes next configures how requests are handled.
