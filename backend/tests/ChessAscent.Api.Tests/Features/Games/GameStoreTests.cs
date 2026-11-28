@@ -62,21 +62,28 @@ public sealed class GameStoreTests(ApiFactory factory, PostgresFixture postgres)
         loaded!.MovesNumberedInOrder.Should().BeTrue();
     }
 
-    // The moves are inserted with the game, so a game that cannot be saved
-    // leaves no moves behind, in the database or in the context.
-    [Fact]
-    public async Task ACreateWithMovesThatFailsSavesNothingAndLeavesNothingTracked()
+    // The moves are inserted with the game, so a game whose moves cannot be
+    // saved is not saved either, and nothing is left in the context. Either
+    // the game's row fails (an owner that does not exist) or, after it has
+    // gone in, a move's (PostgreSQL refuses a NUL character in text).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ACreateWithMovesThatFailsSavesNothingAndLeavesNothingTracked(bool moveFails)
     {
+        var owner = await factory.CreateOwnerAsync();
         await using var scope = factory.Services.CreateAsyncScope();
         var store = scope.ServiceProvider.GetRequiredService<GameStore>();
         var tracker = scope.ServiceProvider.GetRequiredService<AppDbContext>().ChangeTracker;
         var (moves, status) = GameData.Rules.NewGame().Play("e2e4");
+        IReadOnlyList<PlayedMove> saved = moveFails ? [moves[0] with { Uci = "e2e4\0" }] : moves;
 
         var create = () => store.CreateAsync(
-            "no-such-account", Side.Black, Opponent.Computer(800), GameData.StartingFen, moves, status, Cancellation);
+            moveFails ? owner : "no-such-account", Side.Black, Opponent.Computer(800), GameData.StartingFen, saved, status, Cancellation);
 
         await create.Should().ThrowAsync<DbUpdateException>();
         tracker.Entries().Should().BeEmpty();
+        (await postgres.CountGamesAsync(owner)).Should().Be(0);
     }
 
     [Fact]

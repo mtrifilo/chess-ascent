@@ -36,8 +36,8 @@ internal static class ComputerMoves
     // Asks the opponent for the next move and plays it on the board if the
     // chess rules accept it. Each case of OpponentReply is mapped by hand,
     // here and nowhere else, so the union never reaches a response, and
-    // neither does the reason text of OpponentFailed, which can hold what
-    // the engine wrote.
+    // neither does the reason text of OpponentFailed, which is written for
+    // the log and not for the player.
     private static async Task<ComputerTurn> PlayComputerMoveAsync(
         this IOpponent opponent, IChessGame board, int strength, CancellationToken cancellationToken)
     {

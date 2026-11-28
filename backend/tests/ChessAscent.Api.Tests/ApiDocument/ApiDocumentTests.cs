@@ -170,7 +170,7 @@ public sealed class ApiDocumentTests(ApiFactory factory) : IClassFixture<ApiFact
         var description = document["components"]!["schemas"]!["OpponentRequest"]!["properties"]!["strength"]!["description"]!
             .GetValue<string>().ReplaceLineEndings(" ");
 
-        description.Should().Contain($"{string.Join(", ", offered.Take(offered.Count - 1))} or {offered[^1]},");
+        description.Should().Contain($"strength: {string.Join(", ", offered.Take(offered.Count - 1))} or {offered[^1]},");
         description.Should().Contain($"it is {OpponentRequest.DefaultStrength}.");
     }
 

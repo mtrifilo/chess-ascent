@@ -32,16 +32,17 @@ internal sealed class FakeOpponent : IOpponent
 
     /// <summary>
     /// An opponent that gives no move the first time it is asked, with a
-    /// reason holding <paramref name="secret"/>, which no response may show,
-    /// and answers every later call with <paramref name="move"/>.
+    /// reason holding <paramref name="reasonForTheLog"/>, which is meant for
+    /// the log and which no response may show, and answers every later call
+    /// with <paramref name="move"/>.
     /// </summary>
-    public static FakeOpponent FailingOnceThenPlaying(string move, string secret)
+    public static FakeOpponent FailingOnceThenPlaying(string move, string reasonForTheLog)
     {
         var failures = 1;
         return new FakeOpponent
         {
             Answer = (_, _) => Task.FromResult<OpponentReply>(Interlocked.Decrement(ref failures) >= 0
-                ? new OpponentFailed($"Engine said: {secret}")
+                ? new OpponentFailed(reasonForTheLog)
                 : new OpponentMove(move)),
         };
     }

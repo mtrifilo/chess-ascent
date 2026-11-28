@@ -120,7 +120,7 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     [Fact]
     public async Task WhenTheComputerGivesNoReplyNothingIsSavedAndTheSameMoveThenSucceeds()
     {
-        var opponent = FakeOpponent.FailingOnceThenPlaying("e7e5", secret: "secret-engine-output");
+        var opponent = FakeOpponent.FailingOnceThenPlaying("e7e5", reasonForTheLog: "secret-reason-for-the-log");
         using var api = ApiWith(opponent);
         using var client = await SignedInClientAsync(api);
         var game = await client.CreateComputerGameAsync("white");
@@ -143,7 +143,7 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     [Fact]
     public async Task WhenTheComputerGivesNoFirstMoveAsWhiteNoGameIsCreatedAndTryingAgainCreatesOne()
     {
-        var opponent = FakeOpponent.FailingOnceThenPlaying("e2e4", secret: "secret-engine-output");
+        var opponent = FakeOpponent.FailingOnceThenPlaying("e2e4", reasonForTheLog: "secret-reason-for-the-log");
         using var api = ApiWith(opponent);
         var (signedIn, ownerId) = await SignedInPlayerAsync(api);
         using var client = signedIn;
@@ -530,9 +530,13 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
         opponent.Calls.Should().HaveCount(1);
     }
 
-    // The browser goes away while the computer thinks about its first move.
-    [Fact]
-    public async Task CreatingAGameAsBlackWhoseRequestIsCancelledWhileTheComputerThinksCreatesNothing()
+    // The browser goes away while the computer thinks about its first move,
+    // and the opponent stops when told or answers anyway, as in the move
+    // test above.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CreatingAGameAsBlackWhoseRequestIsCancelledWhileTheComputerThinksCreatesNothing(bool opponentStops)
     {
         var thinking = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var toldToStop = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -544,6 +548,9 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
                 try
                 {
                     await Task.Delay(Patience, cancellationToken);
+                }
+                catch (OperationCanceledException) when (!opponentStops)
+                {
                 }
                 finally
                 {
