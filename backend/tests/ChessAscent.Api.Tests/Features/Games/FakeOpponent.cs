@@ -30,6 +30,22 @@ internal sealed class FakeOpponent : IOpponent
         };
     }
 
+    /// <summary>
+    /// An opponent that gives no move the first time it is asked, with a
+    /// reason holding <paramref name="secret"/>, which no response may show,
+    /// and answers every later call with <paramref name="move"/>.
+    /// </summary>
+    public static FakeOpponent FailingOnceThenPlaying(string move, string secret)
+    {
+        var failures = 1;
+        return new FakeOpponent
+        {
+            Answer = (_, _) => Task.FromResult<OpponentReply>(Interlocked.Decrement(ref failures) >= 0
+                ? new OpponentFailed($"Engine said: {secret}")
+                : new OpponentMove(move)),
+        };
+    }
+
     public async Task<OpponentReply> ChooseMoveAsync(IReadOnlyList<string> moves, int strength, CancellationToken cancellationToken)
     {
         var call = new OpponentCall([.. moves], strength);

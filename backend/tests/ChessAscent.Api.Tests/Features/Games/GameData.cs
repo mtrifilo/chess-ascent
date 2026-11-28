@@ -53,42 +53,41 @@ internal static class GameData
     /// store, with <c>@id</c> bound to <paramref name="gameId"/>, and returns
     /// the number of rows it wrote.
     /// </summary>
-    public static async Task<int> ExecuteAsync(this PostgresFixture postgres, string sql, Guid gameId)
-    {
-        await using var connection = new NpgsqlConnection(postgres.ConnectionString);
-        await connection.OpenAsync(TestContext.Current.CancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("id", gameId);
-        return await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
-    }
+    public static Task<int> ExecuteAsync(this PostgresFixture postgres, string sql, Guid gameId) =>
+        postgres.RunAsync(sql, "id", gameId, command => command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken));
 
     /// <summary>
     /// The game's row and its moves' rows exactly as the database holds them,
     /// every column included, as JSON text; <c>null</c> when there is no such
     /// game. Two reads are equal only if nothing in either table changed.
     /// </summary>
-    public static async Task<string?> SavedRowsAsync(this PostgresFixture postgres, Guid gameId)
-    {
-        await using var connection = new NpgsqlConnection(postgres.ConnectionString);
-        await connection.OpenAsync(TestContext.Current.CancellationToken);
-        await using var command = new NpgsqlCommand(
+    public static async Task<string?> SavedRowsAsync(this PostgresFixture postgres, Guid gameId) =>
+        await postgres.RunAsync(
             """
             SELECT (SELECT row_to_json(g)::text FROM "Games" g WHERE g."Id" = @id)
                 || (SELECT coalesce(json_agg(m ORDER BY m."HalfMoveNumber"), '[]')::text FROM "Moves" m WHERE m."GameId" = @id)
             """,
-            connection);
-        command.Parameters.AddWithValue("id", gameId);
-        return await command.ExecuteScalarAsync(TestContext.Current.CancellationToken) as string;
-    }
+            "id",
+            gameId,
+            command => command.ExecuteScalarAsync(TestContext.Current.CancellationToken)) as string;
 
     /// <summary>The number of games the account owns, read from the database directly.</summary>
-    public static async Task<long> CountGamesAsync(this PostgresFixture postgres, string ownerId)
+    public static async Task<long> CountGamesAsync(this PostgresFixture postgres, string ownerId) =>
+        (long)(await postgres.RunAsync(
+            """SELECT count(*) FROM "Games" WHERE "OwnerId" = @owner""",
+            "owner",
+            ownerId,
+            command => command.ExecuteScalarAsync(TestContext.Current.CancellationToken)))!;
+
+    // Runs one command with one parameter on a connection of its own.
+    private static async Task<T> RunAsync<T>(
+        this PostgresFixture postgres, string sql, string parameter, object value, Func<NpgsqlCommand, Task<T>> run)
     {
         await using var connection = new NpgsqlConnection(postgres.ConnectionString);
         await connection.OpenAsync(TestContext.Current.CancellationToken);
-        await using var command = new NpgsqlCommand("""SELECT count(*) FROM "Games" WHERE "OwnerId" = @owner""", connection);
-        command.Parameters.AddWithValue("owner", ownerId);
-        return (long)(await command.ExecuteScalarAsync(TestContext.Current.CancellationToken))!;
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue(parameter, value);
+        return await run(command);
     }
 
     /// <summary>Loads a game, on a store of its own.</summary>

@@ -27,7 +27,15 @@ internal static class GameRequests
         .BuildServiceProvider()
         .GetRequiredService<IOptions<HttpJsonOptions>>().Value.SerializerOptions;
 
+    /// <summary>For comparing two games with BeEquivalentTo, moves and squares in the same order.</summary>
+    public static readonly Func<AwesomeAssertions.Equivalency.EquivalencyOptions<GameResponse>,
+        AwesomeAssertions.Equivalency.EquivalencyOptions<GameResponse>> InStrictOrder =
+        options => options.WithStrictOrdering();
+
     private static CancellationToken Cancellation => TestContext.Current.CancellationToken;
+
+    /// <summary>A request body of JSON text, written by hand.</summary>
+    public static StringContent JsonBody(string json) => new(json, System.Text.Encoding.UTF8, "application/json");
 
     public static Task<HttpResponseMessage> PostGameAsync(this HttpClient client, object body) =>
         client.PostAsJsonAsync("/games", body, Cancellation);

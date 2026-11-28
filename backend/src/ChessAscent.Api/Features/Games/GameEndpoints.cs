@@ -56,8 +56,8 @@ namespace ChessAscent.Api.Features.Games;
 /// request can get.
 /// </para>
 /// <para>
-/// Reading a game answers 200, 401, 404 or 500 in the same cases as a move,
-/// a finished game included.
+/// Reading a game answers 200, 401, 404, or 500 when its saved form is
+/// broken (see SavedGameBoards.RebuildBoard), a finished game included.
 /// </para>
 /// </remarks>
 public static class GameEndpoints
@@ -181,35 +181,29 @@ public static class GameEndpoints
         var playerId = PlayerId(principal, users);
 
         // Validation has refused a missing side and a missing kind, so both have values.
+        var playerSide = request.PlayerSide!.Value;
+        var opponent = ChosenOpponent(request.Opponent);
         var board = rules.NewGame();
-        var newGame = new NewGame(playerId, request.PlayerSide!.Value, ChosenOpponent(request.Opponent), board.Fen, board);
+        var startingFen = board.Fen;
 
-        // The computer's first move is asked for before anything is saved,
-        // so a game is created with it or not at all.
-        if (newGame.Opponent is { Kind: OpponentKind.Computer, Strength: int strength }
-            && newGame.Board.SideToMove != newGame.PlayerSide)
+        // The computer's first move, when it has White, is asked for before
+        // anything is saved, so a game is created with it or not at all.
+        IReadOnlyList<PlayedMove>? firstMoves = await computer.PlayComputerTurnAsync(
+                opponent, playerSide, board, cancellationToken) switch
         {
-            return await computer.PlayComputerMoveAsync(newGame.Board, strength, cancellationToken) switch
-            {
-                MovePlayed first => await CreateWithMovesAsync(store, newGame, [first.Move], first.Status, cancellationToken),
-                OpponentUnavailable => OpponentUnavailableProblem(),
-                OpponentFault fault => throw new ComputerGameFaultException(gameId: null, fault.Reason),
-            };
+            MovePlayed first => [first.Move],
+            NotComputersTurn => [],
+            OpponentUnavailable => null,
+            OpponentFault fault => throw new ComputerGameFaultException(gameId: null, fault.Reason),
+        };
+        if (firstMoves is null)
+        {
+            return OpponentUnavailableProblem();
         }
 
-        return await CreateWithMovesAsync(store, newGame, [], newGame.Board.Status, cancellationToken);
-    }
-
-    // A game about to be created. Its board is at the starting position
-    // until the computer's first move is played on it.
-    private sealed record NewGame(string PlayerId, Side PlayerSide, Opponent Opponent, string StartingFen, IChessGame Board);
-
-    private static async Task<Results<Created<GameResponse>, ValidationProblem, ProblemHttpResult>> CreateWithMovesAsync(
-        GameStore store, NewGame newGame, IReadOnlyList<PlayedMove> moves, GameStatus status, CancellationToken cancellationToken)
-    {
         var game = await store.CreateAsync(
-            newGame.PlayerId, newGame.PlayerSide, newGame.Opponent, newGame.StartingFen, moves, status, cancellationToken);
-        return TypedResults.Created($"/games/{game.Id}", GameMapping.ToResponse(game, newGame.Board));
+            playerId, playerSide, opponent, startingFen, firstMoves, board.Status, cancellationToken);
+        return TypedResults.Created($"/games/{game.Id}", GameMapping.ToResponse(game, board));
     }
 
     /// <summary>One of the signed-in player's games.</summary>
@@ -340,37 +334,32 @@ public static class GameEndpoints
         MovePlayed played,
         CancellationToken cancellationToken)
     {
-        // The player's move can end the game, and then the computer has no
-        // reply to make.
-        if (game.Opponent is not { Kind: OpponentKind.Computer, Strength: int strength } || played.Status is not Ongoing)
+        // There is no reply to make when the player's move ended the game,
+        // or when nobody plays the other side.
+        return await computer.PlayComputerTurnAsync(game.Opponent, game.PlayerSide, board, cancellationToken) switch
         {
-            return await SaveAsync(store, playerId, game, board, [played.Move], played.Status, cancellationToken);
-        }
-
-        return await computer.PlayComputerMoveAsync(board, strength, cancellationToken) switch
-        {
-            MovePlayed reply => await SaveAsync(
-                store, playerId, game, board, [played.Move, reply.Move], reply.Status, cancellationToken),
+            MovePlayed reply => await SaveAsync(store, playerId, game, board, [played.Move, reply.Move], cancellationToken),
+            NotComputersTurn => await SaveAsync(store, playerId, game, board, [played.Move], cancellationToken),
             OpponentUnavailable => OpponentUnavailableProblem(),
             OpponentFault fault => throw new ComputerGameFaultException(game.Id, fault.Reason),
         };
     }
 
-    // Saves the moves with the status the last of them led to, in one
-    // transaction, and answers with the game as saved, built from what this
-    // request played rather than read back, so a move another request saves
-    // just after this one does not appear in this answer.
+    // Saves the moves, which have been played on the board, with the status
+    // the board is left in, in one transaction, and answers with the game as
+    // saved, built from what this request played rather than read back, so a
+    // move another request saves just after this one does not appear in this
+    // answer.
     private static async Task<Results<Ok<GameResponse>, ValidationProblem, ProblemHttpResult>> SaveAsync(
         GameStore store,
         string playerId,
         SavedGame game,
         IChessGame board,
         IReadOnlyList<PlayedMove> moves,
-        GameStatus statusAfter,
         CancellationToken cancellationToken)
     {
         var appended = await store.AppendMovesAsync(
-            playerId, game.Id, game.NextHalfMoveNumber, moves, statusAfter, cancellationToken);
+            playerId, game.Id, game.NextHalfMoveNumber, moves, board.Status, cancellationToken);
         return appended switch
         {
             MovesAppended saved => TypedResults.Ok(GameMapping.ToResponse(WithMoves(game, moves, saved), board)),

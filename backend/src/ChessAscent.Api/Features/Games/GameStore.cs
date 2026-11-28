@@ -96,15 +96,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
             CreatedAt = now,
             UpdatedAt = now,
         };
-        var rows = moves
-            .Select((move, index) => new Move
-            {
-                GameId = game.Id,
-                HalfMoveNumber = index + 1,
-                Uci = move.Uci,
-                San = move.San,
-            })
-            .ToList();
+        var rows = MoveRows(game.Id, firstHalfMoveNumber: 1, moves);
         game.Moves.AddRange(rows);
 
         // LEARN: No transaction is begun here, and none is needed. JPA
@@ -128,11 +120,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
             // the caller's next SaveChanges. Detaching a move whose insert
             // failed also takes it out of game.Moves, so the loop runs over
             // a list of its own.
-            foreach (var row in rows)
-            {
-                database.Entry(row).State = EntityState.Detached;
-            }
-
+            Detach(rows);
             database.Entry(game).State = EntityState.Detached;
         }
 
@@ -266,15 +254,7 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
             return new HalfMoveConflict();
         }
 
-        var rows = moves
-            .Select((move, index) => new Move
-            {
-                GameId = gameId,
-                HalfMoveNumber = firstHalfMoveNumber + index,
-                Uci = move.Uci,
-                San = move.San,
-            })
-            .ToList();
+        var rows = MoveRows(gameId, firstHalfMoveNumber, moves);
         database.Moves.AddRange(rows);
         try
         {
@@ -296,16 +276,32 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         }
         finally
         {
-            foreach (var row in rows)
-            {
-                database.Entry(row).State = EntityState.Detached;
-            }
+            Detach(rows);
         }
 
         // Not cancellable: a commit cancelled after the server has applied it
         // would report a save that happened as one that did not.
         await transaction.CommitAsync(CancellationToken.None);
         return new MovesAppended(now, progress, result, endReason);
+    }
+
+    private static List<Move> MoveRows(Guid gameId, int firstHalfMoveNumber, IReadOnlyList<PlayedMove> moves) =>
+    [
+        .. moves.Select((move, index) => new Move
+        {
+            GameId = gameId,
+            HalfMoveNumber = firstHalfMoveNumber + index,
+            Uci = move.Uci,
+            San = move.San,
+        }),
+    ];
+
+    private void Detach(List<Move> rows)
+    {
+        foreach (var row in rows)
+        {
+            database.Entry(row).State = EntityState.Detached;
+        }
     }
 
     private static void RefuseBlankMoves(IReadOnlyList<PlayedMove> moves)

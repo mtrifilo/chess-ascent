@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using static ChessAscent.Api.Tests.Features.Games.GameRequests;
 using AccountData = ChessAscent.Api.Tests.Features.Accounts.Accounts;
 
 namespace ChessAscent.Api.Tests.Features.Games;
@@ -119,13 +120,7 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     [Fact]
     public async Task WhenTheComputerGivesNoReplyNothingIsSavedAndTheSameMoveThenSucceeds()
     {
-        var failures = 1;
-        var opponent = new FakeOpponent
-        {
-            Answer = (_, _) => Task.FromResult<OpponentReply>(Interlocked.Decrement(ref failures) >= 0
-                ? new OpponentFailed("Engine said: secret-engine-output")
-                : new OpponentMove("e7e5")),
-        };
+        var opponent = FakeOpponent.FailingOnceThenPlaying("e7e5", secret: "secret-engine-output");
         using var api = ApiWith(opponent);
         using var client = await SignedInClientAsync(api);
         var game = await client.CreateComputerGameAsync("white");
@@ -148,13 +143,7 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
     [Fact]
     public async Task WhenTheComputerGivesNoFirstMoveAsWhiteNoGameIsCreatedAndTryingAgainCreatesOne()
     {
-        var failures = 1;
-        var opponent = new FakeOpponent
-        {
-            Answer = (_, _) => Task.FromResult<OpponentReply>(Interlocked.Decrement(ref failures) >= 0
-                ? new OpponentFailed("Engine said: secret-engine-output")
-                : new OpponentMove("e2e4")),
-        };
+        var opponent = FakeOpponent.FailingOnceThenPlaying("e2e4", secret: "secret-engine-output");
         using var api = ApiWith(opponent);
         var (signedIn, ownerId) = await SignedInPlayerAsync(api);
         using var client = signedIn;
@@ -592,11 +581,6 @@ public sealed class ComputerGameTests(ApiFactory factory, PostgresFixture postgr
         return (client, await factory.AccountIdAsync(email));
     }
 
-    private static readonly Func<AwesomeAssertions.Equivalency.EquivalencyOptions<GameResponse>,
-        AwesomeAssertions.Equivalency.EquivalencyOptions<GameResponse>> InStrictOrder =
-        options => options.WithStrictOrdering();
-
-    private static StringContent JsonBody(string json) => new(json, System.Text.Encoding.UTF8, "application/json");
 
     // Counts move requests that the server has finished with, whatever
     // their outcome, so a test can wait for one the client has given up on.

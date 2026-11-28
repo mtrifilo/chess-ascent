@@ -7,27 +7,38 @@ namespace ChessAscent.Api.Features.Games;
 internal static class ComputerMoves
 {
     /// <summary>
-    /// Asks <paramref name="opponent"/> for the next move of the game on
-    /// <paramref name="board"/>, and plays it on that board if the chess
-    /// rules accept it.
+    /// Plays the computer's move on <paramref name="board"/> when it is the
+    /// computer's turn: the game has a computer opponent, is not over, and
+    /// the side to move is not the player's.
     /// </summary>
-    /// <param name="opponent">The computer opponent.</param>
+    /// <param name="computer">The computer opponent.</param>
+    /// <param name="opponent">Who plays against the player in this game.</param>
+    /// <param name="playerSide">The side the player has.</param>
     /// <param name="board">
-    /// The game, played from the standard starting position, with the
-    /// computer to move and the game not over. It is changed only when the
-    /// result is <see cref="MovePlayed"/>.
+    /// The game, played from the standard starting position. It is changed
+    /// only when the result is <see cref="MovePlayed"/>.
     /// </param>
-    /// <param name="strength">The game's strength setting.</param>
     /// <param name="cancellationToken">Ends the wait for the opponent; the call then throws <see cref="OperationCanceledException"/>.</param>
     /// <returns>
-    /// The move as played; <see cref="OpponentUnavailable"/> when the
-    /// opponent gave no move this time; or <see cref="OpponentFault"/> when
-    /// what it answered means something on the server is wrong.
+    /// The computer's move as played; <see cref="NotComputersTurn"/>;
+    /// <see cref="OpponentUnavailable"/> when the opponent gave no move this
+    /// time; or <see cref="OpponentFault"/> when what it answered means
+    /// something on the server is wrong.
     /// </returns>
-    // Each case of OpponentReply is mapped by hand, here and nowhere else, so
-    // the union never reaches a response, and neither does the reason text of
-    // OpponentFailed, which can hold what the engine wrote.
-    public static async Task<ComputerMove> PlayComputerMoveAsync(
+    public static Task<ComputerTurn> PlayComputerTurnAsync(
+        this IOpponent computer, Opponent opponent, Side playerSide, IChessGame board, CancellationToken cancellationToken) =>
+        opponent is { Kind: OpponentKind.Computer, Strength: int strength }
+            && board.Status is Ongoing
+            && board.SideToMove != playerSide
+            ? computer.PlayComputerMoveAsync(board, strength, cancellationToken)
+            : Task.FromResult<ComputerTurn>(new NotComputersTurn());
+
+    // Asks the opponent for the next move and plays it on the board if the
+    // chess rules accept it. Each case of OpponentReply is mapped by hand,
+    // here and nowhere else, so the union never reaches a response, and
+    // neither does the reason text of OpponentFailed, which can hold what
+    // the engine wrote.
+    private static async Task<ComputerTurn> PlayComputerMoveAsync(
         this IOpponent opponent, IChessGame board, int strength, CancellationToken cancellationToken)
     {
         var moves = board.History.Select(move => move.Uci).ToList();
@@ -56,11 +67,14 @@ internal static class ComputerMoves
     }
 }
 
-/// <summary>The outcome of <see cref="ComputerMoves.PlayComputerMoveAsync"/>.</summary>
-internal union ComputerMove(MovePlayed, OpponentUnavailable, OpponentFault)
+/// <summary>The outcome of <see cref="ComputerMoves.PlayComputerTurnAsync"/>.</summary>
+internal union ComputerTurn(MovePlayed, NotComputersTurn, OpponentUnavailable, OpponentFault)
 {
     public override string ToString() => Value?.ToString() ?? "(no case)";
 }
+
+/// <summary>It is not the computer's turn, so it was not asked: nobody plays the other side, the game is over, or it is the player's move.</summary>
+internal readonly record struct NotComputersTurn;
 
 /// <summary>
 /// The opponent gave no move this time, for one of the reasons

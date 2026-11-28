@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Net.Http.Headers;
+using static ChessAscent.Api.Tests.Features.Games.GameRequests;
 using AccountData = ChessAscent.Api.Tests.Features.Accounts.Accounts;
 
 namespace ChessAscent.Api.Tests.Features.Games;
@@ -615,10 +616,6 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         move.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    private static readonly Func<AwesomeAssertions.Equivalency.EquivalencyOptions<GameResponse>,
-        AwesomeAssertions.Equivalency.EquivalencyOptions<GameResponse>> InStrictOrder =
-        options => options.WithStrictOrdering();
-
     private async Task<HttpClient> SignedInClientAsync()
     {
         var client = factory.CreateClient();
@@ -626,5 +623,4 @@ public sealed class GameEndpointsTests(ApiFactory factory, PostgresFixture postg
         return client;
     }
 
-    private static StringContent JsonBody(string json) => new(json, System.Text.Encoding.UTF8, "application/json");
 }
