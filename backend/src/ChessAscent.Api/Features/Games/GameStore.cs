@@ -345,6 +345,15 @@ public sealed class GameStore(AppDbContext database, TimeProvider clock)
         // inside it. A lone SaveChangesAsync is already atomic (it opens a
         // transaction of its own); one is needed here because the work is
         // several round trips: the update, the count and the insert.
+        //
+        // LEARN: The isolation level is an argument here, where Spring takes
+        // it as @Transactional(isolation = Isolation.READ_COMMITTED). It is
+        // given rather than left to the server's default, which a database or
+        // connection setting can change, because what follows needs READ
+        // COMMITTED: a second append that waits for this one's row lock then
+        // checks its WHERE against the committed row, and its count sees the
+        // committed moves. Under REPEATABLE READ the waiting append would
+        // fail with a serialization error instead, answered as a 500.
         await using var transaction = await database.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
 
         // LEARN: ExecuteUpdateAsync sends one UPDATE ... WHERE straight to
