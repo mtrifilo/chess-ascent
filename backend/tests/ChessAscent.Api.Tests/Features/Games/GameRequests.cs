@@ -98,6 +98,45 @@ internal static class GameRequests
         return game;
     }
 
+    /// <summary>Asks for a page of the list of games, with the query string as given.</summary>
+    public static Task<HttpResponseMessage> GetGameListAsync(this HttpClient client, string query) =>
+        client.GetAsync($"/games{query}", Cancellation);
+
+    /// <summary>Reads a page of the list of games, checking that it answered 200.</summary>
+    public static async Task<GameListResponse> ListGamesAsync(
+        this HttpClient client, string status, int? pageSize = null, string? cursor = null)
+    {
+        var query = $"?status={status}"
+            + (pageSize is { } size ? $"&pageSize={size}" : "")
+            + (cursor is null ? "" : $"&cursor={Uri.EscapeDataString(cursor)}");
+        using var response = await client.GetGameListAsync(query);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
+        return (await response.Content.ReadFromJsonAsync<GameListResponse>(ApiJson, Cancellation))!;
+    }
+
+    /// <summary>
+    /// Reads every page of the list in turn, following each page's cursor,
+    /// and returns the pages.
+    /// </summary>
+    public static async Task<List<GameListResponse>> ListEveryPageAsync(this HttpClient client, string status, int pageSize)
+    {
+        var pages = new List<GameListResponse>();
+        string? cursor = null;
+        do
+        {
+            var page = await client.ListGamesAsync(status, pageSize, cursor);
+            pages.Add(page);
+            cursor = page.NextCursor;
+
+            // A list that always had a next page would otherwise never end the test.
+            pages.Should().HaveCountLessThan(100);
+        }
+        while (cursor is not null);
+
+        return pages;
+    }
+
     /// <summary>The half-move number the game's next move has.</summary>
     public static int NextHalfMoveNumber(this GameResponse game) => game.Moves.Count + 1;
 

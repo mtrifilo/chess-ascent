@@ -5,6 +5,9 @@ namespace ChessAscent.Api.Json;
 
 public static class JsonServices
 {
+    /// <summary>How an enumeration member's name is written: <c>Side.White</c> as <c>white</c>.</summary>
+    public static readonly JsonNamingPolicy EnumNamingPolicy = JsonNamingPolicy.CamelCase;
+
     /// <summary>
     /// Sets how every request and response body is read and written: a
     /// number only as a JSON number, and an enumeration as the camel-case
@@ -41,6 +44,6 @@ public static class JsonServices
             // case-sensitive name, and reads a JSON integer as the member at
             // that ordinal unless FAIL_ON_NUMBERS_FOR_ENUMS is enabled.
             options.SerializerOptions.Converters.Add(
-                new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false));
+                new JsonStringEnumConverter(EnumNamingPolicy, allowIntegerValues: false));
         });
 }
