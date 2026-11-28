@@ -19,6 +19,7 @@ import {
 import { GameScreen } from './game-screen'
 import {
   AFTER_E4,
+  AFTER_E4_E5,
   FOOLS_MATE,
   game,
   GAME_ID,
@@ -181,17 +182,22 @@ describe('GameScreen', () => {
     )
   })
 
-  it('counts the half-move on from each move played on the screen', async () => {
-    answer({ [GAME_PATH]: ok(game()), [MOVES_PATH]: ok(AFTER_E4) })
+  // The number comes from the game shown, not from counting the moves this
+  // screen has sent: here one answer brings two moves.
+  it('counts the half-move on from the game each answer brings', async () => {
+    answer({ [GAME_PATH]: ok(game()), [MOVES_PATH]: ok(AFTER_E4_E5) })
     await renderGame()
     playOnBoard('e2', 'e4')
-    await waitFor(() => expect(board.props!.fen).toBe(AFTER_E4.fen))
+    await waitFor(() => expect(board.props!.fen).toBe(AFTER_E4_E5.fen))
 
-    const sent = answer({ [GAME_PATH]: ok(AFTER_E4), [MOVES_PATH]: ok(game()) })
-    playOnBoard('e7', 'e5')
+    const sent = answer({
+      [GAME_PATH]: ok(AFTER_E4_E5),
+      [MOVES_PATH]: ok(game()),
+    })
+    playOnBoard('g1', 'f3')
 
     await waitFor(() =>
-      expect(sentMoves(sent)).toEqual([{ uci: 'e7e5', halfMoveNumber: 2 }])
+      expect(sentMoves(sent)).toEqual([{ uci: 'g1f3', halfMoveNumber: 3 }])
     )
   })
 
@@ -422,18 +428,19 @@ describe('GameScreen', () => {
     it('sends the next move as the half-move after the game it loaded', async () => {
       answer({ [GAME_PATH]: ok(game()), [MOVES_PATH]: problem(409) })
       await renderGame()
-      answer({ [GAME_PATH]: ok(AFTER_E4), [MOVES_PATH]: problem(409) })
+      // Another tab played two moves meanwhile.
+      answer({ [GAME_PATH]: ok(AFTER_E4_E5), [MOVES_PATH]: problem(409) })
       playOnBoard('g1', 'f3')
-      await waitFor(() => expect(board.props!.fen).toBe(AFTER_E4.fen))
+      await waitFor(() => expect(board.props!.fen).toBe(AFTER_E4_E5.fen))
 
       const sent = answer({
-        [GAME_PATH]: ok(AFTER_E4),
+        [GAME_PATH]: ok(AFTER_E4_E5),
         [MOVES_PATH]: ok(game()),
       })
-      playOnBoard('e7', 'e5')
+      playOnBoard('g1', 'f3')
 
       await waitFor(() =>
-        expect(sentMoves(sent)).toEqual([{ uci: 'e7e5', halfMoveNumber: 2 }])
+        expect(sentMoves(sent)).toEqual([{ uci: 'g1f3', halfMoveNumber: 3 }])
       )
     })
 

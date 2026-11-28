@@ -38,6 +38,15 @@ export const AFTER_E4 = game({
   legalMoves: { e7: ['e6', 'e5'] },
 })
 
+// The game after 1. e4 e5, White to move: two moves on from the start, as
+// after one request that played a move and an opponent's reply, or after
+// another tab played twice.
+export const AFTER_E4_E5 = game({
+  fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2',
+  moves: [move(1, 'e2e4', 'e4'), move(2, 'e7e5', 'e5')],
+  legalMoves: { g1: ['f3', 'h3', 'e2'] },
+})
+
 // White's pawn on e7 can promote on e8, as in the designs.
 export const PROMOTION_GAME = game({
   fen: '8/4P1k1/8/8/8/8/8/4K3 w - - 0 1',
