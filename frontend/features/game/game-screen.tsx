@@ -2,7 +2,6 @@
 
 import { opposite } from '@lichess-org/chessground/util'
 import { ArrowUpDownIcon, CircleAlertIcon } from 'lucide-react'
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { useState } from 'react'
 
@@ -14,8 +13,8 @@ import {
 import { useNavItemForPage } from '@/components/layout/page-nav-item'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 
+import { ColourSwatch } from './colour-swatch'
 import { useComputerThinking } from './computer-thinking'
 import { useGame, usePlayMove } from './game-api'
 import {
@@ -34,6 +33,7 @@ import {
   type PromotionPiece,
 } from './game-state'
 import { MoveList } from './move-list'
+import { NewGameLink } from './new-game-link'
 import { PromotionPicker } from './promotion-picker'
 
 // One game: the board between the two players' bars, and beside it (below it
@@ -200,13 +200,7 @@ function PlayerBar({
 }) {
   return (
     <div className="flex h-10 items-center gap-2">
-      <span
-        aria-hidden
-        className={cn(
-          'size-3.5 rounded-sm border border-separator',
-          side === 'white' ? 'bg-piece-white' : 'bg-piece-black'
-        )}
-      />
+      <ColourSwatch side={side} />
       <span className="text-sm font-semibold">{playerName(game, side)}</span>
       {thinking && (
         <span className="ml-auto text-body-s text-muted-foreground">
@@ -237,12 +231,7 @@ function ResultPanel({ game }: { game: Game }) {
           {game.endReason && END_REASON_TEXT[game.endReason]}
         </p>
       </div>
-      <Button
-        asChild
-        className="h-12.75 w-full md:h-8 md:w-auto md:self-start md:px-2"
-      >
-        <Link href="/play">New game</Link>
-      </Button>
+      <NewGameLink />
     </div>
   )
 }

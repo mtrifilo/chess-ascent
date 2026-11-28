@@ -11,5 +11,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
+    // One time zone for every run, whatever the machine's, so a test of a
+    // date in the viewer's own zone means the same everywhere. Los Angeles
+    // is behind UTC, so a late-evening time there is a different UTC day.
+    env: { TZ: 'America/Los_Angeles' },
   },
 })

@@ -11,7 +11,8 @@ import { createQueryClient } from '@/lib/query-client'
 
 export type Reply = { status: number; body?: unknown }
 
-// A request the client sent: "METHOD /path", and its JSON body.
+// A request the client sent: "METHOD /path", with "?query" after the path
+// when it has one, and its JSON body.
 export type Sent = { call: string; body: unknown }
 
 export const SIGNED_OUT: Reply = { status: 401, body: { status: 401 } }
@@ -22,27 +23,35 @@ export function signedInAs(email: string): Reply {
 
 let answerMiddleware: Middleware | undefined
 
+// A reply, or a function that picks one from the request, for a path whose
+// answers depend on its method or query.
+type ReplyFor =
+  Reply | Promise<Reply> | ((request: Request) => Reply | Promise<Reply>)
+
 // Answers each request from `replies`, by path, instead of sending it:
 // openapi-fetch hands every request to its middleware first, and a Response
 // returned there is used as the server's answer. A reply given as a promise
 // is held until the test settles it, and fails as fetch does if the request
 // is aborted first. Each call replaces the previous replies. Returns the
 // requests sent from then on.
-export function answer(
-  replies: Record<string, Reply | Promise<Reply>>
-): Sent[] {
+export function answer(replies: Record<string, ReplyFor>): Sent[] {
   if (answerMiddleware) api.eject(answerMiddleware)
   const sent: Sent[] = []
   answerMiddleware = {
     onRequest: async ({ request }) => {
-      const path = new URL(request.url).pathname
+      const url = new URL(request.url)
+      const path = url.pathname
       const text = await request.clone().text()
       sent.push({
-        call: `${request.method} ${path}`,
+        call: `${request.method} ${path}${url.search}`,
         body: text ? JSON.parse(text) : undefined,
       })
       if (!(path in replies)) throw new Error(`unexpected request to ${path}`)
-      const reply = await unlessAborted(replies[path], request.signal)
+      const replyFor = replies[path]
+      const reply = await unlessAborted(
+        typeof replyFor === 'function' ? replyFor(request) : replyFor,
+        request.signal
+      )
       return new Response(
         reply.body === undefined ? null : JSON.stringify(reply.body),
         {

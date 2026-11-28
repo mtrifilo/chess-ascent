@@ -34,3 +34,16 @@ class InertResizeObserver {
   disconnect() {}
 }
 globalThis.ResizeObserver ??= InertResizeObserver
+
+// Nor has it an IntersectionObserver. This one never reports an
+// intersection; a test that needs one installs its own.
+class InertIntersectionObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return []
+  }
+}
+globalThis.IntersectionObserver ??=
+  InertIntersectionObserver as unknown as typeof IntersectionObserver
