@@ -279,14 +279,17 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
 
     // A page size that is not a whole number that fits an int cannot be
     // bound to the parameter. It is refused with 400 either way, but the body
-    // depends on the environment: in Development the binder throws and the
-    // exception handler writes a plain problem; elsewhere the validation of
-    // pageSize answers first, under pageSize, as for one out of bounds.
+    // depends on the environment. In Development the binder throws, and the
+    // exception handler writes a plain problem. Elsewhere the binder does not
+    // throw: it marks the request 400, leaves pageSize at 0, and still runs
+    // the endpoint's filters, so validation refuses the 0 under pageSize.
+    // That relies on 0 being outside the accepted range.
     [Theory]
     [InlineData("abc", "Development", new string[0])]
     [InlineData("1.5", "Development", new string[0])]
     [InlineData("2147483648", "Development", new string[0])]
     [InlineData("abc", "Production", new[] { "pageSize" })]
+    [InlineData("1.5", "Production", new[] { "pageSize" })]
     [InlineData("2147483648", "Production", new[] { "pageSize" })]
     public async Task APageSizeThatIsNotAWholeNumberIsRefused(string pageSize, string environment, string[] errorKeys)
     {
