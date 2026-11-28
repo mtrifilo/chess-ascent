@@ -96,4 +96,25 @@
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
+  <!--
+    Fails the build if the test platform's telemetry extension is still
+    registered: Directory.Build.targets removes it, and misses it if a later
+    version of the package registers under another identifier, or if a
+    nested Directory.Build.targets is imported instead of that file. The
+    check lives here, not beside the removal, so that the second case loses
+    the removal but not the check. A nested props file that skipped this one
+    would also lose the target framework, and the SDK refuses to build
+    without one unless that file sets its own.
+
+    LEARN: Unlike properties and items, a target runs only after the whole
+    project has been evaluated, so a target defined in a .props file still
+    sees every item that later files add or remove. %(...) runs the task
+    once per hook item, a loop with no loop syntax, called batching.
+  -->
+  <Target Name="RefuseTestingPlatformTelemetry" BeforeTargets="BeforeBuild" Condition="'@(TestingPlatformBuilderHook)' != ''">
+    <Error
+      Condition="'%(TestingPlatformBuilderHook.DisplayName)' == 'Microsoft.Testing.Extensions.Telemetry'"
+      Text="The test platform's telemetry extension is registered as TestingPlatformBuilderHook '%(TestingPlatformBuilderHook.Identity)'. backend/Directory.Build.targets is meant to remove it: check that it is imported and removes that identifier." />
+  </Target>
+
 </Project>

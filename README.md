@@ -62,7 +62,7 @@ In Development, `http://localhost:5100/scalar` is an API explorer (Scalar) for t
 
 Migrations use the `dotnet-ef` tool, pinned in `backend/dotnet-tools.json`. Run `dotnet tool restore` once, then `dotnet ef migrations add <Name> --project src/ChessAscent.Api --output-dir Database/Migrations` to add one.
 
-The test executables send no telemetry: the test runner's telemetry extension, which xUnit brings in, is left out of their builds by `backend/Directory.Build.targets`. The `dotnet` command itself sends usage data to Microsoft from `dotnet build`, `dotnet test`, `dotnet run` and its other commands ([what it sends](https://learn.microsoft.com/dotnet/core/tools/telemetry)). Only an environment variable turns that off, and no file in the repository can set it for you; set it in your shell, for example in your shell's profile:
+The test executables send no telemetry to Microsoft: the test runner's telemetry extension, which xUnit brings in, is left out of their builds by `backend/Directory.Build.targets`. When an IDE's test explorer runs them, the test runner still passes usage events to the IDE over their local connection, whatever is set here, and the IDE's own telemetry settings decide what becomes of them. The `dotnet` command itself sends usage data to Microsoft from `dotnet build`, `dotnet test`, `dotnet run` and its other commands ([what it sends](https://learn.microsoft.com/dotnet/core/tools/telemetry)). Only an environment variable turns that off, and no file in the repository can set it for you; set it in your shell, for example in your shell's profile:
 
 ```sh
 export DOTNET_CLI_TELEMETRY_OPTOUT=1

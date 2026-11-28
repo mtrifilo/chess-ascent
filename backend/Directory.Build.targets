@@ -30,14 +30,8 @@
   </ItemGroup>
 
   <!--
-    A later version of the package could register under another identifier,
-    which the removal above would miss without a sound. This fails the build
-    instead. The %(...) syntax runs the task once per hook item.
+    The target RefuseTestingPlatformTelemetry in Directory.Build.props fails
+    the build if this removal ever misses.
   -->
-  <Target Name="RefuseTestingPlatformTelemetry" BeforeTargets="BeforeBuild" Condition="'@(TestingPlatformBuilderHook)' != ''">
-    <Error
-      Condition="'%(TestingPlatformBuilderHook.DisplayName)' == 'Microsoft.Testing.Extensions.Telemetry'"
-      Text="Microsoft.Testing.Extensions.Telemetry registers itself as TestingPlatformBuilderHook '%(TestingPlatformBuilderHook.Identity)', which backend/Directory.Build.targets does not remove. Remove that identifier there instead." />
-  </Target>
 
 </Project>
