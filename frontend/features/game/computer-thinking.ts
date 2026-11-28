@@ -62,8 +62,14 @@ export function useComputerThinking(
   if (!thinking) return undefined
 
   const fen = positionAfter(sent.fen, sent.uci)
-  const moves = game.moves.slice(0, sent.halfMoveNumber)
-  const answered = moves.length === sent.halfMoveNumber
+  // The recorded game names the player's move once the API has answered. A
+  // different move in its place, read again after another tab moved first,
+  // is not the player's, so it is left out.
+  const answered = game.moves[sent.halfMoveNumber - 1]?.uci === sent.uci
+  const moves = game.moves.slice(
+    0,
+    answered ? sent.halfMoveNumber : sent.halfMoveNumber - 1
+  )
   return {
     fen,
     moves,

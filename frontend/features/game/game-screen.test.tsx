@@ -668,6 +668,46 @@ describe('GameScreen', () => {
       expect(board.mounts).toBe(1)
     })
 
+    it("marks the computer's king in check once the API has named the player's checking move", async () => {
+      // 1. e4 d6, and the player gives check with 2. Bb5+.
+      const beforeCheck = computerGame({
+        fen: 'rnbqkbnr/ppp1pppp/3p4/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2',
+        moves: [move(1, 'e2e4', 'e4'), move(2, 'd7d6', 'd6')],
+        legalMoves: { f1: ['b5'] },
+      })
+      const replied = computerGame({
+        fen: 'rnbqkbnr/pp2pppp/2pp4/1B6/4P3/8/PPPP1PPP/RNBQK1NR w KQkq - 0 3',
+        moves: [
+          ...beforeCheck.moves,
+          move(3, 'f1b5', 'Bb5+'),
+          move(4, 'c7c6', 'c6'),
+        ],
+      })
+      let settle!: (reply: Reply) => void
+      answer({
+        [GAME_PATH]: ok(beforeCheck),
+        [MOVES_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
+      })
+      await renderGame()
+      fakeTheClock()
+
+      playOnBoard('f1', 'b5')
+      await pass(0)
+      // Until the API answers, nothing says the move gave check.
+      expect(board.props).toMatchObject({
+        fen: 'rnbqkbnr/ppp1pppp/3p4/1B6/4P3/8/PPPP1PPP/RNBQK1NR b - - 0 2',
+        check: undefined,
+      })
+
+      settle(ok(replied))
+      await pass(0)
+      expect(heading()).toHaveTextContent('Maia 800 is thinking')
+      expect(board.props!.check).toBe('e8')
+
+      await pass(MINIMUM_THINKING_MS)
+      expect(board.props).toMatchObject({ fen: replied.fen, check: undefined })
+    })
+
     it('shows a reply slower than the minimum time as soon as it comes', async () => {
       let settle!: (reply: Reply) => void
       answer({
