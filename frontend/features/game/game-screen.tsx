@@ -186,6 +186,10 @@ function LoadedGame({ game }: { game: Game }) {
               orientation={orientation}
               pieces={promotion.pieces}
               onChoose={piece => {
+                // Refused, and left waiting, while a resignation is on its
+                // way: it is chosen again if the resignation fails, and
+                // dropped with the game if it does not.
+                if (resignSent.current) return
                 setPending(undefined)
                 send(toUci(promotion.move, piece))
               }}

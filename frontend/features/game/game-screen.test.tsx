@@ -1180,7 +1180,11 @@ describe('GameScreen', () => {
       consoleError.mockRestore()
     })
 
-    it('sends no promotion chosen while the resignation is on its way, and drops the choice once resigned', async () => {
+    it('keeps a promotion waiting, unsent, while the resignation is on its way, and sends it once the resignation fails', async () => {
+      // The query cache reports the failure to the console.
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {})
       let settle!: (reply: Reply) => void
       const promotionGame = { ...PROMOTION_GAME, opponent: MAIA_800 }
       const sent = answer({
@@ -1197,15 +1201,48 @@ describe('GameScreen', () => {
       )
       fireEvent.click(screen.getByRole('button', { name: 'Knight' }))
 
-      settle(ok(resignedAs(promotionGame)))
+      expect(
+        screen.getByRole('group', {
+          name: 'Choose a piece for the pawn on e8.',
+        })
+      ).toBeInTheDocument()
+      settle(problem(500))
+      await waitFor(() =>
+        expect(
+          within(confirmation()).getByRole('button', { name: 'Resign' })
+        ).not.toHaveAttribute('aria-disabled', 'true')
+      )
+      expect(sentMoves(sent)).toEqual([])
+
+      fireEvent.click(screen.getByRole('button', { name: 'Knight' }))
+      await waitFor(() =>
+        expect(sentMoves(sent)).toEqual([{ uci: 'e7e8n', halfMoveNumber: 1 }])
+      )
+      consoleError.mockRestore()
+    })
+
+    it('drops a waiting promotion once the game is resigned', async () => {
+      const promotionGame = { ...PROMOTION_GAME, opponent: MAIA_800 }
+      const sent = answer({
+        [GAME_PATH]: ok(promotionGame),
+        [RESIGN_PATH]: ok(resignedAs(promotionGame)),
+      })
+      await renderGame()
+
+      playOnBoard('e7', 'e8')
+      fireEvent.click(resignControl())
+      fireEvent.click(
+        within(confirmation()).getByRole('button', { name: 'Resign' })
+      )
+
       await waitFor(() =>
         expect(screen.getByText('You resigned.')).toBeInTheDocument()
       )
-      expect(sentMoves(sent)).toEqual([])
       expect(screen.queryByRole('group', { name: /Choose a piece/ })).toBeNull()
+      expect(sentMoves(sent)).toEqual([])
     })
 
-    it('can be cancelled or sent again after a resignation that failed while Next.js had the page hidden', async () => {
+    it('can be cancelled, and sent again, after a resignation that failed while Next.js had the page hidden', async () => {
       // The query cache reports the failure to the console.
       const consoleError = vi
         .spyOn(console, 'error')
@@ -1236,10 +1273,17 @@ describe('GameScreen', () => {
       rerender(screenIn('visible'))
       await waitFor(() => expect(board.props!.readOnly).toBe(false))
 
+      fireEvent.click(
+        within(confirmation()).getByRole('button', { name: 'Cancel' })
+      )
+      expect(screen.queryByRole('group', { name: QUESTION })).toBeNull()
+      expect(resignControl()).toHaveFocus()
+
       const retried = answer({
         [GAME_PATH]: ok(RESIGNED),
         [RESIGN_PATH]: ok(RESIGNED),
       })
+      fireEvent.click(resignControl())
       fireEvent.click(
         within(confirmation()).getByRole('button', { name: 'Resign' })
       )
