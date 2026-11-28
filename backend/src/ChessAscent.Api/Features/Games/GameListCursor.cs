@@ -36,12 +36,17 @@ public readonly record struct GameListCursor(DateTimeOffset UpdatedAt, Guid Id)
     public static bool TryDecode(string text, out GameListCursor cursor)
     {
         cursor = default;
-        Span<byte> bytes = stackalloc byte[EncodedLength];
-        if (!Base64Url.TryDecodeFromChars(text, bytes, out var written) || written != EncodedLength)
+
+        // TryDecodeFromChars returns false only when the bytes do not fit,
+        // and throws on text that is not base64url, so the text is checked
+        // first.
+        if (!Base64Url.IsValid(text, out var decodedLength) || decodedLength != EncodedLength)
         {
             return false;
         }
 
+        Span<byte> bytes = stackalloc byte[EncodedLength];
+        Base64Url.DecodeFromChars(text, bytes);
         var ticks = BinaryPrimitives.ReadInt64BigEndian(bytes);
         if (ticks < DateTimeOffset.MinValue.UtcTicks || ticks > DateTimeOffset.MaxValue.UtcTicks)
         {

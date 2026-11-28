@@ -284,6 +284,10 @@ public sealed class GameListTests(ApiFactory factory, PostgresFixture postgres) 
     [Theory]
     [InlineData("")]
     [InlineData("not-a-cursor")]
+    // Not base64url at all: a length no base64 text has, and a character
+    // outside the alphabet.
+    [InlineData("bogus")]
+    [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA*")]
     // The right length, with a time before year 1.
     [InlineData("________________________________")]
     // One byte short, and three bytes over.
