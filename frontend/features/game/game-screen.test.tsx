@@ -1754,6 +1754,43 @@ describe('GameScreen: a hint', () => {
       expect(sentHints(sent)).toHaveLength(1)
     })
 
+    it('keeps the hint when "Try again" is refused while the resignation is on its way', async () => {
+      // The query cache reports the failures to the console.
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {})
+      let settle!: (reply: Reply) => void
+      const sent = answer({
+        [GAME_PATH]: ok(GAME),
+        [HINTS_PATH]: ok(HINT),
+        [MOVES_PATH]: problem(500),
+        [RESIGN_PATH]: new Promise<Reply>(resolve => (settle = resolve)),
+      })
+      await renderGame()
+      playOnBoard('g1', 'h3')
+      await screen.findByRole('alert')
+      await revealPiece()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Resign' }))
+      const group = screen.getByRole('group', { name: QUESTION })
+      fireEvent.click(within(group).getByRole('button', { name: 'Resign' }))
+      await waitFor(() => expect(board.props!.readOnly).toBe(true))
+      // Refused: no move is sent while the resignation is on its way.
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+      settle(problem(500))
+      await waitFor(() =>
+        expect(
+          within(group).getByRole('button', { name: 'Cancel' })
+        ).not.toHaveAttribute('aria-disabled', 'true')
+      )
+      fireEvent.click(within(group).getByRole('button', { name: 'Cancel' }))
+
+      expect(sentMoves(sent)).toHaveLength(1)
+      expect(screen.getByText(PIECE_TEXT)).toBeInTheDocument()
+      expect(boardMarks()).toEqual({ hintSquares: ['g1'], arrows: undefined })
+      consoleError.mockRestore()
+    })
+
     it('clears the hint, and the control goes, once the game is resigned', async () => {
       answer({
         [GAME_PATH]: ok(GAME),
@@ -1873,14 +1910,15 @@ describe('GameScreen: a hint', () => {
 
     it('shows nothing for a signed-out visitor, whom the API client sends to sign in', async () => {
       const sent = answer({ [GAME_PATH]: ok(GAME), [HINTS_PATH]: problem(401) })
-      await renderGame()
+      const { queryClient } = await renderGame()
 
       fireEvent.click(control())
 
       await waitFor(() => expect(sentHints(sent)).toHaveLength(1))
-      await waitFor(() =>
-        expect(control()).not.toHaveAttribute('aria-disabled', 'true')
-      )
+      await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+      // Not a failure, so the query cache reports nothing.
+      expect(console.error).not.toHaveBeenCalled()
+      expect(control()).not.toHaveAttribute('aria-disabled', 'true')
       expect(screen.queryByText(/^Hint:/)).toBeNull()
       expect(screen.queryByRole('alert')).toBeNull()
       expect(boardMarks()).toEqual(NO_MARKS)

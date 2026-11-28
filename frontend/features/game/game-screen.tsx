@@ -148,12 +148,13 @@ function LoadedGame({ game }: { game: Game }) {
       }
 
   function send(uci: string) {
-    hint.clear()
     const resetBoard = () => setBoardKey(key => key + 1)
     if (resignSent.current) {
       resetBoard()
       return
     }
+    // A move refused above was not sent, so the hint stays.
+    hint.clear()
     playMove.mutate(
       { uci, halfMoveNumber: nextHalfMoveNumber(game), fen: game.fen },
       {
