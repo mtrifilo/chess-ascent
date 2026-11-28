@@ -98,7 +98,7 @@ The front end calls the API through types generated from the API's OpenAPI docum
 | Back end | From `backend/`, with Docker running: `dotnet restore --locked-mode` (then fails if `git status` shows a `packages.lock.json` that is not committed), `dotnet tool restore`, `dotnet build`, `dotnet format --verify-no-changes`, `dotnet test`, `dotnet ef migrations has-pending-model-changes --project src/ChessAscent.Api` |
 | Front end | From `frontend/`: `bun install --frozen-lockfile`, `bun run format:check`, `bun run typecheck`, `bun run lint`, `bun run test`, `bun run build` |
 | API types drift | `bun install --frozen-lockfile` in `frontend/`, then `scripts/gen-api-types.sh`; fails if `git status` then shows any change |
-| Secret scanning | `gitleaks git --redact --log-opts="--full-history --diff-filter=tuxdb HEAD" .` from the repo root, with Gitleaks (https://github.com/gitleaks/gitleaks) at the version the workflow pins; fails on any finding in any commit reachable from `HEAD`. Add `--verbose` locally to see each finding in context |
+| Secret scanning | `gitleaks git --redact --log-opts="--full-history --diff-filter=tuxdb --remerge-diff HEAD" .` from the repo root, with Gitleaks (https://github.com/gitleaks/gitleaks) at the version the workflow pins and its default rules (CI ignores any `.gitleaks.toml`); fails on any finding in any commit reachable from `HEAD`, merge resolutions included. Add `--verbose` locally to see each finding in context |
 | Dependency advisories | `bun audit` from `frontend/`. The back end's packages are checked by the restore in the back-end job |
 | Back end, slow rules tests | Pushes to `main` only: the slow-tier command under "Back end" above |
 
@@ -106,5 +106,5 @@ A ticket that adds a command to "How to run things" that CI should also run adds
 
 When a check fails on something the PR did not change:
 
-- **Secret scanning.** A real credential is revoked or rotated first; deleting the commit does not make it secret again. A false positive, such as a test fixture that looks like a password, gets a `gitleaks:allow` comment at the end of its line, and the PR says why.
+- **Secret scanning.** A real credential is revoked or rotated first; deleting the commit does not make it secret again. A false positive, such as a test fixture that looks like a password, gets a `gitleaks:allow` comment at the end of its line before it is first pushed. Once a commit holding it is pushed, the comment no longer helps, because the scan reads every commit: add the finding's fingerprint, `<Commit>:<File>:<RuleID>:<StartLine>` from the line the job prints, to `.gitleaksignore` at the repo root instead. Either way the PR says why.
 - **Dependency advisories** (`bun audit`, or NU1901 to NU1904 from restore). Update the affected package, with the override above if the fix is newer than three days. If no fixed version exists, ask the owner before suppressing the advisory (`bun audit --ignore=<CVE>`, or `NuGetAuditSuppress` in a project file).

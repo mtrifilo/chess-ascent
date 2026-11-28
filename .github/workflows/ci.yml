@@ -222,16 +222,21 @@ jobs:
           if [ -n "$changes" ]; then
             echo "$changes"
             git diff
-            echo "::error::The committed API contract is out of date. Run scripts/gen-api-types.sh (or bun run api:types in frontend/) and commit what it changes."
+            echo "::error::Regenerating the API contract changed the files listed above. Run scripts/gen-api-types.sh (or bun run api:types in frontend/) and commit what it changes."
             exit 1
           fi
 
   # Gitleaks (MIT) scans every commit in the history of the commit under
   # test, not only the files as they stand, because a secret committed and
-  # then deleted is still public. A finding fails the job. Other branches are
-  # left out (the log options are Gitleaks' defaults without --all), so a
+  # then deleted is still public. A finding fails the job. The log options
+  # are Gitleaks' defaults with two changes: HEAD in place of --all, so a
   # secret pushed on one branch fails that branch's run and not everyone
-  # else's. The log, which anyone can read on a public repository, shows only
+  # else's, and --remerge-diff, so text typed into a merge commit while
+  # resolving a conflict, which git log shows no diff for by default, is
+  # scanned too. The rules are always Gitleaks' default set, passed in from
+  # outside the checkout: Gitleaks would otherwise read a .gitleaks.toml
+  # from the repository, so a pull request could switch the rules off. The
+  # log, which anyone can read on a public repository, shows only
   # where each finding is: Gitleaks' verbose output would print the text
   # around a redacted secret, which can hold a second one. The binary comes
   # from the project's GitHub release and is checked against the SHA-256
@@ -264,9 +269,11 @@ jobs:
       - name: Scan the history for secrets
         run: |
           report="$RUNNER_TEMP/gitleaks.json"
+          config="$RUNNER_TEMP/gitleaks.toml"
+          printf '[extend]\nuseDefault = true\n' >"$config"
           status=0
-          "$RUNNER_TEMP/gitleaks" git --redact --no-banner \
-            --log-opts="--full-history --diff-filter=tuxdb HEAD" \
+          "$RUNNER_TEMP/gitleaks" git --redact --no-banner --config "$config" \
+            --log-opts="--full-history --diff-filter=tuxdb --remerge-diff HEAD" \
             --report-format json --report-path "$report" . || status=$?
           if [ "$status" -ne 0 ] && [ -s "$report" ]; then
             jq --compact-output '.[] | {RuleID, File, StartLine, Commit}' "$report"
